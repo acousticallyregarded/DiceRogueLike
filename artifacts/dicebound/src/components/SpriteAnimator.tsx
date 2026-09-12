@@ -28,10 +28,11 @@ export type SpriteName =
   | 'goblin-attack'
   | 'skeleton-attack'
   | 'boss-attack';
+export type OchreSpriteName = 'ochre-idle' | 'ochre-attack' | 'ochre-hit' | 'ochre-death';
 
 export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
   /** Name of the optional 8-frame, horizontal sheet. */
-  sprite: SpriteName;
+  sprite: SpriteName | OchreSpriteName;
   /** Art shown until the sheet exists, and while this animator is idle. */
   fallbackUrl: string;
   /** Starts/restarts playback when this value changes. */
@@ -41,6 +42,7 @@ export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>
   fps?: number;
   durationMs?: number;
   flip?: boolean;
+  holdLastFrame?: boolean;
   alt?: string;
   onAnimationEnd?: () => void;
 }
@@ -68,6 +70,7 @@ export function SpriteAnimator({
   fps = 12,
   durationMs,
   flip = false,
+  holdLastFrame = false,
   alt = '',
   className = '',
   style,
@@ -95,7 +98,7 @@ export function SpriteAnimator({
     completionNotified.current = false;
     setFrame(0);
     setPlaying(true);
-  }, [active, trigger, reducedMotion]);
+  }, [active, trigger, sprite, reducedMotion]);
 
   useEffect(() => {
     if (!playing || reducedMotion) return;
@@ -130,7 +133,7 @@ export function SpriteAnimator({
     return () => cancelAnimationFrame(frameId);
   }, [frameDuration, loop, onAnimationEnd, playing, reducedMotion]);
 
-  const sheetVisible = Boolean(sheetUrl && (playing || (active && loop)));
+  const sheetVisible = Boolean(sheetUrl && (playing || (active && loop) || (active && holdLastFrame && !reducedMotion)));
   const spriteStyle = useMemo<CSSProperties>(() => ({
     ...style,
     ...(sheetVisible

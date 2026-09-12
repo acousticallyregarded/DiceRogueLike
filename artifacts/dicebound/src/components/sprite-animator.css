@@ -11,6 +11,11 @@
   image-rendering: auto;
 }
 
+.sprite-animator--pixel,
+.sprite-animator--pixel img {
+  image-rendering: pixelated;
+}
+
 .sprite-animator__fallback {
   display: block;
   width: 100%;

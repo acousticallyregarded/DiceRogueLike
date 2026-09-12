@@ -9,7 +9,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 import wolfUrl from '../assets/wolf.png';
-import slimeUrl from '../assets/slime.png';
+import slimeUrl from '../assets/ochre-jelly.png';
+import { OchreJellySprite } from './OchreJellySprite';
 import goblinUrl from '../assets/goblin.png';
 import skeletonUrl from '../assets/skeleton.png';
 import bossUrl from '../assets/boss.png';
@@ -448,7 +449,14 @@ export function CombatOverlay({
               >
                 <div className={`combat-actor combat-actor--enemy w-20 h-20 ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
-                    <SpriteAnimator
+                    {enemySprite === 'slime-attack' ? (
+                      <OchreJellySprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                      />
+                    ) : <SpriteAnimator
                       sprite={enemySprite}
                       fallbackUrl={getMonsterImage(enemy)}
                       active={enemyEvent.attackTrigger > 0}
@@ -458,7 +466,7 @@ export function CombatOverlay({
                       flip
                       alt={enemy.name}
                       className="combat-actor__sprite drop-shadow-xl"
-                    />
+                    />}
                   </div>
                 </div>
                 <div className="text-[9px] font-black text-white bg-black/60 px-1 rounded absolute -top-4">{enemy.name}</div>

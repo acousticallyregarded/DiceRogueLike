@@ -83,7 +83,7 @@ export function MonsterGuide({ onClose }: { onClose: () => void }) {
         <footer className="border-t-2 border-slate-200 p-3 text-[9px] leading-snug font-semibold text-slate-500">
           <p>{SRD_ATTRIBUTION}</p>
           <p className="mt-1">
-            Adapted stats and attack styles; not full D&amp;D rules. Art is original.
+            Adapted stats and attack styles; not full D&amp;D rules. Ochre Jelly uses a user-supplied Ragnarok Online Poporing sprite sheet. Other character art is original.
             No external copyrighted art or branding.
           </p>
         </footer>
