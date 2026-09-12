@@ -1,5 +1,6 @@
 import { RunState, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE, getCombatSpeedBonus } from '../engine';
-import { Heart, Sword, Settings, Gem, ShieldAlert, Coins, Wind } from 'lucide-react';
+import { Heart, Sword, Gem, ShieldAlert, Coins, Wind } from 'lucide-react';
+import { AudioSettingsButton } from './AudioSettings';
 
 function getNextLevelXp(level: number): number {
   return Math.floor(100 * Math.pow(1.5, level - 1));
@@ -36,9 +37,7 @@ export function TopBar({ run }: { run: RunState }) {
              <ShieldAlert className="w-3 h-3 text-blue-300 mr-1" />
              {run.defense}
            </div>
-           <button aria-label="Settings" className="bg-white text-slate-800 rounded-full p-1 border-2 border-[#1c1c1c] shadow-md pointer-events-auto active:scale-95">
-             <Settings className="w-4 h-4" />
-           </button>
+            <AudioSettingsButton className="pointer-events-auto" />
         </div>
       </div>
       

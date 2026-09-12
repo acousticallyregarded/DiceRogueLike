@@ -9,11 +9,36 @@ import { AttackStyleSelector } from '../components/AttackStyleSelector';
 import { MonsterGuide } from '../components/MonsterGuide';
 import { FastForward, BookOpen } from 'lucide-react';
 import { useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { useAudio } from '../audio/use-audio';
+import { useAudioEvents } from '../audio/use-audio-events';
 
 export default function Game() {
   const { state, dispatch, speed, setSpeed } = useGame();
+  const { setMusicScene, stopPlayback } = useAudio();
   const [showSkills, setShowSkills] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
+  const previousRun = useRef(Boolean(state?.run));
+
+  useEffect(() => {
+    const hasRun = Boolean(state?.run);
+    if (previousRun.current && !hasRun) stopPlayback();
+    previousRun.current = hasRun;
+
+    if (!state?.run) {
+      setMusicScene('lobby');
+      return;
+    }
+    if (state.run.phase === 'combat') {
+      setMusicScene('combat');
+    } else if (state.run.phase === 'explore' || state.run.phase === 'moving') {
+      setMusicScene('explore');
+    } else {
+      setMusicScene(null);
+    }
+  }, [setMusicScene, state?.run?.phase, state?.run, stopPlayback]);
+
+  useAudioEvents(state);
 
   if (!state) return null;
 

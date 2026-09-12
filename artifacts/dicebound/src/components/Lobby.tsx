@@ -7,6 +7,7 @@ import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
 import heroUrl from '../assets/custom-lobby-hero.png';
 import { SpriteAnimator } from './SpriteAnimator';
+import { AudioSettingsButton } from './AudioSettings';
 
 export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: GameAction) => void }) {
   const [tab, setTab] = useState<'play' | 'gear' | 'talents'>('play');
@@ -52,6 +53,7 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
             <button onClick={() => setShowBestiary(true)} aria-label="Open Bestiary" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-purple-700">
               <BookOpen className="w-4 h-4"/>
             </button>
+            <AudioSettingsButton />
           </div>
           <div className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
             <Gem className="w-4 h-4 text-cyan-300 fill-current" /> {meta.gems}
