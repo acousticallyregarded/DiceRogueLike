@@ -31,7 +31,12 @@ export default function Game() {
     }
     if (state.run.phase === 'combat') {
       setMusicScene('combat');
-    } else if (state.run.phase === 'explore' || state.run.phase === 'moving') {
+    } else if (
+      state.run.phase === 'explore'
+      || state.run.phase === 'moving'
+      || state.run.phase === 'boss_awakening'
+      || state.run.phase === 'boss_ready'
+    ) {
       setMusicScene('explore');
     } else {
       setMusicScene(null);

@@ -22,6 +22,8 @@ const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
 const TILE_STEP_MS = 300;
 
+export const BOSS_AWAKENING_DURATION_MS = 2200;
+
 function getGridCoords(index: number) {
   if (index < 7) {
     return { x: index, y: 0 };
@@ -119,6 +121,8 @@ const TILE_THEMES: Record<TileType, { image: string, color: string, icon: any }>
   minigame: { image: orangeTileUrl, color: 'text-amber-900', icon: Gift }
 };
 
+const PIT_DEPTH = 90;
+
 export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, visualPosition: number, speed?: number }) {
   const reducedMotion = usePrefersReducedMotion();
   const tileMotion = useTileMotion(visualPosition, speed, reducedMotion);
@@ -142,18 +146,38 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
     'north-east': { sprite: 'custom-walk-north-east', fallbackUrl: customWalkNorthEastUrl },
   };
   const activeWalkSprite = walkSprites[heroDirection];
-  // Follow the same interpolated point as the hero with a tiny amount of
-  // breathing room; one transform owns both camera and movement timing.
+
+  const isAwakening = run.phase === 'boss_awakening';
+  const isBossActive = isAwakening || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat) || run.phase === 'victory';
+
+  // Statue center is at x: 0, y: 16 (relative to grid center). Camera overrides to center when boss is active.
+  const cameraTarget = isBossActive ? { x: 0, y: 16 } : heroPos;
+
+  const [cameraTransition, setCameraTransition] = useState(false);
+  const prevBossActive = useRef(isBossActive);
+
+  useEffect(() => {
+    if (isBossActive !== prevBossActive.current) {
+      prevBossActive.current = isBossActive;
+      setCameraTransition(true);
+      const timer = setTimeout(() => setCameraTransition(false), BOSS_AWAKENING_DURATION_MS);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [isBossActive]);
+
   const cameraFollow = 0.96;
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div 
         className="relative w-0 h-0"
-        style={{ transform: `translate(${-heroPos.x * cameraFollow}px, ${-heroPos.y * cameraFollow + 40}px)` }}
+        style={{ 
+          transform: `translate(${-cameraTarget.x * cameraFollow}px, ${-cameraTarget.y * cameraFollow + 40}px)`,
+          transition: cameraTransition && !reducedMotion ? `transform ${BOSS_AWAKENING_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)` : 'none'
+        }}
       >
-        {/* The forest is part of the world, not a fixed screen backdrop.
-            Overscan covers the full camera path and the combat scene shift. */}
+        {/* The forest is part of the world, not a fixed screen backdrop. */}
         <img
           src={forestClearingUrl}
           alt=""
@@ -170,11 +194,57 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
           }}
         />
         
-        {/* Scenery - Trees and Statue */}
-        <div className="absolute w-[200px] h-[200px] -ml-[100px] -mt-[140px] z-[0]">
-           <img src={statueUrl} className="w-full h-full object-contain" alt="Statue" />
+        {/* Pit Courtyard Floor */}
+        <div 
+          className="absolute pointer-events-none"
+          style={{
+            width: '226.27px',
+            height: '226.27px',
+            left: '-113.13px',
+            top: `${16 + PIT_DEPTH - 113.13}px`, 
+            transform: 'scaleY(0.5) rotate(45deg)',
+            zIndex: 2,
+            backgroundColor: '#1c1917', // stone-900
+            backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+            backgroundSize: '45.25px 45.25px', // 5x5 grid (226.27 / 5)
+            boxShadow: 'inset 0 0 50px rgba(0,0,0,1)'
+          }}
+        />
+
+        {/* Center Statue */}
+        <div 
+          className="absolute pointer-events-none"
+          style={{ 
+            transform: `translate(0px, ${16 + PIT_DEPTH}px)`,
+            zIndex: 6 
+          }}
+        >
+          <div 
+            className="absolute transition-all ease-in-out"
+            style={{
+              transform: isBossActive ? `translateY(-80px)` : `translateY(0px)`,
+              transitionDuration: reducedMotion ? '0ms' : `${BOSS_AWAKENING_DURATION_MS}ms`,
+              filter: isBossActive ? `drop-shadow(0 0 15px rgba(234, 179, 8, 0.6)) drop-shadow(0 0 30px rgba(34, 197, 94, 0.4))` : 'none'
+            }}
+          >
+            {/* Statue Image */}
+            <div className="absolute w-[200px] h-[200px] -ml-[100px] -mt-[170px]">
+              <img src={statueUrl} className="w-full h-full object-contain" alt="Statue" />
+              
+              {/* Magic glow overlay */}
+              <div 
+                className="absolute inset-0 transition-opacity ease-in-out mix-blend-color-dodge"
+                style={{
+                  background: 'radial-gradient(circle at 50% 60%, rgba(234,179,8,0.4) 0%, transparent 60%)',
+                  opacity: isBossActive ? 1 : 0,
+                  transitionDuration: reducedMotion ? '0ms' : `${BOSS_AWAKENING_DURATION_MS}ms`
+                }}
+              />
+            </div>
+          </div>
         </div>
         
+        {/* Scenery - Trees */}
         <div className="absolute w-[100px] h-[120px] -ml-[180px] -mt-[20px] z-[1]">
            <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
         </div>
@@ -200,15 +270,34 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
                 zIndex: p.zIndex 
               }}
             >
+              {/* Left Wall Skirt (Front-Left face) */}
+              <div 
+                className="absolute pointer-events-none"
+                style={{ 
+                  left: '0px', top: '16px', width: '33px', height: `${PIT_DEPTH}px`, 
+                  transformOrigin: 'top left', transform: 'skewY(26.565deg)',
+                  background: 'linear-gradient(to bottom, #78716c, #292524)'
+                }} 
+              />
+              {/* Right Wall Skirt (Front-Right face) */}
+              <div 
+                className="absolute pointer-events-none"
+                style={{ 
+                  left: '32px', top: '32px', width: '33px', height: `${PIT_DEPTH}px`, 
+                  transformOrigin: 'top left', transform: 'skewY(-26.565deg)',
+                  background: 'linear-gradient(to bottom, #57534e, #1c1917)'
+                }} 
+              />
+
               <img
                 src={theme.image}
                 alt={`${t.type} tile`}
                 draggable={false}
-                className="absolute top-0 left-0 w-[64px] h-[38px] max-w-none"
+                className="absolute top-0 left-0 w-[64px] h-[38px] max-w-none z-10"
                 style={{ filter: 'drop-shadow(0 3px 2px rgba(0,0,0,0.16))' }}
               />
               {t.type !== 'start' && (
-                <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none -mt-1">
                   <Icon className={`w-4 h-4 ${theme.color}`} strokeWidth={3} />
                 </div>
               )}

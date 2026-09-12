@@ -2,6 +2,42 @@ import { RunState, GameAction, MetaState } from '../engine';
 import { Gift, Coins, Shield, Sword, Heart, Wind, Star, Zap, Skull } from 'lucide-react';
 
 export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch: (a: GameAction) => void, meta: MetaState }) {
+  if (run.phase === 'boss_awakening') {
+    return (
+      <div
+        className="absolute bottom-5 left-3 right-3 z-50 flex justify-center pointer-events-none"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="rounded-full border-2 border-[#1c1c1c] bg-black/75 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wide text-amber-100 shadow-lg">
+          The ancient statue rises...
+        </div>
+      </div>
+    );
+  }
+
+  if (run.phase === 'boss_ready') {
+    return (
+      <div className="absolute bottom-4 left-3 right-3 z-50 pointer-events-auto">
+        <div className="rounded-2xl border-4 border-[#1c1c1c] bg-slate-950/90 p-3 text-center text-white shadow-2xl">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-amber-200">
+            The statue is awake
+          </p>
+          <p className="mb-3 text-xs font-bold text-slate-200">
+            Its seal breaks. Activate the statue to challenge the Floor {run.floor} Boss.
+          </p>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'FIGHT_BOSS' })}
+            className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-400 py-2.5 text-sm font-black uppercase text-slate-950 transition-all active:translate-y-1 active:border-b-0"
+          >
+            Fight Floor {run.floor} Boss
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (run.phase === 'explore' || run.phase === 'moving' || run.phase === 'combat') {
     return null;
   }

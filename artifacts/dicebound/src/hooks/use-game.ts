@@ -6,6 +6,7 @@ import {
   validateState,
   createInitialState,
   DICE_ROLL_ANIMATION_DURATION_MS,
+  BOSS_AWAKENING_DURATION_MS,
   getEnemyResponseDelayMs,
 } from '../engine';
 import { toast } from 'sonner';
@@ -84,6 +85,17 @@ export function useGame() {
     }, DICE_ROLL_ANIMATION_DURATION_MS);
     return () => window.clearTimeout(timer);
   }, [dispatch, state?.run?.phase, state?.run?.rollAnimating]);
+
+  // Awakening is a durable presentation phase. Reloading it safely starts the
+  // same one-shot completion timer; boss_ready deliberately has no timer and
+  // therefore never starts a fight without an explicit player choice.
+  useEffect(() => {
+    if (state?.run?.phase !== 'boss_awakening') return;
+    const timer = window.setTimeout(() => {
+      dispatch({ type: 'COMPLETE_BOSS_AWAKENING' });
+    }, BOSS_AWAKENING_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [dispatch, state?.run?.phase]);
 
   useEffect(() => {
     if (!state?.run) return;

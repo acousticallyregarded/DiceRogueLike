@@ -11,6 +11,7 @@ import {
   FIRE_BOMB_ANIMATION_DURATION_MS,
   GUARD_TONIC_ANIMATION_DURATION_MS,
   DEFAULT_ENEMY_RESPONSE_DELAY_MS,
+  BOSS_AWAKENING_DURATION_MS,
   getWalkDirection,
   validateState,
   type EnemyState,
@@ -96,6 +97,115 @@ function runAssertions() {
   }
   assert.equal(wrapped.run!.stepsRemaining, 0);
   assert.equal(wrapped.run!.phase, "explore");
+
+  // The final committed roll finishes its exact movement path before the
+  // statue presentation begins. The threshold has priority over whatever tile
+  // the last step lands on, but it does not create a boss until chosen.
+  assert.equal(BOSS_AWAKENING_DURATION_MS, 2200);
+  let finalLanding = act(createInitialState(), { type: "START_RUN" });
+  // ROLL_DICE decrements before movement; this is the committed final roll.
+  finalLanding.run!.bossRollsLeft = 0;
+  finalLanding.run!.position = 0;
+  finalLanding.run!.stepsRemaining = 2;
+  finalLanding.run!.phase = "moving";
+  finalLanding.run!.rollAnimating = false;
+  finalLanding.run!.tiles[1] = { id: 1, type: "enemy" };
+  finalLanding.run!.tiles[2] = { id: 2, type: "shop" };
+  finalLanding = act(finalLanding, { type: "STEP_MOVE" });
+  assert.equal(finalLanding.run!.phase, "moving");
+  assert.equal(finalLanding.run!.stepsRemaining, 1);
+  finalLanding = act(finalLanding, { type: "STEP_MOVE" });
+  assert.equal(finalLanding.run!.phase, "boss_awakening");
+  assert.equal(finalLanding.run!.bossRollsLeft, 0);
+  assert.deepEqual(finalLanding.run!.enemies, []);
+  assert.equal(finalLanding.run!.playerCombat, null);
+  const awakeningSnapshot = JSON.stringify(finalLanding.run);
+  finalLanding = act(finalLanding, { type: "PLAYER_ATTACK" });
+  finalLanding = act(finalLanding, { type: "ROLL_DICE" });
+  finalLanding = act(finalLanding, { type: "SELECT_ATTACK", damageType: "fire" });
+  assert.equal(JSON.stringify(finalLanding.run), awakeningSnapshot);
+  finalLanding = act(finalLanding, { type: "COMPLETE_BOSS_AWAKENING" });
+  assert.equal(finalLanding.run!.phase, "boss_ready");
+  const readySnapshot = JSON.stringify(finalLanding.run);
+  finalLanding = act(finalLanding, { type: "COMPLETE_BOSS_AWAKENING" });
+  assert.equal(JSON.stringify(finalLanding.run), readySnapshot);
+  finalLanding = act(finalLanding, { type: "FIGHT_BOSS" });
+  assert.equal(finalLanding.run!.phase, "combat");
+  assert.equal(finalLanding.run!.isBossCombat, true);
+  assert.equal(finalLanding.run!.enemies[0].name, "Mummy");
+  assert.equal(finalLanding.run!.combatTurn, "player");
+  const bossSnapshot = JSON.stringify(finalLanding.run);
+  finalLanding = act(finalLanding, { type: "FIGHT_BOSS" });
+  assert.equal(JSON.stringify(finalLanding.run), bossSnapshot);
+
+  // Reloading either presentation phase preserves the player's choice point.
+  let savedAwakening = createInitialState();
+  savedAwakening = act(savedAwakening, { type: "START_RUN" });
+  savedAwakening.run!.bossRollsLeft = 0;
+  savedAwakening.run!.phase = "boss_awakening";
+  savedAwakening.run!.enemies = [];
+  savedAwakening.run!.playerCombat = null;
+  const restoredAwakening = validateState(JSON.parse(JSON.stringify(savedAwakening)));
+  assert.equal(restoredAwakening.run!.phase, "boss_awakening");
+  const savedReady = act(restoredAwakening, { type: "COMPLETE_BOSS_AWAKENING" });
+  const restoredReady = validateState(JSON.parse(JSON.stringify(savedReady)));
+  assert.equal(restoredReady.run!.phase, "boss_ready");
+  assert.equal(restoredReady.run!.enemies.length, 0);
+  assert.equal(restoredReady.run!.playerCombat, null);
+
+  // A pending old v4 threshold with no steps left is migrated into awakening,
+  // while an in-flight final roll is left alone until its last step.
+  const pendingLegacy = JSON.parse(JSON.stringify(savedAwakening));
+  pendingLegacy.run.phase = "moving";
+  pendingLegacy.run.stepsRemaining = 0;
+  pendingLegacy.run.rollAnimating = false;
+  assert.equal(validateState(pendingLegacy).run!.phase, "boss_awakening");
+  const inFlightLegacy = JSON.parse(JSON.stringify(savedAwakening));
+  inFlightLegacy.run.phase = "moving";
+  inFlightLegacy.run.stepsRemaining = 1;
+  assert.equal(validateState(inFlightLegacy).run!.phase, "moving");
+
+  // Boss victory settles once; continuing starts the next floor with a fresh
+  // statue schedule and no stale boss combat state.
+  let bossVictory = createInitialState();
+  bossVictory = act(bossVictory, { type: "START_RUN" });
+  bossVictory.run!.phase = "combat";
+  bossVictory.run!.isBossCombat = true;
+  bossVictory.run!.attack = 100;
+  bossVictory.run!.enemies = [{
+    id: "test-boss",
+    name: "Mummy",
+    speciesKey: "mummy",
+    artKey: "boss",
+    hp: 1,
+    maxHp: 1,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    boss: true,
+  }];
+  bossVictory.run!.playerCombat = {
+    roundCounter: 0,
+    heroAttackSequence: 0,
+    heroConsumableSequence: 0,
+    pendingFireBomb: false,
+    enemyAttackSequence: 0,
+    firstAttackPending: false,
+  };
+  bossVictory = act(bossVictory, { type: "PLAYER_ATTACK" });
+  assert.equal(bossVictory.run!.phase, "victory");
+  const beforeSettlement = bossVictory.meta.gems;
+  bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
+  assert.equal(bossVictory.meta.gems, beforeSettlement + 62);
+  assert.equal(bossVictory.run!.floor, 2);
+  assert.equal(bossVictory.run!.bossRollsLeft, 30);
+  assert.equal(bossVictory.run!.phase, "explore");
+  assert.equal(bossVictory.run!.isBossCombat, false);
+  assert.deepEqual(bossVictory.run!.enemies, []);
+  assert.equal(bossVictory.run!.playerCombat, null);
+  const settledState = JSON.stringify(bossVictory);
+  bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
+  assert.equal(JSON.stringify(bossVictory), settledState);
 
   // Traits are applied after defense: resistance floors, vulnerability doubles,
   // and immunity is exactly zero (never promoted to one).

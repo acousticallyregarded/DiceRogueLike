@@ -137,7 +137,7 @@ export interface RunState {
   lastRolls: [number, number] | null;
   stepsRemaining: number;
   
-  phase: "explore" | "moving" | "combat" | "level_up" | "shop" | "event_test_of_might" | "rest" | "minigame" | "victory" | "defeat";
+  phase: "explore" | "moving" | "combat" | "boss_awakening" | "boss_ready" | "level_up" | "shop" | "event_test_of_might" | "rest" | "minigame" | "victory" | "defeat";
   
   enemies: EnemyState[];
   playerCombat: PlayerCombatState | null;
@@ -176,6 +176,7 @@ export const FIRE_BOMB_ANIMATION_DURATION_MS = 2600;
 export const GUARD_TONIC_ANIMATION_DURATION_MS = 2600;
 export const DEFAULT_ENEMY_RESPONSE_DELAY_MS = 600;
 export const DICE_ROLL_ANIMATION_DURATION_MS = 800;
+export const BOSS_AWAKENING_DURATION_MS = 2200;
 
 /**
  * The enemy response delay is derived from committed state rather than UI
@@ -201,6 +202,8 @@ export type GameAction =
   | { type: "ROLL_DICE" }
   | { type: "BEGIN_MOVEMENT" }
   | { type: "STEP_MOVE" }
+  | { type: "COMPLETE_BOSS_AWAKENING" }
+  | { type: "FIGHT_BOSS" }
   | { type: "SELECT_ATTACK"; damageType: DamageType }
   | { type: "PLAYER_ATTACK"; targetId?: string }
   | { type: "USE_CONSUMABLE"; consumable: ConsumableType }
@@ -406,27 +409,41 @@ export function logMessage(r: RunState, msg: string) {
   if (r.log.length > 20) r.log.length = 20;
 }
 
+function initializeBossCombat(r: RunState) {
+  r.isBossCombat = true;
+  r.enemies = [generateBoss(r.floor)];
+  r.playerCombat = {
+    attackTimer: 0,
+    roundCounter: 0,
+    heroAttackSequence: 0,
+    lastConsumable: null,
+    heroConsumableSequence: 0,
+    pendingFireBomb: false,
+    enemyAttackSequence: 0,
+    firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
+  };
+  r.combatTurn = "player";
+  r.guardActive = false;
+  r.combatFeedback = null;
+  r.phase = "combat";
+  logMessage(r, "The Boss has arrived!");
+}
+
 function triggerTile(s: GameStateV4, r: RunState) {
   const tile = r.tiles[r.position];
   
   if (r.bossRollsLeft <= 0) {
-    r.isBossCombat = true;
-    r.enemies = [generateBoss(r.floor)];
-    r.playerCombat = {
-      attackTimer: 0,
-      roundCounter: 0,
-      heroAttackSequence: 0,
-      lastConsumable: null,
-      heroConsumableSequence: 0,
-      pendingFireBomb: false,
-      enemyAttackSequence: 0,
-      firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
-    };
+    // Reaching the threshold only starts the statue presentation. The boss
+    // roster and combat state are intentionally deferred until the player
+    // accepts the fight after the awakening animation.
+    r.isBossCombat = false;
+    r.enemies = [];
+    r.playerCombat = null;
     r.combatTurn = "player";
     r.guardActive = false;
     r.combatFeedback = null;
-    r.phase = "combat";
-    logMessage(r, "The Boss has arrived!");
+    r.phase = "boss_awakening";
+    logMessage(r, "The ancient boss statue begins to rise...");
     return;
   }
 
@@ -539,6 +556,9 @@ export function validateState(input: any): GameStateV4 {
     s.run.lastRolls = isDiceRoll(s.run.lastRolls)
       ? s.run.lastRolls
       : null;
+    s.run.bossRollsLeft = Number.isFinite(s.run.bossRollsLeft)
+      ? Math.floor(s.run.bossRollsLeft)
+      : 30;
     s.run.stepsRemaining = Number.isFinite(s.run.stepsRemaining)
       ? Math.max(0, Math.floor(s.run.stepsRemaining))
       : 0;
@@ -595,6 +615,28 @@ export function validateState(input: any): GameStateV4 {
         enemyAttackSequence: 0,
       };
       if (run.combatTurn !== "enemy") s.run.combatTurn = "player";
+    }
+
+    // A pre-awakening v4 save could have committed the final roll and then
+    // been written with no movement steps left. Convert that pending threshold
+    // to the new presentation phase rather than leaving the movement loop
+    // waiting forever. A committed roll with steps remaining must still finish
+    // its exact path before awakening.
+    if (
+      !s.run.isBossCombat
+      && s.run.bossRollsLeft <= 0
+      && (
+        (s.run.phase === "moving" && s.run.stepsRemaining <= 0)
+        || (s.run.phase === "explore" && s.run.enemies.length === 0)
+      )
+    ) {
+      s.run.phase = "boss_awakening";
+      s.run.enemies = [];
+      s.run.playerCombat = null;
+      s.run.combatTurn = "player";
+      s.run.guardActive = false;
+      s.run.combatFeedback = null;
+      s.run.rollAnimating = false;
     }
   }
   return s;
@@ -1060,6 +1102,21 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     }
   }
 
+  if (action.type === "COMPLETE_BOSS_AWAKENING") {
+    const r = s.run;
+    if (r && r.phase === "boss_awakening") {
+      r.phase = "boss_ready";
+      logMessage(r, "The statue awakens. Choose when to challenge the Floor Boss.");
+    }
+  }
+
+  if (action.type === "FIGHT_BOSS") {
+    const r = s.run;
+    if (r && r.phase === "boss_ready") {
+      initializeBossCombat(r);
+    }
+  }
+
   if (action.type === "CHOOSE_SKILL") {
     const r = s.run;
     if (r && r.phase === "level_up" && r.skillOptions) {
@@ -1081,7 +1138,9 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   if (action.type === "SELECT_ATTACK") {
     const r = s.run;
     if (r && isAttackStyle(action.damageType) && (
-      r.phase !== "combat" || r.combatTurn !== "enemy"
+      r.phase === "explore"
+      || r.phase === "moving"
+      || (r.phase === "combat" && r.combatTurn !== "enemy")
     )) {
       r.selectedDamageType = action.damageType;
     }
@@ -1247,6 +1306,14 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       s.run.floor++;
       s.run.bossRollsLeft = 30;
       s.run.phase = "explore";
+      s.run.isBossCombat = false;
+      s.run.enemies = [];
+      s.run.playerCombat = null;
+      s.run.combatTurn = "player";
+      s.run.guardActive = false;
+      s.run.combatFeedback = null;
+      s.run.stepsRemaining = 0;
+      s.run.rollAnimating = false;
       logMessage(s.run, "You venture deeper into Floor " + s.run.floor);
     }
   }
