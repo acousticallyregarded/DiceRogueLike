@@ -23,13 +23,13 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
         <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'radial-gradient(#a3e635 2px, transparent 2px)', backgroundSize: '24px 24px' }} />
 
         {/* Scenic Art - Replace empty space with scenic outdoor lobby */}
-        <div className="absolute top-0 left-0 right-0 h-64 pointer-events-none flex justify-center items-end opacity-100 overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[min(440px,65dvh)] pointer-events-none flex justify-center items-end opacity-100 overflow-hidden">
            <div className="absolute inset-0 bg-gradient-to-b from-sky-300 to-sky-100" />
            <div className="absolute bottom-0 left-0 right-0 h-16 bg-[#9ecb36] border-t-4 border-[#8aab29]" />
            <img src={statueUrl} className="absolute bottom-16 right-4 h-32 object-contain opacity-70" alt="Statue" />
            <img src={treeUrl} className="absolute bottom-12 left-2 h-24 object-contain drop-shadow-md" alt="Tree" />
            <img src={treeUrl} className="absolute bottom-8 right-16 h-28 object-contain drop-shadow-md" alt="Tree" />
-           <div className="h-40 w-40 relative z-10 drop-shadow-2xl">
+           <div className="w-[min(340px,90vw,calc(65dvh-76px))] aspect-square relative z-10 drop-shadow-2xl">
              <SpriteAnimator
                sprite="custom-lobby-hero"
                fallbackUrl={heroUrl}
