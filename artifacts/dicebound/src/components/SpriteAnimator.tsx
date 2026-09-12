@@ -29,6 +29,7 @@ export type SpriteName =
   | 'custom-throw-firebomb'
   | 'custom-guard-tonic'
   | 'custom-lobby-hero'
+  | 'custom-hero-hit'
   | 'hero-attack'
   | 'hero-hit'
   | 'wolf-attack'

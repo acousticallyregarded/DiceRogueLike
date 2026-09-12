@@ -21,6 +21,7 @@ import bossUrl from '../assets/boss.png';
 import heroUrl from '../assets/custom-combat-hero.png';
 import drinkPotionUrl from '../assets/custom-drink-potion.png';
 import throwFireBombUrl from '../assets/custom-throw-firebomb.png';
+import heroHitUrl from '../assets/custom-hero-hit.png';
 import guardTonicUrl from '../assets/custom-guard-tonic.png';
 import { SpriteAnimator, SpriteName, usePrefersReducedMotion } from './SpriteAnimator';
 import { AttackStyleSelector } from './AttackStyleSelector';
@@ -147,6 +148,7 @@ export function CombatOverlay({
   const [completedHeroDrink, setCompletedHeroDrink] = useState(0);
   const [completedHeroFireBomb, setCompletedHeroFireBomb] = useState(0);
   const [completedHeroGuard, setCompletedHeroGuard] = useState(0);
+  const [completedHeroHit, setCompletedHeroHit] = useState(0);
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [inspectedEnemyId, setInspectedEnemyId] = useState<string | null>(null);
@@ -377,6 +379,9 @@ export function CombatOverlay({
     setCompletedHeroFireBomb(playerFireBombTrigger);
   }, [playerFireBombTrigger]);
   const playerGuardTrigger = visualEvents.heroGuard;
+  const finishHeroHit = useCallback(() => {
+    setCompletedHeroHit(visualEvents.heroHit);
+  }, [visualEvents.heroHit]);
   const finishHeroGuard = useCallback(() => {
     setCompletedHeroGuard(playerGuardTrigger);
   }, [playerGuardTrigger]);
@@ -394,14 +399,20 @@ export function CombatOverlay({
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
+  const reactingToHit = playerHitTrigger > completedHeroHit
+    && playerHitTrigger > Math.max(playerAttackTrigger, playerDrinkTrigger, playerFireBombTrigger, playerGuardTrigger)
+    && !reducedMotion;
   const drinkingPotion = playerDrinkTrigger > 0
     && playerDrinkTrigger > completedHeroDrink
+    && playerDrinkTrigger > Math.max(playerHitTrigger, playerAttackTrigger, playerFireBombTrigger, playerGuardTrigger)
     && !reducedMotion;
   const throwingFireBomb = playerFireBombTrigger > 0
     && playerFireBombTrigger > completedHeroFireBomb
+    && playerFireBombTrigger > Math.max(playerHitTrigger, playerAttackTrigger, playerDrinkTrigger, playerGuardTrigger)
     && !reducedMotion;
   const guardingHero = playerGuardTrigger > 0
     && playerGuardTrigger > completedHeroGuard
+    && playerGuardTrigger > Math.max(playerHitTrigger, playerAttackTrigger, playerDrinkTrigger, playerFireBombTrigger)
     && !reducedMotion
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
@@ -497,22 +508,22 @@ export function CombatOverlay({
           >
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
               <SpriteAnimator
-                sprite={throwingFireBomb
+                sprite={reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'
                   : (drinkingPotion ? 'custom-drink-potion' : (guardingHero ? 'custom-guard-tonic' : 'custom-hero-idle'))}
-                fallbackUrl={throwingFireBomb
+                fallbackUrl={reactingToHit ? heroHitUrl : throwingFireBomb
                   ? throwFireBombUrl
                   : (drinkingPotion ? drinkPotionUrl : (guardingHero ? guardTonicUrl : heroUrl))}
                 active
-                loop={!throwingFireBomb && !drinkingPotion && !guardingHero}
-                frameCount={throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 13))}
-                durationMs={throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 2600))}
-                trigger={throwingFireBomb
+                loop={!reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
+                frameCount={reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 13)))}
+                durationMs={reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 2600)))}
+                trigger={reactingToHit ? playerHitTrigger : throwingFireBomb
                   ? playerFireBombTrigger
                   : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}
                 alt="Hero"
                 className="combat-actor__sprite drop-shadow-xl"
-                onAnimationEnd={throwingFireBomb
+                onAnimationEnd={reactingToHit ? finishHeroHit : throwingFireBomb
                   ? finishHeroFireBomb
                   : (drinkingPotion ? finishHeroDrink : (guardingHero ? finishHeroGuard : undefined))}
               />
