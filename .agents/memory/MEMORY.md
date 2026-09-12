@@ -1,0 +1,1 @@
+- [Visual reference scope](visual-reference.md) — Original prototype approved; reference footage was not viewed, so visual fidelity remains unverified.
