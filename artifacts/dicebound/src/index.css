@@ -29,6 +29,23 @@ body {
   will-change: transform;
 }
 
+/* Board walls stay anchored while only the walkable tile surface follows the
+   contact-depth helper in GameBoard. This keeps a depressed texture from
+   being painted underneath its own foundation. */
+.board-tile {
+  overflow: visible;
+}
+
+.board-tile-wall {
+  z-index: 0;
+  pointer-events: none;
+}
+
+.board-tile-surface {
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
 .hero-world-shadow {
   position: absolute;
   left: 50%;
@@ -189,6 +206,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .board-tile-surface {
+    transition: none !important;
+  }
+
   .hero-world-actor--walking .hero-world-dust,
   .combat-actor--attacking,
   .combat-actor__hit--flashing,

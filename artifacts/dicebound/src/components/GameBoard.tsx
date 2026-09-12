@@ -1,6 +1,6 @@
-import { getWalkDirection, Tile, TileType, RunState, WALK_DIRECTION_DELTAS } from '../engine';
+import { getWalkDirection, TileType, RunState, WALK_DIRECTION_DELTAS } from '../engine';
 import type { WalkDirection } from '../engine';
-import { MapPin, Sparkles, Sword, Skull, ShoppingBag, Gift, Tent, AlertTriangle } from 'lucide-react';
+import { MapPin, Sword, Skull, ShoppingBag, Gift, Tent, AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import statueUrl from '../assets/statue.png';
@@ -18,9 +18,26 @@ import purpleTileUrl from '../assets/tiles/purple.png';
 import { SpriteAnimator, usePrefersReducedMotion } from './SpriteAnimator';
 import type { SpriteName } from './SpriteAnimator';
 
-const TILE_WIDTH = 64;
-const TILE_HEIGHT = 32;
-const TILE_STEP_MS = 300;
+/**
+ * Board coordinates are deliberately independent from the hero art.  The
+ * hero remains a 64px world actor while the board surface grows to an
+ * 84x42 isometric tile, making each step easier to read without scaling the
+ * whole scene (or changing the 2:1 projection).
+ */
+export const TILE_WIDTH = 84;
+export const TILE_HEIGHT = 42;
+export const TILE_STEP_MS = 300;
+export const TILE_SURFACE_DEPTH = 6;
+
+const WORLD_SCALE = TILE_WIDTH / 64;
+const HALF_TILE_WIDTH = TILE_WIDTH / 2;
+const HALF_TILE_HEIGHT = TILE_HEIGHT / 2;
+const TILE_IMAGE_HEIGHT = 38 * WORLD_SCALE;
+const TILE_WALL_FACE_WIDTH = HALF_TILE_WIDTH;
+const PIT_DEPTH = 90 * WORLD_SCALE;
+const COURTYARD_SIZE = 64 * 2.5 * Math.SQRT2 * WORLD_SCALE;
+const COURTYARD_CELL_SIZE = COURTYARD_SIZE / 5;
+const STATUE_RISE_DISTANCE = 80 * WORLD_SCALE;
 
 export const BOSS_AWAKENING_DURATION_MS = 2200;
 
@@ -39,9 +56,13 @@ function getGridCoords(index: number) {
 export { getWalkDirection, WALK_DIRECTION_DELTAS };
 export type { WalkDirection };
 
+export function normalizeTileIndex(index: number) {
+  const safeIndex = Number.isFinite(index) ? Math.trunc(index) % 24 : 0;
+  return safeIndex < 0 ? safeIndex + 24 : safeIndex;
+}
+
 export function getTilePosition(index: number = 0) {
-  const safeIndex = (Number(index) || 0) % 24;
-  const i = safeIndex < 0 ? safeIndex + 24 : safeIndex;
+  const i = normalizeTileIndex(index);
   
   const { x, y } = getGridCoords(i);
   const cx = x - 3;
@@ -53,11 +74,63 @@ export function getTilePosition(index: number = 0) {
   return { x: isoX, y: isoY, zIndex: x + y };
 }
 
-interface TileMotion {
+export interface TileMotion {
   from: number;
   to: number;
   progress: number;
   durationMs: number;
+}
+
+export interface TileContactMotion {
+  /** The tile currently carrying the hero's feet. */
+  supportTile: number;
+  /** Surface depth under that support tile and the hero. */
+  supportDepth: number;
+  /** The departure tile's current depth. */
+  departureDepth: number;
+  /** The destination tile's current depth. */
+  arrivalDepth: number;
+}
+
+function clampProgress(progress: number) {
+  return Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0));
+}
+
+function smoothStep(progress: number) {
+  const t = clampProgress(progress);
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Keep the feet in contact with the board while the actor moves between
+ * tiles.  The first half of a step releases the departure tile; the second
+ * half settles onto the destination.  Both curves meet at zero depth at the
+ * midpoint, so changing support tiles never causes a lateral hop.
+ */
+export function getTileContactMotion(motion: Pick<TileMotion, 'from' | 'to' | 'progress'>): TileContactMotion {
+  const progress = clampProgress(motion.progress);
+
+  if (motion.from === motion.to || progress >= 1) {
+    return {
+      supportTile: motion.to,
+      supportDepth: TILE_SURFACE_DEPTH,
+      departureDepth: motion.from === motion.to ? TILE_SURFACE_DEPTH : 0,
+      arrivalDepth: TILE_SURFACE_DEPTH,
+    };
+  }
+
+  const midpoint = progress < 0.5;
+  const halfProgress = midpoint ? progress * 2 : (progress - 0.5) * 2;
+  const eased = smoothStep(halfProgress);
+  const departureDepth = midpoint ? TILE_SURFACE_DEPTH * (1 - eased) : 0;
+  const arrivalDepth = midpoint ? 0 : TILE_SURFACE_DEPTH * eased;
+
+  return {
+    supportTile: midpoint ? motion.from : motion.to,
+    supportDepth: midpoint ? departureDepth : arrivalDepth,
+    departureDepth,
+    arrivalDepth,
+  };
 }
 
 function useTileMotion(targetPosition: number, speed: number, reducedMotion: boolean) {
@@ -77,7 +150,7 @@ function useTileMotion(targetPosition: number, speed: number, reducedMotion: boo
     setMotion({
       from,
       to: targetPosition,
-      progress: 0,
+      progress: reducedMotion ? 1 : 0,
       durationMs: reducedMotion ? 1 : TILE_STEP_MS / Math.max(1, speed),
     });
   }, [reducedMotion, speed, targetPosition]);
@@ -102,12 +175,15 @@ function useTileMotion(targetPosition: number, speed: number, reducedMotion: boo
   const progress = motion.progress;
 
   return {
+    from: motion.from,
+    to: motion.to,
     position: {
       x: from.x + (to.x - from.x) * progress,
       y: from.y + (to.y - from.y) * progress,
       zIndex: progress < 0.5 ? from.zIndex : to.zIndex,
     },
     moving: progress < 1,
+    contact: getTileContactMotion(motion),
   };
 }
 
@@ -121,12 +197,14 @@ const TILE_THEMES: Record<TileType, { image: string, color: string, icon: any }>
   minigame: { image: orangeTileUrl, color: 'text-amber-900', icon: Gift }
 };
 
-const PIT_DEPTH = 90;
-
 export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, visualPosition: number, speed?: number }) {
   const reducedMotion = usePrefersReducedMotion();
   const tileMotion = useTileMotion(visualPosition, speed, reducedMotion);
+  // Camera movement follows the flat path. Only the actor and the tile
+  // surface inherit the local depression, so the camera does not cancel out
+  // the step-on/step-off cue.
   const heroPos = tileMotion.position;
+  const heroSurfaceY = heroPos.y + tileMotion.contact.supportDepth;
   const [heroTravelDirection, setHeroTravelDirection] = useState<WalkDirection>('south-east');
   const previousVisualPosition = useRef(visualPosition);
 
@@ -150,7 +228,8 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
   const isAwakening = run.phase === 'boss_awakening';
   const isBossActive = isAwakening || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat) || run.phase === 'victory';
 
-  // Statue center is at x: 0, y: 16 (relative to grid center). Camera overrides to center when boss is active.
+  // Keep the boss framing fixed while the board grows; explore framing still
+  // follows the flat (non-depressed) hero path.
   const cameraTarget = isBossActive ? { x: 0, y: 16 } : heroPos;
 
   const [cameraTransition, setCameraTransition] = useState(false);
@@ -198,15 +277,15 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         <div 
           className="absolute pointer-events-none"
           style={{
-            width: '226.27px',
-            height: '226.27px',
-            left: '-113.13px',
-            top: `${16 + PIT_DEPTH - 113.13}px`, 
+            width: `${COURTYARD_SIZE}px`,
+            height: `${COURTYARD_SIZE}px`,
+            left: `${-COURTYARD_SIZE / 2}px`,
+            top: `${HALF_TILE_HEIGHT + PIT_DEPTH - COURTYARD_SIZE / 2}px`,
             transform: 'scaleY(0.5) rotate(45deg)',
             zIndex: 2,
             backgroundColor: '#1c1917', // stone-900
             backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
-            backgroundSize: '45.25px 45.25px', // 5x5 grid (226.27 / 5)
+            backgroundSize: `${COURTYARD_CELL_SIZE}px ${COURTYARD_CELL_SIZE}px`, // 5x5 grid
             boxShadow: 'inset 0 0 50px rgba(0,0,0,1)'
           }}
         />
@@ -215,14 +294,14 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         <div 
           className="absolute pointer-events-none"
           style={{ 
-            transform: `translate(0px, ${16 + PIT_DEPTH}px)`,
+            transform: `translate(0px, ${HALF_TILE_HEIGHT + PIT_DEPTH}px)`,
             zIndex: 6 
           }}
         >
           <div 
             className="absolute transition-all ease-in-out"
             style={{
-              transform: isBossActive ? `translateY(-80px)` : `translateY(0px)`,
+              transform: isBossActive ? `translateY(-${STATUE_RISE_DISTANCE}px)` : 'translateY(0px)',
               transitionDuration: reducedMotion ? '0ms' : `${BOSS_AWAKENING_DURATION_MS}ms`,
               filter: isBossActive ? `drop-shadow(0 0 15px rgba(234, 179, 8, 0.6)) drop-shadow(0 0 30px rgba(34, 197, 94, 0.4))` : 'none'
             }}
@@ -245,13 +324,37 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         </div>
         
         {/* Scenery - Trees */}
-        <div className="absolute w-[100px] h-[120px] -ml-[180px] -mt-[20px] z-[1]">
+        <div
+          className="absolute z-[1]"
+          style={{
+            width: `${100 * WORLD_SCALE}px`,
+            height: `${120 * WORLD_SCALE}px`,
+            marginLeft: `${-180 * WORLD_SCALE}px`,
+            marginTop: `${-20 * WORLD_SCALE}px`,
+          }}
+        >
            <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
         </div>
-        <div className="absolute w-[80px] h-[100px] ml-[100px] -mt-[80px] z-[0]">
+        <div
+          className="absolute z-[0]"
+          style={{
+            width: `${80 * WORLD_SCALE}px`,
+            height: `${100 * WORLD_SCALE}px`,
+            marginLeft: `${100 * WORLD_SCALE}px`,
+            marginTop: `${-80 * WORLD_SCALE}px`,
+          }}
+        >
            <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
         </div>
-        <div className="absolute w-[120px] h-[140px] -ml-[50px] mt-[40px] z-[10]">
+        <div
+          className="absolute z-[10]"
+          style={{
+            width: `${120 * WORLD_SCALE}px`,
+            height: `${140 * WORLD_SCALE}px`,
+            marginLeft: `${-50 * WORLD_SCALE}px`,
+            marginTop: `${40 * WORLD_SCALE}px`,
+          }}
+        >
            <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
         </div>
         
@@ -260,47 +363,80 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
           const p = getTilePosition(i);
           const theme = TILE_THEMES[t.type];
           const Icon = theme.icon;
-          
+          const surfaceDepth = i === normalizeTileIndex(tileMotion.from)
+            ? tileMotion.contact.departureDepth
+            : i === normalizeTileIndex(tileMotion.to)
+              ? tileMotion.contact.arrivalDepth
+              : 0;
+
           return (
-            <div 
+            <div
               key={t.id}
-              className="absolute w-[64px] h-[32px] -ml-[32px] -mt-[16px] transition-transform duration-300"
-              style={{ 
-                transform: `translate(${p.x}px, ${p.y}px)`, 
-                zIndex: p.zIndex 
+              className="absolute board-tile"
+              style={{
+                width: `${TILE_WIDTH}px`,
+                height: `${TILE_HEIGHT}px`,
+                marginLeft: `${-HALF_TILE_WIDTH}px`,
+                marginTop: `${-HALF_TILE_HEIGHT}px`,
+                transform: `translate(${p.x}px, ${p.y}px)`,
+                zIndex: p.zIndex
               }}
             >
               {/* Left Wall Skirt (Front-Left face) */}
-              <div 
-                className="absolute pointer-events-none"
-                style={{ 
-                  left: '0px', top: '16px', width: '33px', height: `${PIT_DEPTH}px`, 
-                  transformOrigin: 'top left', transform: 'skewY(26.565deg)',
+              <div
+                className="absolute board-tile-wall board-tile-wall--left pointer-events-none"
+                style={{
+                  left: '0px',
+                  top: `${HALF_TILE_HEIGHT}px`,
+                  width: `${TILE_WALL_FACE_WIDTH}px`,
+                  height: `${PIT_DEPTH}px`,
+                  transformOrigin: 'top left',
+                  transform: 'skewY(26.565deg)',
                   background: 'linear-gradient(to bottom, #78716c, #292524)'
-                }} 
+                }}
               />
               {/* Right Wall Skirt (Front-Right face) */}
-              <div 
-                className="absolute pointer-events-none"
-                style={{ 
-                  left: '32px', top: '32px', width: '33px', height: `${PIT_DEPTH}px`, 
-                  transformOrigin: 'top left', transform: 'skewY(-26.565deg)',
+              <div
+                className="absolute board-tile-wall board-tile-wall--right pointer-events-none"
+                style={{
+                  left: `${HALF_TILE_WIDTH}px`,
+                  top: `${TILE_HEIGHT}px`,
+                  width: `${TILE_WALL_FACE_WIDTH}px`,
+                  height: `${PIT_DEPTH}px`,
+                  transformOrigin: 'top left',
+                  transform: 'skewY(-26.565deg)',
                   background: 'linear-gradient(to bottom, #57534e, #1c1917)'
-                }} 
+                }}
               />
 
-              <img
-                src={theme.image}
-                alt={`${t.type} tile`}
-                draggable={false}
-                className="absolute top-0 left-0 w-[64px] h-[38px] max-w-none z-10"
-                style={{ filter: 'drop-shadow(0 3px 2px rgba(0,0,0,0.16))' }}
-              />
-              {t.type !== 'start' && (
-                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none -mt-1">
-                  <Icon className={`w-4 h-4 ${theme.color}`} strokeWidth={3} />
-                </div>
-              )}
+              {/* Only the top and icon follow the surface. The wall
+                  foundations stay put so the pit never bounces or covers
+                  the depressed texture. */}
+              <div
+                className="absolute board-tile-surface z-10"
+                style={{
+                  width: `${TILE_WIDTH}px`,
+                  height: `${TILE_HEIGHT}px`,
+                  transform: `translateY(${surfaceDepth}px)`,
+                }}
+              >
+                <img
+                  src={theme.image}
+                  alt={`${t.type} tile`}
+                  draggable={false}
+                  className="absolute top-0 left-0 max-w-none"
+                  style={{
+                    width: `${TILE_WIDTH}px`,
+                    height: `${TILE_IMAGE_HEIGHT}px`,
+                    filter: 'drop-shadow(0 3px 2px rgba(0,0,0,0.16))',
+                  }}
+                />
+                {t.type !== 'start' && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none -mt-1">
+                    <Icon className={`w-5 h-5 ${theme.color}`} strokeWidth={3} />
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
@@ -309,7 +445,7 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         <div 
           className={`absolute w-[64px] h-[72px] -ml-[32px] -mt-[56px] hero-world-actor ${walking ? 'hero-world-actor--walking' : ''}`}
           style={{ 
-            transform: `translate(${heroPos.x}px, ${heroPos.y}px)`, 
+            transform: `translate(${heroPos.x}px, ${heroSurfaceY}px)`,
             zIndex: heroPos.zIndex + 1 
           }}
         >
