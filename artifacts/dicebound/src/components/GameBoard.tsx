@@ -1,13 +1,15 @@
 import { Tile, TileType, RunState } from '../engine';
 import { MapPin, Sparkles, Sword, Skull, ShoppingBag, Gift, Tent, AlertTriangle } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
 import heroUrl from '../assets/hero.png';
+import { SpriteAnimator, usePrefersReducedMotion } from './SpriteAnimator';
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
+const TILE_STEP_MS = 300;
 
 function getGridCoords(index: number) {
   if (index < 7) {
@@ -35,6 +37,64 @@ export function getTilePosition(index: number = 0) {
   return { x: isoX, y: isoY, zIndex: x + y };
 }
 
+interface TileMotion {
+  from: number;
+  to: number;
+  progress: number;
+  durationMs: number;
+}
+
+function useTileMotion(targetPosition: number, speed: number, reducedMotion: boolean) {
+  const previousTarget = useRef(targetPosition);
+  const [motion, setMotion] = useState<TileMotion>({
+    from: targetPosition,
+    to: targetPosition,
+    progress: 1,
+    durationMs: reducedMotion ? 1 : TILE_STEP_MS,
+  });
+
+  useEffect(() => {
+    if (targetPosition === previousTarget.current) return;
+
+    const from = previousTarget.current;
+    previousTarget.current = targetPosition;
+    setMotion({
+      from,
+      to: targetPosition,
+      progress: 0,
+      durationMs: reducedMotion ? 1 : TILE_STEP_MS / Math.max(1, speed),
+    });
+  }, [reducedMotion, speed, targetPosition]);
+
+  useEffect(() => {
+    if (motion.progress >= 1) return;
+
+    let frameId = 0;
+    const startedAt = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / motion.durationMs);
+      setMotion(current => current.progress === progress ? current : { ...current, progress });
+      if (progress < 1) frameId = requestAnimationFrame(animate);
+    };
+
+    frameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameId);
+  }, [motion.from, motion.to, motion.durationMs]);
+
+  const from = getTilePosition(motion.from);
+  const to = getTilePosition(motion.to);
+  const progress = motion.progress;
+
+  return {
+    position: {
+      x: from.x + (to.x - from.x) * progress,
+      y: from.y + (to.y - from.y) * progress,
+      zIndex: progress < 0.5 ? from.zIndex : to.zIndex,
+    },
+    moving: progress < 1,
+  };
+}
+
 const TILE_THEMES: Record<TileType, { bg: string, color: string, icon: any }> = {
   start: { bg: '#ffffff', color: 'text-gray-400', icon: MapPin },
   enemy: { bg: '#e2e8f0', color: 'text-slate-500', icon: Sword },
@@ -56,14 +116,33 @@ const TileSVG = ({ bg, thickness = 10 }: { bg: string, thickness?: number }) => 
   </svg>
 );
 
-export function GameBoard({ run, visualPosition }: { run: RunState, visualPosition: number }) {
-  const heroPos = getTilePosition(visualPosition);
+export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, visualPosition: number, speed?: number }) {
+  const reducedMotion = usePrefersReducedMotion();
+  const tileMotion = useTileMotion(visualPosition, speed, reducedMotion);
+  const heroPos = tileMotion.position;
+  const heroTravelDirection = useRef(1);
+  const previousVisualPosition = useRef(visualPosition);
+
+  useEffect(() => {
+    if (visualPosition === previousVisualPosition.current) return;
+    const previous = getTilePosition(previousVisualPosition.current);
+    const next = getTilePosition(visualPosition);
+    if (next.x !== previous.x) heroTravelDirection.current = next.x > previous.x ? 1 : -1;
+    previousVisualPosition.current = visualPosition;
+  }, [visualPosition]);
+
+  const walking = run.phase === 'moving' || tileMotion.moving;
+  const heroFacingLeft = heroTravelDirection.current < 0;
+  const heroKey = `${visualPosition}-${walking ? 'walking' : 'idle'}`;
+  // Follow the same interpolated point as the hero with a tiny amount of
+  // breathing room; one transform owns both camera and movement timing.
+  const cameraFollow = 0.96;
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div 
-        className="relative w-0 h-0 transition-transform duration-500 ease-in-out"
-        style={{ transform: `translate(${-heroPos.x}px, ${-heroPos.y + 40}px)` }}
+        className="relative w-0 h-0"
+        style={{ transform: `translate(${-heroPos.x * cameraFollow}px, ${-heroPos.y * cameraFollow + 40}px)` }}
       >
         
         {/* Scenery - Trees and Statue */}
@@ -108,13 +187,27 @@ export function GameBoard({ run, visualPosition }: { run: RunState, visualPositi
 
         {/* Hero */}
         <div 
-          className="absolute w-[64px] h-[64px] -ml-[32px] -mt-[48px] transition-all duration-500 ease-in-out"
+          className={`absolute w-[64px] h-[72px] -ml-[32px] -mt-[56px] hero-world-actor ${walking ? 'hero-world-actor--walking' : ''}`}
+          key={heroKey}
           style={{ 
             transform: `translate(${heroPos.x}px, ${heroPos.y}px)`, 
             zIndex: heroPos.zIndex + 1 
           }}
         >
-          <img src={heroUrl} className="w-full h-full object-contain drop-shadow-xl animate-bounce-slow" alt="Hero" />
+          <div className="hero-world-shadow" aria-hidden="true" />
+          <div className="hero-world-dust" aria-hidden="true" />
+          <SpriteAnimator
+            sprite="hero-walk"
+            fallbackUrl={heroUrl}
+            active={walking}
+            loop
+            trigger={walking ? 1 : 0}
+            fps={12}
+            durationMs={TILE_STEP_MS / Math.max(1, speed)}
+            flip={heroFacingLeft}
+            alt="Hero"
+            className="relative z-[1] drop-shadow-xl"
+          />
         </div>
 
       </div>

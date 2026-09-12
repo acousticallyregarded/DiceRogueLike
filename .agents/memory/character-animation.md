@@ -1,0 +1,9 @@
+---
+name: Character animation approach
+description: Preserve existing character identity when adding animation poses
+---
+Use the existing character artwork as the source for articulated cutout sprite animation rather than generating unrelated characters for each pose.
+
+**Why:** The visual target has already suffered from replacement placeholder artwork. Rigged cutouts preserve character identity and provide predictable frame alignment; they are an initial animation approach, not hand-drawn full-angle animation.
+
+**How to apply:** Keep original source art intact and make animation assets replaceable. Trigger combat presentation from actual game events rather than independent repeating attack loops.

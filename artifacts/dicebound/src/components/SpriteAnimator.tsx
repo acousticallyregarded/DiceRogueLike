@@ -1,0 +1,162 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, HTMLAttributes } from 'react';
+import './sprite-animator.css';
+
+/**
+ * Sprite sheets are kept optional so the UI can ship before the art pipeline
+ * finishes. Vite turns every matching file into a built URL; no runtime
+ * /src paths are needed (or exposed).
+ */
+const spriteModules = import.meta.glob('../assets/sprites/*.png', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+}) as Record<string, string>;
+
+const spriteUrls = Object.entries(spriteModules).reduce<Record<string, string>>((urls, [path, url]) => {
+  const filename = path.split('/').pop()?.replace(/\.png$/, '');
+  if (filename) urls[filename] = url;
+  return urls;
+}, {});
+
+export type SpriteName =
+  | 'hero-walk'
+  | 'hero-attack'
+  | 'hero-hit'
+  | 'wolf-attack'
+  | 'slime-attack'
+  | 'goblin-attack'
+  | 'skeleton-attack'
+  | 'boss-attack';
+
+export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
+  /** Name of the optional 8-frame, horizontal sheet. */
+  sprite: SpriteName;
+  /** Art shown until the sheet exists, and while this animator is idle. */
+  fallbackUrl: string;
+  /** Starts/restarts playback when this value changes. */
+  trigger?: number;
+  active?: boolean;
+  loop?: boolean;
+  fps?: number;
+  durationMs?: number;
+  flip?: boolean;
+  alt?: string;
+  onAnimationEnd?: () => void;
+}
+
+export function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
+
+  return reduced;
+}
+
+export function SpriteAnimator({
+  sprite,
+  fallbackUrl,
+  trigger = 0,
+  active = false,
+  loop = false,
+  fps = 12,
+  durationMs,
+  flip = false,
+  alt = '',
+  className = '',
+  style,
+  onAnimationEnd,
+  ...props
+}: SpriteAnimatorProps) {
+  const reducedMotion = usePrefersReducedMotion();
+  const sheetUrl = spriteUrls[sprite];
+  const frameCount = 8;
+  const frameDuration = durationMs ?? (frameCount / Math.max(1, fps)) * 1000;
+  const [frame, setFrame] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const startedAt = useRef(0);
+  const completionNotified = useRef(false);
+
+  useEffect(() => {
+    if (!active || reducedMotion) {
+      setPlaying(false);
+      setFrame(0);
+      return;
+    }
+
+    // A trigger makes repeated attacks restart even when `active` stays true.
+    startedAt.current = performance.now();
+    completionNotified.current = false;
+    setFrame(0);
+    setPlaying(true);
+  }, [active, trigger, reducedMotion]);
+
+  useEffect(() => {
+    if (!playing || reducedMotion) return;
+
+    let frameId = 0;
+    const animate = (now: number) => {
+      const elapsed = now - startedAt.current;
+      const progress = Math.min(1, elapsed / Math.max(1, frameDuration));
+      const nextFrame = Math.min(frameCount - 1, Math.floor(progress * frameCount));
+      setFrame(nextFrame);
+
+      if (progress >= 1) {
+        if (loop) {
+          startedAt.current = now;
+          setFrame(0);
+          frameId = requestAnimationFrame(animate);
+          return;
+        }
+
+        setPlaying(false);
+        if (!completionNotified.current) {
+          completionNotified.current = true;
+          onAnimationEnd?.();
+        }
+        return;
+      }
+
+      frameId = requestAnimationFrame(animate);
+    };
+
+    frameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameId);
+  }, [frameDuration, loop, onAnimationEnd, playing, reducedMotion]);
+
+  const sheetVisible = Boolean(sheetUrl && (playing || (active && loop)));
+  const spriteStyle = useMemo<CSSProperties>(() => ({
+    ...style,
+    ...(sheetVisible
+      ? {
+          backgroundImage: `url("${sheetUrl}")`,
+          backgroundPosition: `${(frame / (frameCount - 1)) * 100}% center`,
+          backgroundSize: `${frameCount * 100}% 100%`,
+        }
+      : {}),
+  }), [frame, frameCount, sheetUrl, sheetVisible, style]);
+
+  return (
+    <div
+      {...props}
+      className={`sprite-animator ${sheetVisible ? 'sprite-animator--sheet' : 'sprite-animator--fallback'} ${flip ? 'sprite-animator--flipped' : ''} ${className}`.trim()}
+      style={spriteStyle}
+      role={alt ? 'img' : undefined}
+      aria-label={alt || undefined}
+    >
+      <img
+        src={fallbackUrl}
+        alt={alt}
+        aria-hidden={sheetVisible}
+        className={`sprite-animator__fallback ${sheetVisible ? 'sprite-animator__fallback--sheet' : ''}`}
+        onAnimationEnd={onAnimationEnd}
+      />
+    </div>
+  );
+}

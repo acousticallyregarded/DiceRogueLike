@@ -1,0 +1,34 @@
+.sprite-animator {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  background-repeat: no-repeat;
+}
+
+.sprite-animator--sheet {
+  image-rendering: auto;
+}
+
+.sprite-animator__fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sprite-animator__fallback--sheet {
+  visibility: hidden;
+}
+
+.sprite-animator--flipped {
+  transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite-animator {
+    animation: none !important;
+    transition: none !important;
+  }
+}

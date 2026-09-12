@@ -1,1 +1,2 @@
 - [Visual reference scope](visual-reference.md) — Screenshots and sampled recording now ground the visual target; distinguish observed behavior from unverified rules.
+- [Character animation](character-animation.md) — Preserve character identity with source-art cutouts; synchronize combat animation with real events.

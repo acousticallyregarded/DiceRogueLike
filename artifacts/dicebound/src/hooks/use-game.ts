@@ -84,7 +84,8 @@ export function useGame() {
 
       if (r.phase === 'moving') {
         const dtMove = time - moveTick.current;
-        if (dtMove > 300) { // Step every 300ms
+        const moveInterval = 300 / Math.max(1, speedRef.current);
+        if (dtMove >= moveInterval) { // Keep each tile step on the 300ms base timeline
           moveTick.current = time;
           dispatch({ type: 'STEP_MOVE' });
         }

@@ -30,14 +30,12 @@ export default function Game() {
 
         {/* Scene Split - If in combat, shrink board to bottom */}
         <div className={`absolute inset-0 transition-transform duration-700 ease-in-out ${inCombat ? 'translate-y-[40%] scale-90 opacity-40' : 'translate-y-0 scale-100'}`}>
-           <GameBoard run={r} visualPosition={r.position} />
+           <GameBoard run={r} visualPosition={r.position} speed={speed} />
         </div>
 
         <TopBar run={r} />
 
-        {inCombat && (
-          <CombatOverlay run={r} />
-        )}
+         <CombatOverlay run={r} speed={speed} />
 
         <ActionOverlay run={r} dispatch={dispatch} meta={state.meta} />
 
