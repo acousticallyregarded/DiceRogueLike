@@ -8,7 +8,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 
-import wolfUrl from '../assets/wolf.png';
+import wolfUrl from '../assets/wolf-pixel.png';
+import { WolfPixelSprite } from './WolfPixelSprite';
 import slimeUrl from '../assets/ochre-jelly.png';
 import { OchreJellySprite } from './OchreJellySprite';
 import goblinUrl from '../assets/goblin.png';
@@ -455,6 +456,14 @@ export function CombatOverlay({
                         hitTrigger={enemyEvent.hitTrigger}
                         dying={isDying}
                         speed={speed}
+                      />
+                    ) : enemySprite === 'wolf-attack' ? (
+                      <WolfPixelSprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
                       />
                     ) : <SpriteAnimator
                       sprite={enemySprite}
