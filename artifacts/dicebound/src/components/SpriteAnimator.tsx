@@ -40,10 +40,17 @@ export type SpriteName =
 export type OchreSpriteName = 'ochre-idle' | 'ochre-attack' | 'ochre-hit' | 'ochre-death';
 export type WolfPixelSpriteName = 'wolf-pixel-idle' | 'wolf-pixel-attack' | 'wolf-pixel-hit' | 'wolf-pixel-death';
 export type GoblinPixelSpriteName = 'goblin-pixel-idle' | 'goblin-pixel-attack' | 'goblin-pixel-hit' | 'goblin-pixel-death';
+export type CustomWolfSpriteName = 'custom-wolf-idle' | 'custom-wolf-attack' | 'custom-wolf-hit' | 'custom-wolf-death';
+export type CustomGoblinSpriteName = 'custom-goblin-idle' | 'custom-goblin-attack' | 'custom-goblin-hit' | 'custom-goblin-death';
+export type CustomOchreSpriteName = 'custom-ochre-idle' | 'custom-ochre-attack' | 'custom-ochre-hit' | 'custom-ochre-death';
+export type CustomSkeletonSpriteName = 'custom-skeleton-idle' | 'custom-skeleton-attack' | 'custom-skeleton-hit' | 'custom-skeleton-death';
+export type CustomMummySpriteName = 'custom-mummy-idle' | 'custom-mummy-attack' | 'custom-mummy-hit' | 'custom-mummy-death';
+export type CustomWinterWolfSpriteName = 'custom-winter-wolf-idle' | 'custom-winter-wolf-attack' | 'custom-winter-wolf-hit' | 'custom-winter-wolf-death';
+export type CustomOgreSpriteName = 'custom-ogre-idle' | 'custom-ogre-attack' | 'custom-ogre-hit' | 'custom-ogre-death';
 
 export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
   /** Name of an optional horizontal sprite sheet. */
-  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName | 'custom-hero-idle';
+  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName | CustomWolfSpriteName | CustomGoblinSpriteName | CustomOchreSpriteName | CustomSkeletonSpriteName | CustomMummySpriteName | CustomWinterWolfSpriteName | CustomOgreSpriteName | 'custom-hero-idle';
   frameCount?: number;
   /** Art shown until the sheet exists, and while this animator is idle. */
   fallbackUrl: string;

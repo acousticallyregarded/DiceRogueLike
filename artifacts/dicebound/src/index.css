@@ -158,6 +158,10 @@ body {
   pointer-events: none;
 }
 
+.combat-actor--dying-custom-wolf {
+  animation-name: dicebound-custom-wolf-death-exit;
+}
+
 @keyframes dicebound-foot-dust {
   0% { opacity: 0; transform: translateX(-50%) scale(0.55); }
   30% { opacity: 0.75; }
@@ -203,6 +207,11 @@ body {
   0% { opacity: 1; transform: translateY(0) scale(1); filter: saturate(1); }
   55% { opacity: 0.9; transform: translateY(-8px) scale(0.92); filter: saturate(0.55); }
   100% { opacity: 0; transform: translateY(18px) scale(0.58); filter: saturate(0); }
+}
+
+@keyframes dicebound-custom-wolf-death-exit {
+  0%, 90% { opacity: 1; transform: translateY(0) scale(1); filter: saturate(1); }
+  100% { opacity: 0; transform: translateY(10px) scale(0.86); filter: saturate(0.6); }
 }
 
 @media (prefers-reduced-motion: reduce) {

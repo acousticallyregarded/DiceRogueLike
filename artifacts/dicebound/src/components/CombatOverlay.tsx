@@ -11,12 +11,22 @@ import { Backpack, Flame, Heart, Shield, Sword } from 'lucide-react';
 
 import wolfUrl from '../assets/wolf-pixel.png';
 import { WolfPixelSprite } from './WolfPixelSprite';
-import slimeUrl from '../assets/ochre-jelly.png';
-import { OchreJellySprite } from './OchreJellySprite';
+import customWinterWolfUrl from '../assets/custom-winter-wolf.png';
+import customOgreUrl from '../assets/custom-ogre.png';
+import { CustomOgreSprite, CUSTOM_OGRE_DEATH_EXIT_MS } from './CustomOgreSprite';
+import { CustomWinterWolfSprite, CUSTOM_WINTER_WOLF_DEATH_EXIT_MS } from './CustomWinterWolfSprite';
+import customWolfUrl from '../assets/custom-wolf.png';
+import { CustomWolfSprite, CUSTOM_WOLF_DEATH_EXIT_MS } from './CustomWolfSprite';
+import slimeUrl from '../assets/custom-ochre.png';
+import { OchreJellySprite, CUSTOM_OCHRE_DEATH_EXIT_MS } from './OchreJellySprite';
 import goblinUrl from '../assets/goblin.png';
-import goblinPixelUrl from '../assets/goblin-pixel.png';
-import { GoblinPixelSprite } from './GoblinPixelSprite';
+import goblinPixelUrl from '../assets/custom-goblin.png';
+import { CustomGoblinSprite, CUSTOM_GOBLIN_DEATH_EXIT_MS } from './CustomGoblinSprite';
 import skeletonUrl from '../assets/skeleton.png';
+import customSkeletonUrl from '../assets/custom-skeleton.png';
+import customMummyUrl from '../assets/custom-mummy.png';
+import { CustomMummySprite, CUSTOM_MUMMY_DEATH_EXIT_MS } from './CustomMummySprite';
+import { CustomSkeletonSprite, CUSTOM_SKELETON_DEATH_EXIT_MS } from './CustomSkeletonSprite';
 import bossUrl from '../assets/boss.png';
 import heroUrl from '../assets/custom-combat-hero.png';
 import drinkPotionUrl from '../assets/custom-drink-potion.png';
@@ -70,6 +80,7 @@ interface DamagePopup {
 
 const EMPTY_EVENTS: VisualEvents = { heroAttack: 0, heroDrink: 0, heroFireBomb: 0, heroGuard: 0, heroHit: 0, heroLastAction: null, enemies: {} };
 const EXIT_DURATION_MS = 650;
+const MIN_COMBAT_SPEED = 1;
 
 function makeSnapshot(run: RunState): CombatSnapshot {
   return {
@@ -94,9 +105,15 @@ function makeSnapshot(run: RunState): CombatSnapshot {
 }
 
 function getMonsterImage(enemy: RunState['enemies'][number]) {
-  if ((enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'goblin') return goblinPixelUrl;
+  const speciesKey = enemy.speciesKey ?? speciesKeyForName(enemy.name);
+  if (speciesKey === 'wolf') return customWolfUrl;
+  if (speciesKey === 'goblin') return goblinPixelUrl;
+  if (speciesKey === 'skeleton') return customSkeletonUrl;
+  if (speciesKey === 'mummy') return customMummyUrl;
+  if (speciesKey === 'winter_wolf') return customWinterWolfUrl;
+  if (speciesKey === 'ogre') return customOgreUrl;
   const artKey = getMonsterArtKey(
-    enemy.speciesKey ?? speciesKeyForName(enemy.name),
+    speciesKey,
     enemy.artKey ?? (enemy.boss ? 'boss' : undefined),
   );
   if (artKey === 'wolf') return wolfUrl;
@@ -105,6 +122,46 @@ function getMonsterImage(enemy: RunState['enemies'][number]) {
   if (artKey === 'skeleton') return skeletonUrl;
   if (artKey === 'boss') return bossUrl;
   return wolfUrl;
+}
+
+function isCustomWolfEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'wolf';
+}
+
+function isCustomGoblinEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'goblin';
+}
+
+function isCustomOchreEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'ochre_jelly';
+}
+
+function isCustomSkeletonEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'skeleton';
+}
+
+function isCustomMummyEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'mummy';
+}
+
+function isCustomWinterWolfEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'winter_wolf';
+}
+
+function isCustomOgreEnemy(enemy: RunState['enemies'][number]) {
+  return (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'ogre';
+}
+
+function deathExitDurationMs(enemy: RunState['enemies'][number] | undefined, speed: number) {
+  const duration = enemy && isCustomWolfEnemy(enemy)
+    ? CUSTOM_WOLF_DEATH_EXIT_MS
+    : enemy && isCustomGoblinEnemy(enemy) ? CUSTOM_GOBLIN_DEATH_EXIT_MS
+    : enemy && isCustomOchreEnemy(enemy) ? CUSTOM_OCHRE_DEATH_EXIT_MS
+    : enemy && isCustomSkeletonEnemy(enemy) ? CUSTOM_SKELETON_DEATH_EXIT_MS
+    : enemy && isCustomMummyEnemy(enemy) ? CUSTOM_MUMMY_DEATH_EXIT_MS
+    : enemy && isCustomWinterWolfEnemy(enemy) ? CUSTOM_WINTER_WOLF_DEATH_EXIT_MS
+    : enemy && isCustomOgreEnemy(enemy) ? CUSTOM_OGRE_DEATH_EXIT_MS : EXIT_DURATION_MS;
+  return duration / Math.max(MIN_COMBAT_SPEED, speed);
 }
 
 function getAttackSprite(enemy: RunState['enemies'][number]): SpriteName {
@@ -189,12 +246,18 @@ export function CombatOverlay({
     if (wasCombat && latestCombatRun.current) {
       setDisplayRun(latestCombatRun.current);
       setLeaving(true);
+      const activeEnemyIds = new Set(run.enemies.map(enemy => enemy.id));
+      const deathExitDuration = latestCombatRun.current.enemies.reduce((duration, enemy) => (
+        activeEnemyIds.has(enemy.id)
+          ? duration
+          : Math.max(duration, deathExitDurationMs(enemy, speed))
+      ), EXIT_DURATION_MS / Math.max(MIN_COMBAT_SPEED, speed));
       setVisible(true);
       const timer = window.setTimeout(() => {
         setVisible(false);
         setLeaving(false);
         setDisplayRun(null);
-      }, EXIT_DURATION_MS / Math.max(1, speed));
+      }, deathExitDuration);
       return () => window.clearTimeout(timer);
     }
 
@@ -332,6 +395,7 @@ export function CombatOverlay({
       enemyUpdates
         .filter(update => update.kind === 'death')
         .forEach(update => {
+          const archivedEnemy = enemyArchive.current[update.id];
           const timer = window.setTimeout(() => {
             setVisualEvents(existing => {
               const event = existing.enemies[update.id];
@@ -340,7 +404,7 @@ export function CombatOverlay({
               delete enemies[update.id];
               return { ...existing, enemies };
             });
-          }, EXIT_DURATION_MS / Math.max(1, speed));
+          }, deathExitDurationMs(archivedEnemy, speed));
           popupTimers.current.push(timer);
         });
     }
@@ -545,12 +609,13 @@ export function CombatOverlay({
           {renderedEnemies.map(enemy => {
             const enemyEvent = visualEvents.enemies[enemy.id] ?? { attackTrigger: 0, hitTrigger: 0, deathTrigger: 0 };
             const isDying = enemyEvent.deathTrigger > 0;
+            const customWolf = isCustomWolfEnemy(enemy);
             const enemySprite = getAttackSprite(enemy);
             return (
               <div
                 key={`${enemy.id}-${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`}
-                className={`relative flex flex-col items-center ${isDying ? 'combat-actor--dying' : ''}`}
-                style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${EXIT_DURATION_MS / Math.max(1, speed)}ms` } as CSSProperties}
+                className={`relative flex flex-col items-center ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : ''}`}
+                style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms` } as CSSProperties}
                 onClick={() => !isDying && setInspectedEnemyId(enemy.id)}
                 role="button"
                 tabIndex={isDying ? -1 : 0}
@@ -564,12 +629,28 @@ export function CombatOverlay({
               >
                 <div className={`combat-actor combat-actor--enemy w-20 h-20 ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
-                    {enemySprite === 'slime-attack' ? (
+                    {customWolf ? (
+                      <CustomWolfSprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
+                      />
+                    ) : enemySprite === 'slime-attack' ? (
                       <OchreJellySprite
                         attackTrigger={enemyEvent.attackTrigger}
                         hitTrigger={enemyEvent.hitTrigger}
                         dying={isDying}
                         speed={speed}
+                      />
+                    ) : isCustomWinterWolfEnemy(enemy) ? (
+                      <CustomWinterWolfSprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
                       />
                     ) : enemySprite === 'wolf-attack' ? (
                       <WolfPixelSprite
@@ -580,7 +661,31 @@ export function CombatOverlay({
                         name={enemy.name}
                       />
                     ) : (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'goblin' ? (
-                      <GoblinPixelSprite
+                      <CustomGoblinSprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
+                      />
+                    ) : isCustomSkeletonEnemy(enemy) ? (
+                      <CustomSkeletonSprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
+                      />
+                    ) : isCustomMummyEnemy(enemy) ? (
+                      <CustomMummySprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
+                      />
+                    ) : isCustomOgreEnemy(enemy) ? (
+                      <CustomOgreSprite
                         attackTrigger={enemyEvent.attackTrigger}
                         hitTrigger={enemyEvent.hitTrigger}
                         dying={isDying}

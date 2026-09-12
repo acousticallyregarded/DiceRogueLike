@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
-import { SpriteAnimator, type OchreSpriteName } from './SpriteAnimator';
-import ochreUrl from '../assets/ochre-jelly.png';
+import { SpriteAnimator, type CustomOchreSpriteName } from './SpriteAnimator';
+import ochreUrl from '../assets/custom-ochre.png';
+
+export const CUSTOM_OCHRE_DEATH_EXIT_MS = 2000;
 
 /** The parent remounts actors for each new combat event. */
 export function OchreJellySprite({
@@ -13,17 +15,18 @@ export function OchreJellySprite({
 }) {
   const [finished, setFinished] = useState(false);
   const finish = useCallback(() => setFinished(true), []);
-  const action: OchreSpriteName = dying ? 'ochre-death'
-    : finished || (!attackTrigger && !hitTrigger) ? 'ochre-idle'
-    : hitTrigger > attackTrigger ? 'ochre-hit' : 'ochre-attack';
-  const idle = action === 'ochre-idle';
-  const duration = dying ? 600 : idle ? 1000 : action === 'ochre-hit' ? 300 : 420;
+  const action: CustomOchreSpriteName = dying ? 'custom-ochre-death'
+    : finished || (!attackTrigger && !hitTrigger) ? 'custom-ochre-idle'
+    : hitTrigger > attackTrigger ? 'custom-ochre-hit' : 'custom-ochre-attack';
+  const idle = action === 'custom-ochre-idle';
+  const duration = 1800;
   return (
     <SpriteAnimator
       sprite={action}
       fallbackUrl={ochreUrl}
       active
       loop={idle}
+      frameCount={9}
       holdLastFrame={dying}
       durationMs={duration / Math.max(1, speed)}
       onAnimationEnd={idle || dying ? undefined : finish}
