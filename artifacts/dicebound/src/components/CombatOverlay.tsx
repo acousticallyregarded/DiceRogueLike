@@ -13,6 +13,8 @@ import { WolfPixelSprite } from './WolfPixelSprite';
 import slimeUrl from '../assets/ochre-jelly.png';
 import { OchreJellySprite } from './OchreJellySprite';
 import goblinUrl from '../assets/goblin.png';
+import goblinPixelUrl from '../assets/goblin-pixel.png';
+import { GoblinPixelSprite } from './GoblinPixelSprite';
 import skeletonUrl from '../assets/skeleton.png';
 import bossUrl from '../assets/boss.png';
 import heroUrl from '../assets/hero.png';
@@ -76,6 +78,7 @@ function makeSnapshot(run: RunState): CombatSnapshot {
 }
 
 function getMonsterImage(enemy: RunState['enemies'][number]) {
+  if ((enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'goblin') return goblinPixelUrl;
   const artKey = getMonsterArtKey(
     enemy.speciesKey ?? speciesKeyForName(enemy.name),
     enemy.artKey ?? (enemy.boss ? 'boss' : undefined),
@@ -459,6 +462,14 @@ export function CombatOverlay({
                       />
                     ) : enemySprite === 'wolf-attack' ? (
                       <WolfPixelSprite
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        name={enemy.name}
+                      />
+                    ) : (enemy.speciesKey ?? speciesKeyForName(enemy.name)) === 'goblin' ? (
+                      <GoblinPixelSprite
                         attackTrigger={enemyEvent.attackTrigger}
                         hitTrigger={enemyEvent.hitTrigger}
                         dying={isDying}

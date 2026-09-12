@@ -83,7 +83,7 @@ export function MonsterGuide({ onClose }: { onClose: () => void }) {
         <footer className="border-t-2 border-slate-200 p-3 text-[9px] leading-snug font-semibold text-slate-500">
           <p>{SRD_ATTRIBUTION}</p>
           <p className="mt-1">
-            Adapted stats and attack styles; not full D&amp;D rules. Ochre Jelly and wolves use user-supplied Ragnarok Online Poporing and Wolf sprite sheets. Other character art is original.
+            Adapted stats and attack styles; not full D&amp;D rules. Ochre Jelly, wolves, and goblins use user-supplied Ragnarok Online Poporing, Wolf, and Goblin (Axe) sprite sheets. Other character art is original.
             No external copyrighted art or branding.
           </p>
         </footer>

@@ -30,10 +30,11 @@ export type SpriteName =
   | 'boss-attack';
 export type OchreSpriteName = 'ochre-idle' | 'ochre-attack' | 'ochre-hit' | 'ochre-death';
 export type WolfPixelSpriteName = 'wolf-pixel-idle' | 'wolf-pixel-attack' | 'wolf-pixel-hit' | 'wolf-pixel-death';
+export type GoblinPixelSpriteName = 'goblin-pixel-idle' | 'goblin-pixel-attack' | 'goblin-pixel-hit' | 'goblin-pixel-death';
 
 export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
   /** Name of the optional 8-frame, horizontal sheet. */
-  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName;
+  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName;
   /** Art shown until the sheet exists, and while this animator is idle. */
   fallbackUrl: string;
   /** Starts/restarts playback when this value changes. */
