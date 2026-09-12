@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
+import forestClearingUrl from '../assets/forest-clearing.webp';
 import customWalkSouthEastUrl from '../assets/custom-walk-south-east.png';
 import customWalkSouthWestUrl from '../assets/custom-walk-south-west.png';
 import customWalkNorthWestUrl from '../assets/custom-walk-north-west.png';
@@ -151,6 +152,23 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         className="relative w-0 h-0"
         style={{ transform: `translate(${-heroPos.x * cameraFollow}px, ${-heroPos.y * cameraFollow + 40}px)` }}
       >
+        {/* The forest is part of the world, not a fixed screen backdrop.
+            Overscan covers the full camera path and the combat scene shift. */}
+        <img
+          src={forestClearingUrl}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="absolute max-w-none object-cover pointer-events-none"
+          style={{
+            width: 'calc(min(100vw, 390px) + 440px)',
+            height: 'calc(200dvh + 440px)',
+            left: 0,
+            top: 0,
+            transform: 'translate(-50%, -50%)',
+            zIndex: -1,
+          }}
+        />
         
         {/* Scenery - Trees and Statue */}
         <div className="absolute w-[200px] h-[200px] -ml-[100px] -mt-[140px] z-[0]">
