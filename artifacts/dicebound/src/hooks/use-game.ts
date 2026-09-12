@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { GameStateV2, GameAction, act, validateState, createInitialState } from '../engine';
+import { GameStateV4, GameAction, act, validateState, createInitialState } from '../engine';
 import { toast } from 'sonner';
 
-const KEY_V2 = "dicebound-save-v3"; // Version bump for schema changes
+const KEY_V4 = "dicebound-save-v4";
 
-export function loadGame(): GameStateV2 {
+export function loadGame(): GameStateV4 {
   try {
-    const raw = localStorage.getItem(KEY_V2);
+    const raw = localStorage.getItem(KEY_V4);
     if (!raw) return createInitialState();
     const parsed = JSON.parse(raw);
     const s = validateState(parsed);
-    if (s.meta.version !== 3) return createInitialState();
+    if (s.meta.version !== 4) return createInitialState();
     return s;
   } catch (err) {
     console.error("Save load error", err);
@@ -18,9 +18,9 @@ export function loadGame(): GameStateV2 {
   }
 }
 
-export function saveGame(s: GameStateV2): boolean {
+export function saveGame(s: GameStateV4): boolean {
   try {
-    localStorage.setItem(KEY_V2, JSON.stringify(s));
+    localStorage.setItem(KEY_V4, JSON.stringify(s));
     return true;
   } catch {
     return false;
@@ -28,7 +28,7 @@ export function saveGame(s: GameStateV2): boolean {
 }
 
 export function useGame() {
-  const [state, setState] = useState<GameStateV2 | null>(null);
+  const [state, setState] = useState<GameStateV4 | null>(null);
   const [speed, setSpeed] = useState<number>(1);
   
   useEffect(() => {
@@ -57,29 +57,45 @@ export function useGame() {
     speedRef.current = speed;
   }, [speed]);
 
+  // Combat loop & Move loop
   const lastTick = useRef<number>(performance.now());
+  const moveTick = useRef<number>(performance.now());
+
   useEffect(() => {
-    if (!state?.run || state.run.phase !== 'combat') {
-      lastTick.current = performance.now();
-      return;
-    }
+    if (!state?.run) return;
     
     let frameId: number;
     const loop = (time: number) => {
-      const dt = time - lastTick.current;
-      lastTick.current = time;
-      
-      if (dt > 0) {
-        const scaledDt = dt * speedRef.current;
-        dispatch({ type: 'TICK_COMBAT', dtMs: Math.min(scaledDt, 100 * speedRef.current) }); 
-      }
-      
       frameId = requestAnimationFrame(loop);
+      
+      const r = state.run;
+      if (!r) return;
+      
+      if (r.phase === 'combat') {
+        const dt = time - lastTick.current;
+        lastTick.current = time;
+        if (dt > 0) {
+          const scaledDt = dt * speedRef.current;
+          dispatch({ type: 'TICK_COMBAT', dtMs: Math.min(scaledDt, 100 * speedRef.current) }); 
+        }
+      } else {
+        lastTick.current = time;
+      }
+
+      if (r.phase === 'moving') {
+        const dtMove = time - moveTick.current;
+        if (dtMove > 300) { // Step every 300ms
+          moveTick.current = time;
+          dispatch({ type: 'STEP_MOVE' });
+        }
+      } else {
+        moveTick.current = time;
+      }
     };
     
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [state?.run?.phase, dispatch]);
+  }, [state?.run?.phase, state?.run?.enemies?.length, dispatch]);
 
   return { state, dispatch, speed, setSpeed };
 }

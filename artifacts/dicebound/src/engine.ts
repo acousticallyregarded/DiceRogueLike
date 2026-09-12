@@ -1,8 +1,32 @@
-export type TileType = "start" | "enemy" | "buff" | "debuff" | "minigame" | "shop" | "boss";
+function uuid() {
+  return Math.random().toString(36).substring(2, 9);
+}
+
+export type TileType = "start" | "enemy" | "elite" | "event" | "shop" | "rest" | "minigame";
 
 export interface Tile {
   id: number;
   type: TileType;
+}
+
+export interface Item {
+  id: string;
+  name: string;
+  type: "weapon" | "armor" | "accessory";
+  stats: { attack?: number; defense?: number; speed?: number; maxHp?: number };
+  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+}
+
+export interface MetaState {
+  version: 4;
+  gems: number;
+  talents: { vitality: number; quickness: number; power: number };
+  inventory: Item[];
+  equipped: {
+    weapon: string | null;
+    armor: string | null;
+    accessory: string | null;
+  };
 }
 
 export interface EnemyState {
@@ -13,29 +37,32 @@ export interface EnemyState {
   attack: number;
   defense: number;
   speed: number;
-  boss: boolean;
   attackTimer: number;
+  poisoned?: boolean;
+  boss?: boolean;
 }
 
 export interface PlayerCombatState {
   attackTimer: number;
+  roundCounter: number;
 }
 
-export type UpgradeOption = {
+export interface Skill {
   id: string;
   name: string;
   description: string;
-  type: "heal" | "maxHp" | "attack" | "defense" | "speed" | "gems";
-  value: number;
-};
+  type: "poison" | "heal" | "first_strike" | "speed_boost" | "defense_boost" | "vampire" | "execute" | "combo" | "counter";
+}
 
 export interface ShopItem {
   id: string;
   name: string;
   description: string;
   cost: number;
-  type: "heal" | "attack" | "defense" | "speed";
-  value: number;
+  type: "stat" | "skill" | "heal";
+  stat?: "attack" | "defense" | "speed" | "maxHp";
+  value?: number;
+  skill?: Skill;
 }
 
 export interface RunState {
@@ -47,36 +74,34 @@ export interface RunState {
   gold: number;
   gemsEarned: number;
   
+  xp: number;
+  level: number;
+  queuedLevels: number;
+
+  bossRollsLeft: number;
   floor: number;
+  
   position: number;
   tiles: Tile[];
-  lastRoll: number | null;
+  lastRolls: [number, number] | null;
+  stepsRemaining: number;
   
-  phase: "explore" | "combat" | "reward" | "shop" | "minigame" | "event" | "victory" | "defeat";
+  phase: "explore" | "moving" | "combat" | "level_up" | "shop" | "event_test_of_might" | "rest" | "minigame" | "victory" | "defeat";
   
-  enemy: EnemyState | null;
+  enemies: EnemyState[];
   playerCombat: PlayerCombatState | null;
-  rewardOptions: UpgradeOption[] | null;
-  shopItems: ShopItem[] | null;
+  isBossCombat: boolean;
   
-  log: string[];
+  skills: Skill[];
+  skillOptions: Skill[] | null;
+  shopItems: ShopItem[] | null;
+  shopRerollCost: number;
+  
+  log: { id: string, msg: string }[];
   settled: boolean;
 }
 
-export interface MetaState {
-  version: 3;
-  gems: number;
-  gear: {
-    weaponLevel: number;
-    armorLevel: number;
-  };
-  talents: {
-    vitality: number;
-    quickness: number;
-  };
-}
-
-export interface GameStateV2 {
+export interface GameStateV4 {
   meta: MetaState;
   run: RunState | null;
 }
@@ -84,183 +109,297 @@ export interface GameStateV2 {
 export type GameAction =
   | { type: "START_RUN" }
   | { type: "ROLL_DICE" }
+  | { type: "STEP_MOVE" }
   | { type: "TICK_COMBAT"; dtMs: number }
-  | { type: "CHOOSE_REWARD"; rewardId: string }
+  | { type: "CHOOSE_SKILL"; skillId: string }
+  | { type: "BUY_SHOP"; itemId: string }
+  | { type: "REROLL_SHOP" }
+  | { type: "LEAVE_SHOP" }
+  | { type: "TEST_OF_MIGHT_ENTER" }
+  | { type: "TEST_OF_MIGHT_LEAVE" }
+  | { type: "REST_HEAL" }
+  | { type: "REST_TRAIN" }
   | { type: "PLAY_MINIGAME" }
   | { type: "LEAVE_MINIGAME" }
-  | { type: "BUY_SHOP"; itemId: string }
-  | { type: "LEAVE_SHOP" }
-  | { type: "ACK_EVENT" }
+  | { type: "CONTINUE_POST_COMBAT" }
   | { type: "RETURN_TO_LOBBY" }
-  | { type: "BUY_GEAR"; stat: "weapon" | "armor" }
-  | { type: "BUY_TALENT"; stat: "vitality" | "quickness" }
+  | { type: "CONTINUE_RUN" }
+  | { type: "OPEN_CHEST" }
+  | { type: "EQUIP_ITEM"; itemId: string }
+  | { type: "UNEQUIP_ITEM"; slot: "weapon" | "armor" | "accessory" }
+  | { type: "BUY_TALENT"; stat: "vitality" | "quickness" | "power" }
   | { type: "RESET_SAVE" };
 
 const BOARD_SIZE = 24;
 
-export function generateBoard(floor: number): Tile[] {
+export function generateBoard(): Tile[] {
   return Array.from({ length: BOARD_SIZE }).map((_, i) => {
     if (i === 0) return { id: i, type: "start" };
-    if (i === BOARD_SIZE - 1) return { id: i, type: "boss" };
-    
-    if (i % 4 === 0) {
-      const rnd = Math.random();
-      if (rnd < 0.25) return { id: i, type: "buff" };
-      if (rnd < 0.50) return { id: i, type: "debuff" };
-      if (rnd < 0.75) return { id: i, type: "minigame" };
-      return { id: i, type: "shop" };
-    }
-    
+    // Distribute varied tiles
+    if (i % 6 === 0) return { id: i, type: "rest" };
+    if (i % 5 === 0) return { id: i, type: "shop" };
+    if (i % 8 === 0) return { id: i, type: "event" };
+    if (i % 7 === 0) return { id: i, type: "elite" };
+    if (i % 11 === 0) return { id: i, type: "minigame" };
     return { id: i, type: "enemy" };
   });
 }
 
-function generateRewards(floor: number, isBoss: boolean): UpgradeOption[] {
-  const mult = isBoss ? 2 : 1;
-  const pool: Omit<UpgradeOption, "id">[] = [
-    { name: "Vitality", description: "+15 Max HP", type: "maxHp", value: 15 * mult },
-    { name: "Sharpen", description: "+3 Attack", type: "attack", value: 3 * mult },
-    { name: "Harden", description: "+1 Defense", type: "defense", value: 1 * mult },
-    { name: "Quickstep", description: "+10 Speed", type: "speed", value: 10 * mult },
-    { name: "Mend", description: "Restore 40 HP", type: "heal", value: 40 * mult },
-  ];
-  const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
-  return shuffled.map((o, i) => ({ ...o, id: "rew_" + i }));
+function getNextLevelXp(level: number): number {
+  return Math.floor(100 * Math.pow(1.5, level - 1));
 }
 
-function generateShop(floor: number): ShopItem[] {
-  const pool: Omit<ShopItem, "id">[] = [
-    { name: "Health Potion", description: "Restore 50 HP", type: "heal", value: 50, cost: 20 },
-    { name: "Iron Sword", description: "+5 Attack", type: "attack", value: 5, cost: 50 },
-    { name: "Steel Shield", description: "+2 Defense", type: "defense", value: 2, cost: 60 },
-    { name: "Wind Boots", description: "+15 Speed", type: "speed", value: 15, cost: 40 },
+function generateSkills(count: number, currentSkills: Skill[]): Skill[] {
+  const pool: Skill[] = [
+    { id: "s_poison", name: "Poison Strike", description: "Attacks apply poison, dealing damage over time", type: "poison" },
+    { id: "s_heal", name: "Life Leech", description: "Heal for 10% of damage dealt", type: "vampire" },
+    { id: "s_first_strike", name: "First Strike", description: "Start combat with 50% attack timer filled", type: "first_strike" },
+    { id: "s_speed", name: "Adrenaline", description: "+20% Speed in combat", type: "speed_boost" },
+    { id: "s_def", name: "Iron Skin", description: "+20% Defense in combat", type: "defense_boost" },
+    { id: "s_execute", name: "Executioner", description: "Deal double damage to enemies below 30% HP", type: "execute" },
+    { id: "s_combo", name: "Combo Mastery", description: "Every 3rd attack deals 1.5x damage", type: "combo" },
+    { id: "s_counter", name: "Counter Mastery", description: "Retaliate for 50% of incoming damage", type: "counter" },
   ];
-  const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
-  return shuffled.map((o, i) => ({ ...o, id: "shop_" + i }));
+  
+  const available = pool.filter(p => !currentSkills.find(cs => cs.type === p.type));
+  return available.sort(() => Math.random() - 0.5).slice(0, count).map(s => ({ ...s, id: uuid() }));
 }
 
-function logMessage(r: RunState, msg: string) {
-  r.log = [msg, ...r.log].slice(0, 10);
+function generateShop(): ShopItem[] {
+  const items: ShopItem[] = [
+    { id: uuid(), name: "Health Potion", description: "Restore 50 HP", type: "heal", value: 50, cost: 25 },
+    { id: uuid(), name: "Iron Sword", description: "+5 Attack", type: "stat", stat: "attack", value: 5, cost: 60 },
+    { id: uuid(), name: "Steel Shield", description: "+2 Defense", type: "stat", stat: "defense", value: 2, cost: 60 },
+    { id: uuid(), name: "Wind Boots", description: "+15 Speed", type: "stat", stat: "speed", value: 15, cost: 50 },
+  ];
+  // Add a random skill
+  const skills = generateSkills(1, []);
+  if (skills.length > 0) {
+    items.push({ id: uuid(), name: "Skill: " + skills[0].name, description: skills[0].description, type: "skill", skill: skills[0], cost: 150 });
+  }
+  return items.sort(() => Math.random() - 0.5).slice(0, 3);
 }
 
-function triggerBuffTile(r: RunState) {
-  const buffs = [
-    { msg: "A glowing spring invigorates you! +30 HP", effect: () => { r.hp = Math.min(r.maxHp, r.hp + 30); } },
-    { msg: "You find an ancient whetstone. +2 Attack", effect: () => { r.attack += 2; } },
-    { msg: "A mysterious mist makes you faster. +5 Speed", effect: () => { r.speed += 5; } },
-  ];
-  const b = buffs[Math.floor(Math.random() * buffs.length)];
-  b.effect();
-  logMessage(r, b.msg);
-  r.phase = "event";
+function generateEnemies(count: number, scale: number, isElite: boolean = false): EnemyState[] {
+  const names = ["Goblin", "Slime", "Wolf", "Skeleton", "Bandit"];
+  const eliteNames = ["Orc Warlord", "Dire Wolf", "Skeleton King", "Ogre"];
+  
+  return Array.from({ length: count }).map(() => {
+    const name = isElite ? eliteNames[Math.floor(Math.random() * eliteNames.length)] : names[Math.floor(Math.random() * names.length)];
+    const hp = Math.floor((20 + scale * 10) * (isElite ? 2 : 1));
+    return {
+      id: uuid(),
+      name,
+      hp,
+      maxHp: hp,
+      attack: Math.floor((5 + scale * 2) * (isElite ? 1.5 : 1)),
+      defense: Math.floor((1 + scale * 0.5) * (isElite ? 1.5 : 1)),
+      speed: Math.floor(30 + scale * 2 + (isElite ? 10 : 0)),
+      attackTimer: 0
+    };
+  });
 }
 
-function triggerDebuffTile(s: GameStateV2, r: RunState) {
-  const debuffs = [
-    { msg: "A hidden trap spikes you! -15 HP", effect: () => { r.hp -= 15; } },
-    { msg: "A thief steals from you in the shadows! -20 Gold", effect: () => { r.gold = Math.max(0, r.gold - 20); } },
-    { msg: "A toxic spore weakens you. -2 Speed", effect: () => { r.speed = Math.max(10, r.speed - 2); } }
-  ];
-  const d = debuffs[Math.floor(Math.random() * debuffs.length)];
-  d.effect();
-  logMessage(r, d.msg);
-  r.phase = "event";
-  if (r.hp <= 0) {
-    r.phase = "defeat";
-    if (!r.settled) {
-      s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
-      r.settled = true;
-    }
+function generateBoss(floor: number): EnemyState {
+  const hp = 150 + floor * 50;
+  return {
+    id: uuid(),
+    name: "The Overlord",
+    hp,
+    maxHp: hp,
+    attack: 15 + floor * 5,
+    defense: 5 + floor * 2,
+    speed: 50 + floor * 5,
+    attackTimer: 0,
+    boss: true
+  } as EnemyState;
+}
+
+export function logMessage(r: RunState, msg: string) {
+  r.log.unshift({ id: uuid(), msg });
+  if (r.log.length > 20) r.log.length = 20;
+}
+
+function triggerTile(s: GameStateV4, r: RunState) {
+  const tile = r.tiles[r.position];
+  
+  if (r.bossRollsLeft <= 0) {
+    r.isBossCombat = true;
+    r.enemies = [generateBoss(r.floor)];
+    r.playerCombat = { attackTimer: r.skills.some(sk => sk.type === "first_strike") ? 50 : 0, roundCounter: 0 };
+    r.phase = "combat";
+    logMessage(r, "The Boss has arrived!");
+    return;
+  }
+
+  if (tile.type === "start") {
+    r.phase = "explore";
+    logMessage(r, "Passed Start! Healed 20 HP.");
+    r.hp = Math.min(r.maxHp, r.hp + 20);
+  } else if (tile.type === "enemy" || tile.type === "elite") {
+    const count = Math.floor(Math.random() * 3) + 1; // 1 to 3 enemies
+    r.enemies = generateEnemies(count, r.floor, tile.type === "elite");
+    r.playerCombat = { attackTimer: r.skills.some(sk => sk.type === "first_strike") ? 50 : 0, roundCounter: 0 };
+    r.phase = "combat";
+    r.isBossCombat = false;
+    logMessage(r, `Encountered ${count} ${tile.type === "elite" ? "Elite " : ""}enemies!`);
+  } else if (tile.type === "shop") {
+    r.phase = "shop";
+    r.shopItems = generateShop();
+    r.shopRerollCost = 10;
+    logMessage(r, "A wandering merchant offers their wares.");
+  } else if (tile.type === "event") {
+    r.phase = "event_test_of_might";
+    logMessage(r, "You face a Test of Might!");
+  } else if (tile.type === "rest") {
+    r.phase = "rest";
+    logMessage(r, "You found a safe place to rest.");
+  } else if (tile.type === "minigame") {
+    r.phase = "minigame";
+    logMessage(r, "A strange minigame awaits.");
+  } else {
+    r.phase = "explore";
   }
 }
 
-function applyUpgrade(r: RunState, upg: { type: string, value: number }) {
-  if (upg.type === "heal") {
-    r.hp = Math.min(r.maxHp, r.hp + upg.value);
-  } else if (upg.type === "maxHp") {
-    r.maxHp += upg.value;
-    r.hp += upg.value;
-  } else if (upg.type === "attack") {
-    r.attack += upg.value;
-  } else if (upg.type === "defense") {
-    r.defense += upg.value;
-  } else if (upg.type === "speed") {
-    r.speed += upg.value;
-  } else if (upg.type === "gems") {
-    r.gemsEarned += upg.value;
-  }
-}
-
-export function createInitialState(): GameStateV2 {
+export function createInitialState(): GameStateV4 {
   return {
     meta: {
-      version: 3,
+      version: 4,
       gems: 0,
-      gear: { weaponLevel: 0, armorLevel: 0 },
-      talents: { vitality: 0, quickness: 0 }
+      talents: { vitality: 0, quickness: 0, power: 0 },
+      inventory: [],
+      equipped: { weapon: null, armor: null, accessory: null }
     },
     run: null
   };
 }
 
-export function getMetaCost(level: number) {
+export function getTalentCost(level: number) {
   return 50 + level * 25;
 }
 
-export function validateState(s: any): GameStateV2 {
-  if (!s || s.meta?.version !== 3) return createInitialState();
+export function validateState(s: any): GameStateV4 {
+  if (!s || s.meta?.version !== 4) return createInitialState();
   if (typeof s.meta.gems !== "number") return createInitialState();
-  return s as GameStateV2;
+  return s as GameStateV4;
 }
 
-export function act(state: GameStateV2, action: GameAction): GameStateV2 {
-  const s: GameStateV2 = JSON.parse(JSON.stringify(state));
+function getEquippedStats(meta: MetaState) {
+  let attack = 0, defense = 0, speed = 0, maxHp = 0;
+  Object.values(meta.equipped).forEach(id => {
+    if (id) {
+      const item = meta.inventory.find(i => i.id === id);
+      if (item && item.stats) {
+        if (item.stats.attack) attack += item.stats.attack;
+        if (item.stats.defense) defense += item.stats.defense;
+        if (item.stats.speed) speed += item.stats.speed;
+        if (item.stats.maxHp) maxHp += item.stats.maxHp;
+      }
+    }
+  });
+  return { attack, defense, speed, maxHp };
+}
+
+function gainXp(r: RunState, amount: number) {
+  r.xp += amount;
+  while (r.xp >= getNextLevelXp(r.level)) {
+    r.xp -= getNextLevelXp(r.level);
+    r.level++;
+    r.queuedLevels++;
+  }
+}
+
+export function act(state: GameStateV4, action: GameAction): GameStateV4 {
+  const s: GameStateV4 = JSON.parse(JSON.stringify(state));
 
   if (action.type === "RESET_SAVE") {
     return createInitialState();
   }
 
-  if (action.type === "BUY_GEAR") {
-    if (s.run) return s; 
-    const lvl = action.stat === "weapon" ? s.meta.gear.weaponLevel : s.meta.gear.armorLevel;
-    const cost = getMetaCost(lvl);
-    if (s.meta.gems >= cost) {
-      s.meta.gems -= cost;
-      if (action.stat === "weapon") s.meta.gear.weaponLevel++;
-      else s.meta.gear.armorLevel++;
+  if (action.type === "OPEN_CHEST") {
+    if (s.run) return s;
+    if (s.meta.gems >= 100) {
+      s.meta.gems -= 100;
+      const types: ("weapon" | "armor" | "accessory")[] = ["weapon", "armor", "accessory"];
+      const rarities: ("common" | "uncommon" | "rare" | "epic" | "legendary")[] = ["common", "uncommon", "rare", "epic", "legendary"];
+      const type = types[Math.floor(Math.random() * types.length)];
+      const r = Math.random();
+      let rarity = "common";
+      let mult = 1;
+      if (r > 0.95) { rarity = "legendary"; mult = 5; }
+      else if (r > 0.8) { rarity = "epic"; mult = 3; }
+      else if (r > 0.5) { rarity = "rare"; mult = 2; }
+      else if (r > 0.25) { rarity = "uncommon"; mult = 1.5; }
+      
+      const item: Item = {
+        id: uuid(),
+        name: `${rarity.charAt(0).toUpperCase() + rarity.slice(1)} ${type}`,
+        type,
+        rarity: rarity as any,
+        stats: {}
+      };
+      
+      if (type === "weapon") item.stats.attack = Math.floor(Math.random() * 5 * mult) + 2;
+      if (type === "armor") item.stats.defense = Math.floor(Math.random() * 3 * mult) + 1;
+      if (type === "accessory") item.stats.speed = Math.floor(Math.random() * 10 * mult) + 5;
+      
+      s.meta.inventory.push(item);
     }
   }
 
+  if (action.type === "EQUIP_ITEM") {
+    if (s.run) return s;
+    const item = s.meta.inventory.find(i => i.id === action.itemId);
+    if (item) {
+      s.meta.equipped[item.type] = item.id;
+    }
+  }
+  
+  if (action.type === "UNEQUIP_ITEM") {
+    if (s.run) return s;
+    s.meta.equipped[action.slot] = null;
+  }
+
   if (action.type === "BUY_TALENT") {
-    if (s.run) return s; 
-    const lvl = action.stat === "vitality" ? s.meta.talents.vitality : s.meta.talents.quickness;
-    const cost = getMetaCost(lvl);
+    if (s.run) return s;
+    const lvl = s.meta.talents[action.stat];
+    const cost = getTalentCost(lvl);
     if (s.meta.gems >= cost) {
       s.meta.gems -= cost;
-      if (action.stat === "vitality") s.meta.talents.vitality++;
-      else s.meta.talents.quickness++;
+      s.meta.talents[action.stat]++;
     }
   }
 
   if (action.type === "START_RUN") {
+    const eq = getEquippedStats(s.meta);
+    const mHp = 100 + s.meta.talents.vitality * 20 + eq.maxHp;
     s.run = {
-      hp: 100 + s.meta.talents.vitality * 20,
-      maxHp: 100 + s.meta.talents.vitality * 20,
-      attack: 10 + s.meta.gear.weaponLevel * 3,
-      defense: 2 + s.meta.gear.armorLevel * 1,
-      speed: 40 + s.meta.talents.quickness * 5,
+      hp: mHp,
+      maxHp: mHp,
+      attack: 10 + s.meta.talents.power * 3 + eq.attack,
+      defense: 2 + eq.defense,
+      speed: 40 + s.meta.talents.quickness * 5 + eq.speed,
       gold: 0,
       gemsEarned: 0,
+      xp: 0,
+      level: 1,
+      queuedLevels: 0,
+      bossRollsLeft: 30,
       floor: 1,
       position: 0,
-      tiles: generateBoard(1),
-      lastRoll: null,
+      tiles: generateBoard(),
+      lastRolls: null,
+      stepsRemaining: 0,
       phase: "explore",
-      enemy: null,
+      enemies: [],
       playerCombat: null,
-      rewardOptions: null,
+      isBossCombat: false,
+      skills: [],
+      skillOptions: null,
       shopItems: null,
-      log: ["You enter the realm. The adventure begins!"],
+      shopRerollCost: 10,
+      log: [{ id: uuid(), msg: "You enter the realm. The adventure begins!" }],
       settled: false
     };
   }
@@ -268,68 +407,110 @@ export function act(state: GameStateV2, action: GameAction): GameStateV2 {
   if (action.type === "ROLL_DICE") {
     const r = s.run;
     if (!r || r.phase !== "explore") return s;
-    const roll = Math.floor(Math.random() * 6) + 1;
-    r.lastRoll = roll;
-    r.position += roll;
-    if (r.position >= r.tiles.length - 1) {
-      r.position = r.tiles.length - 1;
-    }
-    logMessage(r, "Rolled a " + roll + ".");
     
-    const tile = r.tiles[r.position];
-    if (tile.type === "enemy" || tile.type === "boss") {
-      const boss = tile.type === "boss";
-      const hpScale = boss ? 3 : 1;
-      r.enemy = {
-        id: "e_" + Date.now(),
-        name: boss ? "The Overlord" : ["Goblin", "Slime", "Wolf", "Skeleton"][Math.floor(Math.random() * 4)],
-        hp: (25 + r.floor * 15) * hpScale,
-        maxHp: (25 + r.floor * 15) * hpScale,
-        attack: (6 + r.floor * 3) * (boss ? 1.5 : 1),
-        defense: Math.floor((1 + r.floor * 1) * (boss ? 1.5 : 1)),
-        speed: 30 + r.floor * 5 + (boss ? 15 : 0),
-        boss,
-        attackTimer: 0
-      };
-      r.playerCombat = { attackTimer: 0 };
-      r.phase = "combat";
-      logMessage(r, "Encountered " + r.enemy.name + "!");
-    } else if (tile.type === "buff") {
-       triggerBuffTile(r);
-    } else if (tile.type === "debuff") {
-       triggerDebuffTile(s, r);
-    } else if (tile.type === "minigame") {
-       r.phase = "minigame";
-       logMessage(r, "You stumble upon a mysterious game...");
-    } else if (tile.type === "shop") {
-       r.phase = "shop";
-       r.shopItems = generateShop(r.floor);
-       logMessage(r, "A wandering merchant offers their wares.");
+    // Check level up first before rolling
+    if (r.queuedLevels > 0) {
+      r.phase = "level_up";
+      r.skillOptions = generateSkills(3, r.skills);
+      return s;
+    }
+
+    const d1 = Math.floor(Math.random() * 6) + 1;
+    const d2 = Math.floor(Math.random() * 6) + 1;
+    r.lastRolls = [d1, d2];
+    r.stepsRemaining = d1 + d2;
+    r.bossRollsLeft--;
+    r.phase = "moving";
+    logMessage(r, `Rolled a ${d1 + d2}.`);
+  }
+
+  if (action.type === "STEP_MOVE") {
+    const r = s.run;
+    if (!r || r.phase !== "moving" || r.stepsRemaining <= 0) return s;
+    
+    r.position = (r.position + 1) % BOARD_SIZE;
+    r.stepsRemaining--;
+    
+    if (r.stepsRemaining === 0) {
+      triggerTile(s, r);
+    }
+  }
+
+  if (action.type === "CHOOSE_SKILL") {
+    const r = s.run;
+    if (r && r.phase === "level_up" && r.skillOptions) {
+      const choice = r.skillOptions.find(o => o.id === action.skillId);
+      if (choice) {
+        r.skills.push(choice);
+        logMessage(r, "Acquired skill: " + choice.name);
+      }
+      r.queuedLevels--;
+      if (r.queuedLevels > 0) {
+        r.skillOptions = generateSkills(3, r.skills);
+      } else {
+        r.skillOptions = null;
+        r.phase = "explore";
+      }
     }
   }
 
   if (action.type === "TICK_COMBAT") {
     const r = s.run;
-    if (!r || r.phase !== "combat" || !r.enemy || !r.playerCombat) return s;
-    const e = r.enemy;
+    if (!r || r.phase !== "combat" || r.enemies.length === 0 || !r.playerCombat) return s;
     const pc = r.playerCombat;
     
-    pc.attackTimer += r.speed * (action.dtMs / 1000);
-    e.attackTimer += e.speed * (action.dtMs / 1000);
+    // Effective stats
+    let playerSpeed = r.speed;
+    if (r.skills.some(sk => sk.type === "speed_boost")) playerSpeed *= 1.2;
+    let playerDef = r.defense;
+    if (r.skills.some(sk => sk.type === "defense_boost")) playerDef *= 1.2;
+    
+    pc.attackTimer += playerSpeed * (action.dtMs / 1000);
+    
+    r.enemies.forEach(e => {
+      e.attackTimer += e.speed * (action.dtMs / 1000);
+      
+      // Poison tick
+      if (e.poisoned && Math.random() < 0.05) {
+        e.hp -= 1; // minor poison tick
+      }
+    });
 
     if (pc.attackTimer >= 100) {
       pc.attackTimer -= 100;
-      const dmg = Math.max(1, r.attack - e.defense);
-      e.hp = Math.max(0, e.hp - dmg);
-      logMessage(r, "You strike " + e.name + " for " + dmg + " damage.");
+      pc.roundCounter++;
+      
+      const target = r.enemies.find(e => e.hp > 0);
+      if (target) {
+        let dmg = Math.max(1, r.attack - target.defense);
+        
+        if (r.skills.some(sk => sk.type === "execute") && target.hp < target.maxHp * 0.3) dmg *= 2;
+        if (r.skills.some(sk => sk.type === "combo") && pc.roundCounter % 3 === 0) dmg *= 1.5;
+        
+        target.hp = Math.max(0, Math.floor(target.hp - dmg));
+        logMessage(r, `You strike ${target.name} for ${Math.floor(dmg)} damage.`);
+        
+        if (r.skills.some(sk => sk.type === "poison")) target.poisoned = true;
+        if (r.skills.some(sk => sk.type === "vampire")) r.hp = Math.min(r.maxHp, r.hp + Math.floor(dmg * 0.1));
+      }
     }
     
-    if (e.hp > 0 && e.attackTimer >= 100) {
-      e.attackTimer -= 100;
-      const dmg = Math.max(1, e.attack - r.defense);
-      r.hp = Math.max(0, r.hp - dmg);
-      logMessage(r, e.name + " hits you for " + dmg + " damage.");
-    }
+    r.enemies.forEach(e => {
+      if (e.hp > 0 && e.attackTimer >= 100) {
+        e.attackTimer -= 100;
+        let dmg = Math.max(1, e.attack - playerDef);
+        r.hp = Math.max(0, Math.floor(r.hp - dmg));
+        logMessage(r, `${e.name} hits you for ${Math.floor(dmg)} damage.`);
+        
+        if (r.skills.some(sk => sk.type === "counter")) {
+          const counterDmg = Math.max(1, Math.floor(dmg * 0.5));
+          e.hp = Math.max(0, e.hp - counterDmg);
+          logMessage(r, `You counter ${e.name} for ${counterDmg} damage.`);
+        }
+      }
+    });
+    
+    r.enemies = r.enemies.filter(e => e.hp > 0);
     
     if (r.hp <= 0) {
       r.phase = "defeat";
@@ -338,51 +519,111 @@ export function act(state: GameStateV2, action: GameAction): GameStateV2 {
         r.settled = true;
       }
       logMessage(r, "You have been defeated...");
-    } else if (e.hp <= 0) {
-      r.phase = "reward";
-      if (e.boss) {
+    } else if (pc.roundCounter >= 30) {
+      r.phase = "defeat";
+      if (!r.settled) {
+        s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
+        r.settled = true;
+      }
+      logMessage(r, "Combat took too long! You succumbed to exhaustion.");
+    } else if (r.enemies.length === 0) {
+      if (r.isBossCombat) {
         r.gemsEarned += 50 * r.floor;
-        r.gold += 50 + r.floor * 20;
+        r.gold += 100 + r.floor * 20;
         logMessage(r, "Boss defeated! Gained gems and gold.");
-        r.rewardOptions = generateRewards(r.floor, true);
+        r.phase = "victory";
       } else {
         r.gold += 15 + r.floor * 5;
-        logMessage(r, e.name + " defeated! Choose a reward.");
-        r.rewardOptions = generateRewards(r.floor, false);
+        gainXp(r, 40 + r.floor * 10);
+        logMessage(r, "Enemies defeated! Gained gold and XP.");
+        r.phase = "explore";
       }
     }
   }
 
-  if (action.type === "CHOOSE_REWARD") {
+  if (action.type === "CONTINUE_POST_COMBAT") {
     const r = s.run;
-    if (r && r.phase === "reward" && r.rewardOptions) {
-      const choice = r.rewardOptions.find(o => o.id === action.rewardId);
-      if (choice) {
-        applyUpgrade(r, choice);
-        logMessage(r, "Chose " + choice.name + ".");
-        r.rewardOptions = null;
-        
-        // Are we on the boss tile?
-        if (r.position === r.tiles.length - 1) {
-          if (r.floor >= 3) {
-            r.phase = "victory";
-            if (!r.settled) {
-              s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
-              r.settled = true;
-            }
-            logMessage(r, "You have conquered the final floor!");
-          } else {
-            r.floor++;
-            r.position = 0;
-            r.tiles = generateBoard(r.floor);
-            r.phase = "explore";
-            r.hp = r.maxHp;
-            logMessage(r, "You descend to Floor " + r.floor + ". HP restored.");
-          }
-        } else {
-          r.phase = "explore";
+    if (r && r.enemies.length === 0 && r.phase === "combat") {
+      r.phase = "explore";
+    }
+  }
+
+  if (action.type === "TEST_OF_MIGHT_ENTER") {
+    const r = s.run;
+    if (r && r.phase === "event_test_of_might") {
+      r.enemies = generateEnemies(2, r.floor + 1, true); // 2 elites
+      r.playerCombat = { attackTimer: r.skills.some(sk => sk.type === "first_strike") ? 50 : 0, roundCounter: 0 };
+      r.phase = "combat";
+      logMessage(r, "You accepted the test! Elite enemies appear.");
+    }
+  }
+  
+  if (action.type === "TEST_OF_MIGHT_LEAVE") {
+    const r = s.run;
+    if (r && r.phase === "event_test_of_might") {
+      r.phase = "explore";
+      logMessage(r, "You walked away from the test.");
+    }
+  }
+
+  if (action.type === "REST_HEAL") {
+    const r = s.run;
+    if (r && r.phase === "rest") {
+      r.hp = Math.min(r.maxHp, r.hp + 50);
+      logMessage(r, "You rested and recovered 50 HP.");
+      r.phase = "explore";
+    }
+  }
+
+  if (action.type === "REST_TRAIN") {
+    const r = s.run;
+    if (r && r.phase === "rest") {
+      gainXp(r, 60);
+      logMessage(r, "You trained and gained 60 XP.");
+      r.phase = "explore";
+    }
+  }
+
+  if (action.type === "BUY_SHOP") {
+    const r = s.run;
+    if (r && r.phase === "shop" && r.shopItems) {
+      const item = r.shopItems.find(i => i.id === action.itemId);
+      if (item && r.gold >= item.cost) {
+        r.gold -= item.cost;
+        if (item.type === "heal") {
+          r.hp = Math.min(r.maxHp, r.hp + (item.value || 0));
+        } else if (item.type === "stat") {
+          if (item.stat === "attack") r.attack += item.value || 0;
+          if (item.stat === "defense") r.defense += item.value || 0;
+          if (item.stat === "speed") r.speed += item.value || 0;
+          if (item.stat === "maxHp") { r.maxHp += item.value || 0; r.hp += item.value || 0; }
+        } else if (item.type === "skill" && item.skill) {
+          r.skills.push(item.skill);
         }
+        r.shopItems = r.shopItems.filter(i => i.id !== action.itemId);
+        logMessage(r, "Bought " + item.name + ".");
       }
+    }
+  }
+  
+  if (action.type === "REROLL_SHOP") {
+    const r = s.run;
+    if (r && r.phase === "shop") {
+      if (r.gold >= r.shopRerollCost) {
+        r.gold -= r.shopRerollCost;
+        r.shopItems = generateShop();
+        r.shopRerollCost += 10;
+        logMessage(r, "Rerolled shop wares.");
+      }
+    }
+  }
+
+  if (action.type === "LEAVE_SHOP") {
+    const r = s.run;
+    if (r && r.phase === "shop") {
+      r.shopItems = null;
+      r.phase = "explore";
+      logMessage(r, "You leave the merchant.");
     }
   }
 
@@ -422,38 +663,25 @@ export function act(state: GameStateV2, action: GameAction): GameStateV2 {
     }
   }
 
-  if (action.type === "BUY_SHOP") {
-    const r = s.run;
-    if (r && r.phase === "shop" && r.shopItems) {
-      const item = r.shopItems.find(i => i.id === action.itemId);
-      if (item && r.gold >= item.cost) {
-        r.gold -= item.cost;
-        applyUpgrade(r, item);
-        r.shopItems = r.shopItems.filter(i => i.id !== action.itemId);
-        logMessage(r, "Bought " + item.name + ".");
+  if (action.type === "CONTINUE_RUN") {
+    if (s.run && s.run.phase === "victory") {
+      if (!s.run.settled) {
+        s.meta.gems += s.run.gemsEarned + Math.floor(s.run.gold / 10);
+        s.run.settled = true;
       }
-    }
-  }
-
-  if (action.type === "LEAVE_SHOP") {
-    const r = s.run;
-    if (r && r.phase === "shop") {
-      r.shopItems = null;
-      r.phase = "explore";
-      logMessage(r, "You leave the merchant.");
-    }
-  }
-
-  if (action.type === "ACK_EVENT") {
-    const r = s.run;
-    if (r && r.phase === "event") {
-      r.phase = "explore";
+      s.run.floor++;
+      s.run.bossRollsLeft = 30;
+      s.run.phase = "explore";
+      logMessage(s.run, "You venture deeper into Floor " + s.run.floor);
     }
   }
 
   if (action.type === "RETURN_TO_LOBBY") {
     if (s.run && (s.run.phase === "victory" || s.run.phase === "defeat")) {
-      // Settlement is already done during phase transition.
+      if (!s.run.settled) {
+        s.meta.gems += s.run.gemsEarned + Math.floor(s.run.gold / 10);
+        s.run.settled = true;
+      }
       s.run = null;
     }
   }

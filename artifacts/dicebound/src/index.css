@@ -6,7 +6,7 @@
 
 :root {
   --color-grass: 76 100% 50%;
-  --color-ui-purple: 260 50% 30%;
+  --color-ui-purple: #7234ba;
   --app-font-sans: 'Outfit', sans-serif;
 }
 
@@ -15,9 +15,6 @@ body {
   overflow: hidden;
   background-color: #111;
   font-family: var(--app-font-sans);
-}
-
-.dark {
 }
 
 @layer utilities {

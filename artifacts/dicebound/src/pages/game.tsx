@@ -4,36 +4,13 @@ import { GameBoard } from '../components/GameBoard';
 import { TopBar } from '../components/TopBar';
 import { CombatOverlay } from '../components/CombatOverlay';
 import { ActionOverlay } from '../components/ActionOverlay';
-import { Dices, FastForward } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { DiceButton } from '../components/DiceButton';
+import { FastForward, BookOpen } from 'lucide-react';
+import { useState } from 'react';
 
 export default function Game() {
   const { state, dispatch, speed, setSpeed } = useGame();
-  const [rolling, setRolling] = useState(false);
-  const [diceFace, setDiceFace] = useState(1);
-  const [visualPosition, setVisualPosition] = useState(0);
-
-  useEffect(() => {
-    if (state?.run) {
-      if (state.run.phase === 'explore' && visualPosition !== state.run.position) {
-        if (state.run.position === 0) {
-          setVisualPosition(0);
-        } else {
-          const timer = setInterval(() => {
-            setVisualPosition(p => {
-              if (p < state.run!.position) return p + 1;
-              clearInterval(timer);
-              return p;
-            });
-          }, 200);
-          return () => clearInterval(timer);
-        }
-      } else if (state.run.position === 0) {
-        setVisualPosition(0);
-      }
-    }
-    return undefined;
-  }, [state?.run?.position, state?.run?.phase]);
+  const [showSkills, setShowSkills] = useState(false);
 
   if (!state) return null;
 
@@ -41,28 +18,11 @@ export default function Game() {
     return <Lobby state={state} dispatch={dispatch} />;
   }
 
-  const handleRoll = () => {
-    if (rolling || state.run!.phase !== 'explore') return;
-    setRolling(true);
-    let face = 1;
-    const interval = setInterval(() => {
-      face = Math.floor(Math.random() * 6) + 1;
-      setDiceFace(face);
-    }, 100);
-
-    setTimeout(() => {
-      clearInterval(interval);
-      setRolling(false);
-      dispatch({ type: 'ROLL_DICE' });
-    }, 1000);
-  };
-
-  const isMoving = visualPosition !== state.run.position;
-  const canRoll = state.run.phase === 'explore' && !rolling && !isMoving;
-  const inCombat = state.run.phase === 'combat';
+  const r = state.run;
+  const inCombat = r.phase === 'combat';
 
   return (
-    <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans">
+    <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans select-none">
       <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#e0ff00]">
         
         {/* Grass Background details */}
@@ -70,55 +30,67 @@ export default function Game() {
 
         {/* Scene Split - If in combat, shrink board to bottom */}
         <div className={`absolute inset-0 transition-transform duration-700 ease-in-out ${inCombat ? 'translate-y-[40%] scale-90 opacity-40' : 'translate-y-0 scale-100'}`}>
-           <GameBoard tiles={state.run.tiles} position={visualPosition} />
+           <GameBoard run={r} visualPosition={r.position} />
         </div>
 
-        <TopBar run={state.run} floor={state.run.floor} />
+        <TopBar run={r} />
 
         {inCombat && (
-          <CombatOverlay run={state.run} />
+          <CombatOverlay run={r} />
         )}
 
-        <ActionOverlay run={state.run} dispatch={dispatch} />
-
-        {/* Dice rolling overlay */}
-        {rolling && (
-          <div className="absolute inset-0 z-40 bg-black/20 flex items-center justify-center pointer-events-none">
-             <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,1)] animate-spin border-4 border-slate-200">
-                <div className="text-5xl font-black text-black -rotate-45">{diceFace}</div>
-             </div>
-          </div>
-        )}
+        <ActionOverlay run={r} dispatch={dispatch} meta={state.meta} />
 
         {/* Dice Button Bottom */}
         <div className="absolute bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
-           {state.run.phase === 'explore' && !isMoving && !rolling && (
-              <button 
-                onClick={handleRoll}
-                className="pointer-events-auto relative w-28 h-24 transform transition-transform active:scale-95 group"
-              >
-                 {/* 3D Dice Button CSS drawing */}
-                 <div className="absolute inset-0 bg-[#d9381e] rounded-3xl mt-4" />
-                 <div className="absolute inset-0 bg-[#ff5733] rounded-3xl mb-4 border-b-4 border-[#ff8c70] shadow-[0_0_20px_rgba(255,87,51,0.6)] flex items-center justify-center group-active:translate-y-4 group-active:mb-0 transition-transform">
-                    <Dices className="w-10 h-10 text-white drop-shadow-md" />
-                 </div>
-                 {/* Floating hand icon indicator like in screenshot */}
-                 <div className="absolute -top-10 left-1/2 -ml-4 animate-bounce">
-                    <div className="bg-white text-black px-2 py-1 rounded text-2xl border-2 border-black drop-shadow-md">👇</div>
-                 </div>
-              </button>
-           )}
+           <DiceButton run={r} dispatch={dispatch} />
         </div>
 
+        {/* Skills panel toggle */}
+        {(r.phase === 'explore' || r.phase === 'moving') && (
+          <div className="absolute bottom-6 right-6 z-30">
+             <button 
+                onClick={() => setShowSkills(true)}
+                aria-label="Run skills"
+                className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-4 border-[#1c1c1c] shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all"
+              >
+                <BookOpen className="w-6 h-6 text-slate-800" />
+             </button>
+          </div>
+        )}
+
         {/* Speed toggle bottom left */}
-        {state.run.phase === 'combat' && (
+        {inCombat && (
           <div className="absolute bottom-6 left-6 z-30 pointer-events-auto">
              <button 
                 onClick={() => setSpeed(s => s === 1 ? 2 : 1)}
-                className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-md active:scale-95"
+                aria-label="Toggle speed"
+                className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all"
               >
                 <FastForward className="w-4 h-4 fill-current" /> x{speed}
              </button>
+          </div>
+        )}
+
+        {/* Skills Modal */}
+        {showSkills && (
+          <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center p-6 backdrop-blur-sm pointer-events-auto" onClick={() => setShowSkills(false)}>
+            <div className="bg-white rounded-[32px] p-6 w-full max-h-[70vh] flex flex-col gap-4 border-4 border-[#1c1c1c] shadow-2xl" onClick={e => e.stopPropagation()}>
+              <h2 className="text-2xl font-black text-slate-800 text-center uppercase">Run Skills</h2>
+              <div className="flex-1 overflow-y-auto flex flex-col gap-3">
+                {r.skills.length === 0 ? (
+                  <div className="text-slate-400 font-bold text-center text-sm py-4">No skills acquired yet.</div>
+                ) : (
+                  r.skills.map(sk => (
+                    <div key={sk.id} className="bg-slate-100 p-3 rounded-xl border-2 border-slate-200">
+                      <div className="font-black text-slate-800">{sk.name}</div>
+                      <div className="text-xs text-slate-500 font-bold mt-1">{sk.description}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <button onClick={() => setShowSkills(false)} className="w-full py-3 bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-2xl font-black text-lg transition-colors border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 mt-2">Close</button>
+            </div>
           </div>
         )}
 

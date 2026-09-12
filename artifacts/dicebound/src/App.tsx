@@ -8,7 +8,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Game />
-      <Toaster theme="dark" position="top-center" />
+      <Toaster position="top-center" theme="dark" />
     </QueryClientProvider>
   );
 }
