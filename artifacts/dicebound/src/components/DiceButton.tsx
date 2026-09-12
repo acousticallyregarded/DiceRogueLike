@@ -1,6 +1,7 @@
 import { RunState, GameAction } from '../engine';
 import { Dices } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { DieFace } from './DieFace';
 
 export function DiceButton({ run, dispatch }: { run: RunState, dispatch: (a: GameAction) => void }) {
   const rollRequestPending = useRef(false);
@@ -33,17 +34,11 @@ export function DiceButton({ run, dispatch }: { run: RunState, dispatch: (a: Gam
       {showRoll && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center pointer-events-none backdrop-blur-sm">
            <div className="flex gap-4">
-              <div
-                aria-label={`Die ${visualDice[0]}`}
-                className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce border-4 border-slate-200 text-black font-black text-4xl"
-              >
-                {visualDice[0]}
+              <div className="motion-safe:animate-bounce">
+                <DieFace value={visualDice[0]} />
              </div>
-              <div
-                aria-label={`Die ${visualDice[1]}`}
-                className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce delay-75 border-4 border-slate-200 text-black font-black text-4xl"
-              >
-                {visualDice[1]}
+              <div className="motion-safe:animate-bounce" style={{ animationDelay: '75ms' }}>
+                <DieFace value={visualDice[1]} />
              </div>
            </div>
            <div className="absolute mt-32 rounded-full bg-white px-4 py-2 text-black font-black shadow-lg">
@@ -57,9 +52,12 @@ export function DiceButton({ run, dispatch }: { run: RunState, dispatch: (a: Gam
       {showMovementResult && (
         <div
           aria-label={`Moved ${visualDice[0] + visualDice[1]} steps from dice ${visualDice[0]} and ${visualDice[1]}`}
-          className="fixed bottom-32 left-1/2 z-40 -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-black font-black shadow-lg pointer-events-none"
+          className="fixed bottom-32 left-1/2 z-40 -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-black font-black shadow-lg pointer-events-none flex items-center gap-2 whitespace-nowrap"
         >
-          {visualDice[0]} + {visualDice[1]} = {visualDice[0] + visualDice[1]} steps
+          <DieFace value={visualDice[0]} small />
+          <span aria-hidden="true">+</span>
+          <DieFace value={visualDice[1]} small />
+          <span>= {visualDice[0] + visualDice[1]} steps</span>
         </div>
       )}
 
