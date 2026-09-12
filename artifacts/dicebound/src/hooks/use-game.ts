@@ -5,6 +5,7 @@ import {
   act,
   validateState,
   createInitialState,
+  DICE_ROLL_ANIMATION_DURATION_MS,
   getEnemyResponseDelayMs,
 } from '../engine';
 import { toast } from 'sonner';
@@ -72,31 +73,52 @@ export function useGame() {
     return () => window.clearTimeout(timer);
   }, [dispatch, state?.run?.combatTurn, state?.run?.phase]);
 
+  // The reducer commits the actual dice result before the presentation starts.
+  // Holding movement here keeps the displayed pair stable and means a save
+  // taken during the roll can resume the same result without rolling again.
+  useEffect(() => {
+    if (state?.run?.phase !== 'moving' || !state.run.rollAnimating) return;
+
+    const timer = window.setTimeout(() => {
+      dispatch({ type: 'BEGIN_MOVEMENT' });
+    }, DICE_ROLL_ANIMATION_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [dispatch, state?.run?.phase, state?.run?.rollAnimating]);
+
   useEffect(() => {
     if (!state?.run) return;
     
     let frameId: number;
+    if (state.run.phase !== 'moving' || state.run.rollAnimating) {
+      // Reset the movement clock at the boundary of every non-moving phase.
+      // Otherwise the first step after the dice presentation could fire
+      // immediately using elapsed time from before the roll.
+      moveTick.current = performance.now();
+      return;
+    }
+
+    // The first step starts on a fresh 300ms (or speed-adjusted) interval,
+    // matching the cadence between each subsequent intermediate tile.
+    moveTick.current = performance.now();
     const loop = (time: number) => {
       frameId = requestAnimationFrame(loop);
       
       const r = state.run;
       if (!r) return;
       
-      if (r.phase === 'moving') {
+      if (r.phase === 'moving' && !r.rollAnimating) {
         const dtMove = time - moveTick.current;
         const moveInterval = 300 / Math.max(1, speed);
         if (dtMove >= moveInterval) { // Keep each tile step on the 300ms base timeline
           moveTick.current = time;
           dispatch({ type: 'STEP_MOVE' });
         }
-      } else {
-        moveTick.current = time;
       }
     };
     
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [state?.run?.phase, state?.run?.position, dispatch, speed]);
+  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, dispatch, speed]);
 
   return { state, dispatch, speed, setSpeed };
 }

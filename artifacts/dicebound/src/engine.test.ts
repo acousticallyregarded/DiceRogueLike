@@ -57,6 +57,46 @@ function runAssertions() {
   assert.equal(getWalkDirection(23, 0), "north-east");
   assert.equal(getWalkDirection(1, 0), null);
 
+  // The reducer owns the one authentic 2d6 roll. The displayed pair and
+  // movement budget are committed together, so a second click cannot replace
+  // the result while that roll is being presented.
+  let rolled = act(createInitialState(), { type: "START_RUN" });
+  rolled = act(rolled, { type: "ROLL_DICE" });
+  assert.equal(rolled.run!.phase, "moving");
+  assert.equal(rolled.run!.rollAnimating, true);
+  assert.ok(rolled.run!.lastRolls);
+  const [dieOne, dieTwo] = rolled.run!.lastRolls!;
+  assert.ok(dieOne >= 1 && dieOne <= 6);
+  assert.ok(dieTwo >= 1 && dieTwo <= 6);
+  assert.equal(rolled.run!.stepsRemaining, dieOne + dieTwo);
+  const duplicateRoll = act(rolled, { type: "ROLL_DICE" });
+  assert.deepEqual(duplicateRoll.run, rolled.run);
+  const reloadedRoll = validateState(JSON.parse(JSON.stringify(rolled)));
+  assert.deepEqual(reloadedRoll.run!.lastRolls, rolled.run!.lastRolls);
+  assert.equal(reloadedRoll.run!.stepsRemaining, rolled.run!.stepsRemaining);
+  assert.equal(reloadedRoll.run!.rollAnimating, true);
+  const startedMoving = act(rolled, { type: "BEGIN_MOVEMENT" });
+  assert.equal(startedMoving.run!.rollAnimating, false);
+
+  // Movement takes exactly N clockwise steps, including a 23 -> 0 wrap, and
+  // each intermediate index remains one adjacent tile in the same direction.
+  let wrapped = act(createInitialState(), { type: "START_RUN" });
+  wrapped.run!.position = 22;
+  wrapped.run!.phase = "moving";
+  wrapped.run!.stepsRemaining = 5;
+  wrapped.run!.rollAnimating = false;
+  wrapped.run!.tiles = wrapped.run!.tiles.map(tile => ({ ...tile, type: "start" }));
+  const expectedPositions = [23, 0, 1, 2, 3];
+  let previousPosition = wrapped.run!.position;
+  for (const expectedPosition of expectedPositions) {
+    wrapped = act(wrapped, { type: "STEP_MOVE" });
+    assert.equal(wrapped.run!.position, expectedPosition);
+    assert.equal(getWalkDirection(previousPosition, expectedPosition) !== null, true);
+    previousPosition = expectedPosition;
+  }
+  assert.equal(wrapped.run!.stepsRemaining, 0);
+  assert.equal(wrapped.run!.phase, "explore");
+
   // Traits are applied after defense: resistance floors, vulnerability doubles,
   // and immunity is exactly zero (never promoted to one).
   assert.equal(calculateDamage(14, 2, "skeleton", "bludgeoning").amount, 24);

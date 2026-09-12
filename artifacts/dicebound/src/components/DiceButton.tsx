@@ -1,45 +1,65 @@
 import { RunState, GameAction } from '../engine';
 import { Dices } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function DiceButton({ run, dispatch }: { run: RunState, dispatch: (a: GameAction) => void }) {
-  const [rolling, setRolling] = useState(false);
-  const [visualDice, setVisualDice] = useState<[number, number] | null>(null);
-
+  const rollRequestPending = useRef(false);
   const isMoving = run.phase === 'moving';
-  const canRoll = run.phase === 'explore' && !rolling && !isMoving;
+  const isRolling = run.rollAnimating === true;
+  const canRoll = run.phase === 'explore' && !isRolling && !isMoving;
+  const visualDice = run.lastRolls;
+  const showRoll = isRolling && visualDice;
+  const showMovementResult = isMoving && !isRolling && visualDice;
+
+  useEffect(() => {
+    if (run.phase !== 'explore') rollRequestPending.current = false;
+  }, [run.phase]);
 
   const handleRoll = () => {
-    if (!canRoll) return;
-    setRolling(true);
-    let d1 = 1, d2 = 1;
-    const interval = setInterval(() => {
-      d1 = Math.floor(Math.random() * 6) + 1;
-      d2 = Math.floor(Math.random() * 6) + 1;
-      setVisualDice([d1, d2]);
-    }, 100);
-
-    setTimeout(() => {
-      clearInterval(interval);
-      setRolling(false);
-      setVisualDice(null);
-      dispatch({ type: 'ROLL_DICE' });
-    }, 800);
+    // The reducer is the durable guard; this ref also closes the tiny
+    // synchronous double-click window before React has rendered the moving
+    // state back into the button.
+    if (!canRoll || rollRequestPending.current) return;
+    rollRequestPending.current = true;
+    // ROLL_DICE commits the only random pair in the reducer. Keeping the
+    // committed result in RunState means the animation cannot show a pair
+    // whose sum differs from the steps that are about to be walked.
+    dispatch({ type: 'ROLL_DICE' });
   };
 
   return (
     <>
       {/* Dice rolling overlay */}
-      {rolling && visualDice && (
+      {showRoll && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center pointer-events-none backdrop-blur-sm">
            <div className="flex gap-4">
-             <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce border-4 border-slate-200 text-black font-black text-4xl">
+              <div
+                aria-label={`Die ${visualDice[0]}`}
+                className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce border-4 border-slate-200 text-black font-black text-4xl"
+              >
                 {visualDice[0]}
              </div>
-             <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce delay-75 border-4 border-slate-200 text-black font-black text-4xl">
+              <div
+                aria-label={`Die ${visualDice[1]}`}
+                className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce delay-75 border-4 border-slate-200 text-black font-black text-4xl"
+              >
                 {visualDice[1]}
              </div>
            </div>
+           <div className="absolute mt-32 rounded-full bg-white px-4 py-2 text-black font-black shadow-lg">
+             {visualDice[0] + visualDice[1]} steps
+           </div>
+        </div>
+      )}
+
+      {/* Keep the committed result visible and immutable for every movement
+          step, including a wrap from tile 23 to tile 0. */}
+      {showMovementResult && (
+        <div
+          aria-label={`Moved ${visualDice[0] + visualDice[1]} steps from dice ${visualDice[0]} and ${visualDice[1]}`}
+          className="fixed bottom-32 left-1/2 z-40 -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-black font-black shadow-lg pointer-events-none"
+        >
+          {visualDice[0]} + {visualDice[1]} = {visualDice[0] + visualDice[1]} steps
         </div>
       )}
 

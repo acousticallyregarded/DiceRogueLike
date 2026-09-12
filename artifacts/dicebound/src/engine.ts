@@ -157,6 +157,13 @@ export interface RunState {
   
   log: { id: string, msg: string }[];
   settled: boolean;
+  /**
+   * The dice result is committed before the movement animation starts. This
+   * marker lets the hook hold the first step until the result has been shown,
+   * and is optional so version 4 saves made before dice animation was added
+   * continue to load as ordinary movement.
+   */
+  rollAnimating?: boolean;
 }
 
 export interface GameStateV4 {
@@ -168,6 +175,7 @@ export const POTION_ANIMATION_DURATION_MS = 1800;
 export const FIRE_BOMB_ANIMATION_DURATION_MS = 2600;
 export const GUARD_TONIC_ANIMATION_DURATION_MS = 2600;
 export const DEFAULT_ENEMY_RESPONSE_DELAY_MS = 600;
+export const DICE_ROLL_ANIMATION_DURATION_MS = 800;
 
 /**
  * The enemy response delay is derived from committed state rather than UI
@@ -191,6 +199,7 @@ export const getEnemyTurnDelay = getEnemyResponseDelayMs;
 export type GameAction =
   | { type: "START_RUN" }
   | { type: "ROLL_DICE" }
+  | { type: "BEGIN_MOVEMENT" }
   | { type: "STEP_MOVE" }
   | { type: "SELECT_ATTACK"; damageType: DamageType }
   | { type: "PLAYER_ATTACK"; targetId?: string }
@@ -216,6 +225,25 @@ export type GameAction =
   | { type: "RESET_SAVE" };
 
 const BOARD_SIZE = 24;
+
+export type DiceRoll = [number, number];
+
+function rollD6(): number {
+  return Math.floor(Math.random() * 6) + 1;
+}
+
+/** Roll the two six-sided dice used for board movement. */
+export function rollTwoDice(): DiceRoll {
+  return [rollD6(), rollD6()];
+}
+
+function isDiceFace(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+}
+
+function isDiceRoll(value: unknown): value is DiceRoll {
+  return Array.isArray(value) && value.length === 2 && isDiceFace(value[0]) && isDiceFace(value[1]);
+}
 
 export type WalkDirection = "south-east" | "south-west" | "north-west" | "north-east";
 
@@ -508,6 +536,14 @@ export function validateState(input: any): GameStateV4 {
     s.run.log = Array.isArray(s.run.log) ? s.run.log : [];
     s.run.shopRerollCost = typeof s.run.shopRerollCost === "number" ? s.run.shopRerollCost : 10;
     s.run.settled = Boolean(s.run.settled);
+    s.run.lastRolls = isDiceRoll(s.run.lastRolls)
+      ? s.run.lastRolls
+      : null;
+    s.run.stepsRemaining = Number.isFinite(s.run.stepsRemaining)
+      ? Math.max(0, Math.floor(s.run.stepsRemaining))
+      : 0;
+    // Saves from before the roll-animation marker represent ordinary movement.
+    s.run.rollAnimating = s.run.phase === "moving" && Boolean(s.run.rollAnimating);
     s.run.isBossCombat = Boolean(s.run.isBossCombat);
     s.run.selectedDamageType = isAttackStyle(s.run.selectedDamageType)
       ? s.run.selectedDamageType
@@ -975,13 +1011,16 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       shopItems: null,
       shopRerollCost: 10,
       log: [{ id: uuid(), msg: "You enter the realm. The adventure begins!" }],
-      settled: false
+      settled: false,
+      rollAnimating: false,
     };
   }
 
   if (action.type === "ROLL_DICE") {
     const r = s.run;
-    if (!r || r.phase !== "explore") return s;
+    // A committed roll owns the run until its movement resolves. The phase
+    // check is also the reducer-level guard against rapid/double rolls.
+    if (!r || r.phase !== "explore" || r.rollAnimating) return s;
     
     // Check level up first before rolling
     if (r.queuedLevels > 0) {
@@ -990,19 +1029,29 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       return s;
     }
 
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
+    const [d1, d2] = rollTwoDice();
     r.lastRolls = [d1, d2];
     r.stepsRemaining = d1 + d2;
     r.bossRollsLeft--;
     r.phase = "moving";
+    r.rollAnimating = true;
     logMessage(r, `Rolled a ${d1 + d2}.`);
+  }
+
+  if (action.type === "BEGIN_MOVEMENT") {
+    const r = s.run;
+    if (!r || r.phase !== "moving" || !r.rollAnimating) return s;
+    r.rollAnimating = false;
   }
 
   if (action.type === "STEP_MOVE") {
     const r = s.run;
     if (!r || r.phase !== "moving" || r.stepsRemaining <= 0) return s;
     
+    // Direct engine callers may advance immediately after ROLL_DICE. The
+    // realtime hook waits for BEGIN_MOVEMENT, but a committed step always
+    // ends the roll presentation phase.
+    r.rollAnimating = false;
     r.position = (r.position + 1) % BOARD_SIZE;
     r.stepsRemaining--;
     

@@ -9,6 +9,7 @@ import { AttackStyleSelector } from '../components/AttackStyleSelector';
 import { MonsterGuide } from '../components/MonsterGuide';
 import { FastForward, BookOpen } from 'lucide-react';
 import { useState } from 'react';
+import forestClearingUrl from '../assets/forest-clearing.webp';
 
 export default function Game() {
   const { state, dispatch, speed, setSpeed } = useGame();
@@ -26,10 +27,21 @@ export default function Game() {
 
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans select-none">
-      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#e0ff00]">
+      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#375f35]">
         
-        {/* Grass Background details */}
-        <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'radial-gradient(#a3e635 2px, transparent 2px)', backgroundSize: '24px 24px' }} />
+        {/* Quiet forest clearing keeps the raised tiles and characters legible. */}
+        <img
+          src={forestClearingUrl}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+        />
+        <div
+          aria-hidden="true"
+          className={`absolute inset-0 pointer-events-none transition-colors duration-700 ${inCombat ? 'bg-black/35' : 'bg-transparent'}`}
+          style={{ backgroundImage: 'linear-gradient(to bottom, rgba(15,40,26,0.15), transparent 25%, transparent 75%, rgba(15,40,26,0.25))' }}
+        />
 
         {/* Scene Split - If in combat, shrink board to bottom */}
         <div className={`absolute inset-0 transition-transform duration-700 ease-in-out ${inCombat ? 'translate-y-[40%] scale-90 opacity-40' : 'translate-y-0 scale-100'}`}>
