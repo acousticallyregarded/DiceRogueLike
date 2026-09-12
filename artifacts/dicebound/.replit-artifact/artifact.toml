@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Dicebound"
+description = "A playable fantasy board-and-dice roguelike with monster encounters, equipment upgrades, boss fights, and locally saved progression inspired by Rogue Legend."
+version = "1.0.0"
+id = "artifacts/dicebound"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23121
+
+[services.development]
+run = "pnpm --filter @workspace/dicebound run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dicebound", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/dicebound/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23121"
+BASE_PATH = "/"
