@@ -1,53 +1,119 @@
 import { useGame } from '../hooks/use-game';
-import { GameBoard } from '../components/game-board';
-import { PlayerSidebar } from '../components/player-sidebar';
-import { CombatSidebar } from '../components/combat-sidebar';
-import { ActionBar } from '../components/action-bar';
-import { Loader2 } from 'lucide-react';
+import { Lobby } from '../components/Lobby';
+import { GameBoard } from '../components/GameBoard';
+import { TopBar } from '../components/TopBar';
+import { CombatOverlay } from '../components/CombatOverlay';
+import { ActionOverlay } from '../components/ActionOverlay';
+import { Dices, RefreshCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 export default function Game() {
-  const { state, dispatch, isAnimating, visualPosition } = useGame();
+  const { state, dispatch } = useGame();
+  const [rolling, setRolling] = useState(false);
+  const [diceFace, setDiceFace] = useState(1);
+  const [visualPosition, setVisualPosition] = useState(0);
 
-  if (!state) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center font-serif text-2xl text-muted-foreground gap-4">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        Summoning realm...
-      </div>
-    );
+  useEffect(() => {
+    if (state?.run) {
+      if (state.run.phase === 'explore' && visualPosition !== state.run.position) {
+        if (state.run.position === 0) {
+          setVisualPosition(0);
+        } else {
+          const timer = setInterval(() => {
+            setVisualPosition(p => {
+              if (p < state.run!.position) return p + 1;
+              clearInterval(timer);
+              return p;
+            });
+          }, 200);
+          return () => clearInterval(timer);
+        }
+      } else if (state.run.position === 0) {
+        setVisualPosition(0);
+      }
+    }
+    return undefined;
+  }, [state?.run?.position, state?.run?.phase]);
+
+  if (!state) return null;
+
+  if (!state.run) {
+    return <Lobby state={state} dispatch={dispatch} />;
   }
 
+  const handleRoll = () => {
+    if (rolling || state.run!.phase !== 'explore') return;
+    setRolling(true);
+    let face = 1;
+    const interval = setInterval(() => {
+      face = Math.floor(Math.random() * 6) + 1;
+      setDiceFace(face);
+    }, 100);
+
+    setTimeout(() => {
+      clearInterval(interval);
+      setRolling(false);
+      dispatch({ type: 'ROLL_DICE' });
+    }, 1000);
+  };
+
+  const isMoving = visualPosition !== state.run.position;
+  const canRoll = state.run.phase === 'explore' && !rolling && !isMoving;
+
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans flex flex-col md:flex-row overflow-hidden selection:bg-primary/30">
-      <PlayerSidebar state={state} dispatch={dispatch} isAnimating={isAnimating} />
-      
-      <main className="flex-1 flex flex-col h-[100dvh] relative">
-        <div className="flex-1 p-4 md:p-8 flex items-center justify-center relative overflow-hidden">
-           {/* Background decorative elements */}
-           <div className="absolute inset-0 pointer-events-none opacity-[0.15] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/30 via-background to-background"></div>
-           <GameBoard state={state} visualPosition={visualPosition} />
-           
-           {/* Phase Overlays */}
-           {state.phase === 'defeat' && (
-             <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-1000">
-                <h1 className="font-serif text-6xl md:text-8xl font-bold text-destructive drop-shadow-[0_0_30px_rgba(255,0,0,0.5)] tracking-widest uppercase">You Died</h1>
-                <p className="mt-4 text-xl text-muted-foreground font-serif">Your journey ends on floor {state.floor}.</p>
-             </div>
-           )}
-           {state.phase === 'victory' && (
-             <div className="absolute inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-1000">
-                <h1 className="font-serif text-5xl md:text-7xl font-bold text-primary drop-shadow-[0_0_30px_rgba(255,215,0,0.5)] tracking-widest uppercase text-center leading-tight">Boss<br/>Defeated!</h1>
-                <p className="mt-6 text-xl text-primary/80 font-serif font-bold">Floor {state.floor} Cleared</p>
-             </div>
-           )}
-        </div>
+    <div className="min-h-screen bg-black text-zinc-100 font-sans flex flex-col overflow-hidden selection:bg-amber-500/30">
+      <TopBar run={state.run} />
+
+      <main className="flex-1 relative flex items-center justify-center pt-16">
+        <GameBoard tiles={state.run.tiles} position={visualPosition} />
         
-        <div className="h-56 md:h-64 border-t border-border bg-card/80 backdrop-blur-md z-10 shrink-0">
-           <ActionBar state={state} dispatch={dispatch} isAnimating={isAnimating} />
-        </div>
+        {state.run.phase === 'combat' && (
+          <CombatOverlay run={state.run} />
+        )}
+
+        <ActionOverlay run={state.run} dispatch={dispatch} />
+
+        {/* Dice rolling overlay */}
+        {rolling && (
+          <div className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+            <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center shadow-2xl animate-spin shadow-amber-500/50">
+              <span className="text-6xl font-black text-black">{diceFace}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Floating dice result */}
+        {!rolling && state.run.lastRoll && state.run.phase === 'explore' && !isMoving && (
+          <div className="absolute bottom-32 right-32 text-amber-500 font-bold text-2xl animate-bounce drop-shadow-md">
+            Rolled {state.run.lastRoll}!
+          </div>
+        )}
       </main>
-      
-      <CombatSidebar state={state} />
+
+      <div className="h-24 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between px-8 shrink-0 z-30">
+        <button 
+          onClick={() => dispatch({ type: 'RESET_SAVE' })}
+          className="text-zinc-600 hover:text-red-500 transition-colors flex items-center gap-2 text-sm"
+          title="Reset completely"
+        >
+          <RefreshCcw className="w-4 h-4" /> Reset Save
+        </button>
+
+        <button
+          onClick={handleRoll}
+          disabled={!canRoll}
+          className={"group relative px-10 py-4 bg-amber-600 hover:bg-amber-500 rounded-full font-bold text-xl text-amber-950 shadow-[0_0_20px_rgba(217,119,6,0.3)] transition-all " + (canRoll ? 'hover:scale-105 hover:shadow-[0_0_40px_rgba(217,119,6,0.6)] cursor-pointer' : 'opacity-50 cursor-not-allowed saturate-0')}
+        >
+          <span className="flex items-center gap-3">
+            <Dices className={"w-6 h-6 " + (canRoll ? 'group-hover:animate-bounce' : '')} />
+            Roll Dice
+          </span>
+        </button>
+        
+        <div className="w-32 text-right text-zinc-500 font-serif italic text-sm">
+          Floor {state.run.floor}
+        </div>
+      </div>
     </div>
   );
 }

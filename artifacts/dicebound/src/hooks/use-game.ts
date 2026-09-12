@@ -1,85 +1,78 @@
-import { useState, useEffect, useCallback } from 'react';
-import { GameState, act, loadGame, saveGame, initialGame } from '../game';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { GameStateV2, GameAction, act, validateState, createInitialState } from '../engine';
 import { toast } from 'sonner';
 
-export function useGame() {
-  const [state, setState] = useState<GameState | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [visualPosition, setVisualPosition] = useState(0);
+const KEY_V2 = "dicebound-save-v3"; // Version bump for schema changes
 
+export function loadGame(): GameStateV2 {
+  try {
+    const raw = localStorage.getItem(KEY_V2);
+    if (!raw) return createInitialState();
+    const parsed = JSON.parse(raw);
+    const s = validateState(parsed);
+    if (s.meta.version !== 3) return createInitialState();
+    return s;
+  } catch (err) {
+    console.error("Save load error", err);
+    return createInitialState();
+  }
+}
+
+export function saveGame(s: GameStateV2): boolean {
+  try {
+    localStorage.setItem(KEY_V2, JSON.stringify(s));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function useGame() {
+  const [state, setState] = useState<GameStateV2 | null>(null);
+  
   useEffect(() => {
-    try {
-      const saved = loadGame();
-      if (saved) {
-        setState(saved);
-        setVisualPosition(saved.position);
-      } else {
-        const init = initialGame();
-        setState(init);
-        setVisualPosition(init.position);
-      }
-    } catch (e) {
-      console.error("Failed to load game", e);
-      const init = initialGame();
-      setState(init);
-      setVisualPosition(init.position);
-    }
+    setState(loadGame());
   }, []);
 
-  const dispatch = useCallback((action: "roll"|"attack"|"guard"|"potion"|"weapon"|"armor"|"next"|"restart") => {
+  const dispatch = useCallback((action: GameAction) => {
     setState(prev => {
       if (!prev) return prev;
-      
-      const oldGold = prev.gold;
-      
       try {
         const next = act(prev, action);
         if (!saveGame(next)) {
           toast.error("Failed to save game progress");
         }
-        
-        if (action === 'weapon' && next.gold === oldGold) {
-          toast.error("Not enough gold to upgrade weapon");
-        }
-        if (action === 'armor' && next.gold === oldGold) {
-          toast.error("Not enough gold to upgrade armor");
-        }
-        
         return next;
       } catch (e) {
-        console.error("Action failed", e);
+        console.error("Action error", e);
+        toast.error("An error occurred processing that action");
         return prev;
       }
     });
   }, []);
 
-  // Visual movement logic
+  const lastTick = useRef<number>(performance.now());
   useEffect(() => {
-    if (!state) return;
-    if (state.position === visualPosition) return;
-
-    // Check if we restarted or advanced floor (jump backward significantly, exception is boss finish to 0)
-    const isRestart = state.position === 0 && visualPosition !== 23;
-    
-    if (isRestart) {
-      setVisualPosition(state.position);
-      setIsAnimating(false);
+    if (!state?.run || state.run.phase !== 'combat') {
+      lastTick.current = performance.now();
       return;
     }
-
-    setIsAnimating(true);
-    let currentVp = visualPosition;
-    const timer = setInterval(() => {
-      currentVp = (currentVp + 1) % 24;
-      setVisualPosition(currentVp);
-      if (currentVp === state.position) {
-        clearInterval(timer);
-        setIsAnimating(false);
+    
+    let frameId: number;
+    const loop = (time: number) => {
+      const dt = time - lastTick.current;
+      lastTick.current = time;
+      
+      if (dt > 0) {
+        dispatch({ type: 'TICK_COMBAT', dtMs: Math.min(dt, 100) }); 
       }
-    }, 200);
+      
+      frameId = requestAnimationFrame(loop);
+    };
+    
+    frameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frameId);
+  }, [state?.run?.phase, dispatch]);
 
-    return () => clearInterval(timer);
-  }, [state?.position]);
-
-  return { state, dispatch, isAnimating, visualPosition };
+  return { state, dispatch };
 }
