@@ -17,7 +17,7 @@ import goblinPixelUrl from '../assets/goblin-pixel.png';
 import { GoblinPixelSprite } from './GoblinPixelSprite';
 import skeletonUrl from '../assets/skeleton.png';
 import bossUrl from '../assets/boss.png';
-import heroUrl from '../assets/hero.png';
+import heroUrl from '../assets/custom-combat-hero.png';
 import { SpriteAnimator, SpriteName } from './SpriteAnimator';
 import { AttackStyleSelector } from './AttackStyleSelector';
 
@@ -316,11 +316,6 @@ export function CombatOverlay({
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
-  const playerSprite: SpriteName = visualEvents.heroLastAction === 'hit'
-    ? 'hero-hit'
-    : visualEvents.heroLastAction === 'attack'
-      ? 'hero-attack'
-      : 'hero-walk';
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
 
@@ -404,12 +399,12 @@ export function CombatOverlay({
           >
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
               <SpriteAnimator
-                sprite={playerSprite}
+                sprite="custom-hero-idle"
                 fallbackUrl={heroUrl}
-                active={playerAttackTrigger > 0 || playerHitTrigger > 0}
-                trigger={playerAttackTrigger + playerHitTrigger}
-                fps={14}
-                durationMs={combatDuration}
+                active
+                loop
+                frameCount={13}
+                durationMs={2600}
                 alt="Hero"
                 className="combat-actor__sprite drop-shadow-xl"
               />

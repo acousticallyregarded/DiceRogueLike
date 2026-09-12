@@ -34,7 +34,8 @@ export type GoblinPixelSpriteName = 'goblin-pixel-idle' | 'goblin-pixel-attack' 
 
 export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
   /** Name of the optional 8-frame, horizontal sheet. */
-  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName;
+  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName | 'custom-hero-idle';
+  frameCount?: number;
   /** Art shown until the sheet exists, and while this animator is idle. */
   fallbackUrl: string;
   /** Starts/restarts playback when this value changes. */
@@ -70,6 +71,7 @@ export function SpriteAnimator({
   active = false,
   loop = false,
   fps = 12,
+  frameCount = 8,
   durationMs,
   flip = false,
   holdLastFrame = false,
@@ -81,7 +83,6 @@ export function SpriteAnimator({
 }: SpriteAnimatorProps) {
   const reducedMotion = usePrefersReducedMotion();
   const sheetUrl = spriteUrls[sprite];
-  const frameCount = 8;
   const frameDuration = durationMs ?? (frameCount / Math.max(1, fps)) * 1000;
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
