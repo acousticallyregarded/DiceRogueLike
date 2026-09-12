@@ -1,0 +1,58 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "R_jwBnvSl3_8RTSstSFZl"
+uri = "file://attached_assets/generated_audio/dicebound-dice-roll.mp3"
+type = "audio"
+title = "Dice Roll — sound effect"
+description = "A short, tactile roll with settling taps."
+logical_id = "8b0510f7-a6a3-415e-ae12-6a380ab6eaee"
+content_hash = "sha256:ee4b63011ee2d04dd9d9bd5137882e7f2fe13ac84c5356001d4da9babf24a176"
+size = 20106
+mtime_ms = 1789244925351
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/8b0510f7-a6a3-415e-ae12-6a380ab6eaee/95c03307-b7be-453a-9685-d4b79d9edfae"
+storage_version_token = "1789244940690290"
+content_type = "audio/mpeg"
+
+[[outputs]]
+id = "vU_PhLUBjal6C6JrR97I1"
+uri = "file://attached_assets/generated_audio/dicebound-healing-potion.mp3"
+type = "audio"
+title = "Healing Potion — sound effect"
+description = "Cork pop, liquid glugs, and a gentle magical shimmer."
+logical_id = "e6aa7649-db56-453f-b74a-d0bcf8190738"
+content_hash = "sha256:bc475b7e9820be52dd60f58d16bc2095aac9474a005f4262b204690b450adb55"
+size = 29301
+mtime_ms = 1789244925385
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/e6aa7649-db56-453f-b74a-d0bcf8190738/ce150408-1a14-4377-92bd-d45b7b9c7155"
+storage_version_token = "1789244941395811"
+content_type = "audio/mpeg"
+
+[[outputs]]
+id = "M_3th40SqjzlDvCs5QSfL"
+uri = "file://attached_assets/generated_audio/dicebound-fire-bomb.mp3"
+type = "audio"
+title = "Fire Bomb — sound effect"
+description = "A throwing whoosh, compact fiery burst, and ember tail."
+logical_id = "7e9f7e50-c79a-4a06-a813-0abc74af5d5d"
+content_hash = "sha256:8ddcaa9b1938cf2f17de2fa851db5bb7aca3a6f8c3190a2159ed8a66a533a485"
+size = 41839
+mtime_ms = 1789244925445
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/7e9f7e50-c79a-4a06-a813-0abc74af5d5d/eea9c3c4-e513-4f15-9140-3e9b50d983ee"
+storage_version_token = "1789244942008434"
+content_type = "audio/mpeg"
+
+[[outputs]]
+id = "k_PTdpYoBOGQ80MIjLcxh"
+uri = "file://attached_assets/generated_audio/dicebound-forest-music.mp3"
+type = "audio"
+title = "Forest Exploration — music sample"
+description = "40-second original instrumental direction: warm piano, flute, harp, and gentle strings."
+logical_id = "8a135278-6427-468e-8368-7d7fdb2a01a8"
+content_hash = "sha256:6e99f585545619b0f141509edeac0c04df8c38055d4866a45d825831c4eff9c6"
+size = 640358
+mtime_ms = 1789244933593
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/8a135278-6427-468e-8368-7d7fdb2a01a8/3b3bf23d-dc5e-4617-ab22-e075aa4aeb32"
+storage_version_token = "1789244940100504"
+content_type = "audio/mpeg"
