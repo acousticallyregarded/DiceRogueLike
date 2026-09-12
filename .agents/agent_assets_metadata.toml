@@ -56,3 +56,45 @@ mtime_ms = 1789244933593
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/8a135278-6427-468e-8368-7d7fdb2a01a8/3b3bf23d-dc5e-4617-ab22-e075aa4aeb32"
 storage_version_token = "1789244940100504"
 content_type = "audio/mpeg"
+
+[[outputs]]
+id = "_OKsHFSJ41N-gLTM4lbwa"
+uri = "file://attached_assets/generated_audio/dicebound-sword-slash.mp3"
+type = "audio"
+title = "Sword Slash"
+description = "A quick blade swish for an attack swing."
+logical_id = "f6e6d9c1-71b9-45d8-80af-0967cc2abdd9"
+content_hash = "sha256:d53c5fab76136711bc57d125b794d2c0f410bc38ab0ae9a531f76ad2be99a4d5"
+size = 10493
+mtime_ms = 1789245047885
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/f6e6d9c1-71b9-45d8-80af-0967cc2abdd9/f4c21ecd-6dbe-4149-b4fe-43c2f2b5e8f5"
+storage_version_token = "1789245055999926"
+content_type = "audio/mpeg"
+
+[[outputs]]
+id = "pTPt-RmTfZ7UzIV24PZTR"
+uri = "file://attached_assets/generated_audio/dicebound-sword-metal.mp3"
+type = "audio"
+title = "Sword on Metal"
+description = "A sharp steel-on-steel clang with a short ringing decay."
+logical_id = "b9904776-f184-4fb0-b761-eaa4678ac596"
+content_hash = "sha256:6ecd8971efcbced367ac491a1b22347bd09a5aa6671c4c54c46c10831f37295f"
+size = 20106
+mtime_ms = 1789245048337
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/b9904776-f184-4fb0-b761-eaa4678ac596/43ed33f1-62e7-4a07-a255-f85b1757592d"
+storage_version_token = "1789245055295022"
+content_type = "audio/mpeg"
+
+[[outputs]]
+id = "t8FfuOGSC5mwinGjpawRf"
+uri = "file://attached_assets/generated_audio/dicebound-blunt-impact.mp3"
+type = "audio"
+title = "Blunt Impact"
+description = "A weighty thud with a little armor rattle."
+logical_id = "5cbc0238-e95c-4948-a4c9-70e135ecadd3"
+content_hash = "sha256:5facaf685a145afe7d836d1638b935ad9d7d7c36222c561df5d151357d859253"
+size = 15090
+mtime_ms = 1789245048713
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/5cbc0238-e95c-4948-a4c9-70e135ecadd3/acb60b35-dd91-44d9-88e6-958744885801"
+storage_version_token = "1789245056630868"
+content_type = "audio/mpeg"
