@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { GameStateV4, GameAction, act, validateState, createInitialState } from '../engine';
+import {
+  GameStateV4,
+  GameAction,
+  act,
+  validateState,
+  createInitialState,
+  getEnemyResponseDelayMs,
+} from '../engine';
 import { toast } from 'sonner';
 
 const KEY_V4 = "dicebound-save-v4";
@@ -52,14 +59,18 @@ export function useGame() {
     });
   }, []);
 
-  const speedRef = useRef(speed);
-  useEffect(() => {
-    speedRef.current = speed;
-  }, [speed]);
-
-  // Combat loop & Move loop
-  const lastTick = useRef<number>(performance.now());
+  // Movement remains animated; combat is intentionally not part of this
+  // realtime loop. Enemy turns are scheduled once after a committed player
+  // action, including after reloading an enemy-turn save.
   const moveTick = useRef<number>(performance.now());
+
+  useEffect(() => {
+    if (state?.run?.phase !== 'combat' || state.run.combatTurn !== 'enemy') return;
+    const timer = window.setTimeout(() => {
+      dispatch({ type: 'RESOLVE_ENEMY_TURN' });
+    }, getEnemyResponseDelayMs(state.run));
+    return () => window.clearTimeout(timer);
+  }, [dispatch, state?.run?.combatTurn, state?.run?.phase]);
 
   useEffect(() => {
     if (!state?.run) return;
@@ -71,20 +82,9 @@ export function useGame() {
       const r = state.run;
       if (!r) return;
       
-      if (r.phase === 'combat') {
-        const dt = time - lastTick.current;
-        lastTick.current = time;
-        if (dt > 0) {
-          const scaledDt = dt * speedRef.current;
-          dispatch({ type: 'TICK_COMBAT', dtMs: Math.min(scaledDt, 100 * speedRef.current) }); 
-        }
-      } else {
-        lastTick.current = time;
-      }
-
       if (r.phase === 'moving') {
         const dtMove = time - moveTick.current;
-        const moveInterval = 300 / Math.max(1, speedRef.current);
+        const moveInterval = 300 / Math.max(1, speed);
         if (dtMove >= moveInterval) { // Keep each tile step on the 300ms base timeline
           moveTick.current = time;
           dispatch({ type: 'STEP_MOVE' });
@@ -96,7 +96,7 @@ export function useGame() {
     
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [state?.run?.phase, state?.run?.enemies?.length, dispatch]);
+  }, [state?.run?.phase, state?.run?.position, dispatch, speed]);
 
   return { state, dispatch, speed, setSpeed };
 }

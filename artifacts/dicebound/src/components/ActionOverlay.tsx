@@ -53,6 +53,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
                   <div className="flex-1">
                     <h3 className="text-sm font-black text-slate-800 leading-tight">{item.name}</h3>
                     <p className="text-slate-500 text-[10px] font-semibold leading-tight mt-0.5">{item.description}</p>
+                   <p className="text-[9px] font-black uppercase tracking-wide text-slate-400 mt-1">Stock: {item.stock}</p>
                   </div>
                   <div className={`font-black flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm ${canAfford ? 'text-yellow-500' : 'text-slate-400'}`}>
                     <Coins className="w-3 h-3" /> {item.cost}

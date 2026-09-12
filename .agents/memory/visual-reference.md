@@ -15,3 +15,9 @@ Monster damage traits use SRD 5.1 as their authority, while attack stances and n
 **Why:** The user asked for D&D-inspired monsters with resistances and vulnerabilities, not a full tabletop rules conversion. Do not invent reciprocal weaknesses (for example, cold immunity does not imply fire vulnerability).
 
 **How to apply:** Verify new monster traits against the open SRD, retain its attribution, and keep adaptation labels clear. Keep the existing original art rather than importing proprietary monster illustrations.
+
+The user subsequently requested deliberate turn-based combat instead of the reference's automatic fighting.
+
+**Why:** Choosing damage types and consumables should be an unhurried tactical decision. This explicitly overrides the earlier automatic-combat reference behavior.
+
+**How to apply:** Do not restore automatic attacks while matching the reference visuals. Keep switching attack types and inspecting information free; only a committed attack or consumable use advances combat.

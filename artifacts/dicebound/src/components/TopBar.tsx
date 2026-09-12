@@ -1,5 +1,5 @@
-import { RunState } from '../engine';
-import { Heart, Sword, Settings, Gem, ShieldAlert, Coins } from 'lucide-react';
+import { RunState, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE, getCombatSpeedBonus } from '../engine';
+import { Heart, Sword, Settings, Gem, ShieldAlert, Coins, Wind } from 'lucide-react';
 
 function getNextLevelXp(level: number): number {
   return Math.floor(100 * Math.pow(1.5, level - 1));
@@ -51,6 +51,13 @@ export function TopBar({ run }: { run: RunState }) {
         <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto">
           <Gem className="w-3 h-3 text-cyan-300 mr-1 fill-current" />
           {run.gemsEarned}
+        </div>
+        <div
+          className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-[10px] border-2 border-[#1c1c1c] shadow-md pointer-events-auto"
+          title={`Every 20 Speed above ${COMBAT_SPEED_BASELINE} adds +1 successful attack damage (cap +${MAX_COMBAT_SPEED_DAMAGE})`}
+        >
+          <Wind className="w-3 h-3 text-teal-200 mr-1" />
+          SPD {run.speed} <span className="ml-1 text-teal-200">+{getCombatSpeedBonus(run.speed)} DMG</span>
         </div>
       </div>
     </div>

@@ -75,7 +75,7 @@ export default function Game() {
           </div>
         )}
 
-        {/* Speed toggle bottom left */}
+        {/* Animation pace toggle bottom left */}
         {inCombat && (
           <div className="absolute bottom-6 left-6 z-30 pointer-events-auto">
              <button 
@@ -83,7 +83,7 @@ export default function Game() {
                 aria-label="Toggle speed"
                 className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all"
               >
-                <FastForward className="w-4 h-4 fill-current" /> x{speed}
+                 <FastForward className="w-4 h-4 fill-current" /> Pace x{speed}
              </button>
           </div>
         )}

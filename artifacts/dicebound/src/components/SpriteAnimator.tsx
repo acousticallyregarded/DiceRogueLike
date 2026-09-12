@@ -21,6 +21,14 @@ const spriteUrls = Object.entries(spriteModules).reduce<Record<string, string>>(
 
 export type SpriteName =
   | 'hero-walk'
+  | 'custom-walk-south-east'
+  | 'custom-walk-south-west'
+  | 'custom-walk-north-west'
+  | 'custom-walk-north-east'
+  | 'custom-drink-potion'
+  | 'custom-throw-firebomb'
+  | 'custom-guard-tonic'
+  | 'custom-lobby-hero'
   | 'hero-attack'
   | 'hero-hit'
   | 'wolf-attack'
@@ -33,7 +41,7 @@ export type WolfPixelSpriteName = 'wolf-pixel-idle' | 'wolf-pixel-attack' | 'wol
 export type GoblinPixelSpriteName = 'goblin-pixel-idle' | 'goblin-pixel-attack' | 'goblin-pixel-hit' | 'goblin-pixel-death';
 
 export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
-  /** Name of the optional 8-frame, horizontal sheet. */
+  /** Name of an optional horizontal sprite sheet. */
   sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName | 'custom-hero-idle';
   frameCount?: number;
   /** Art shown until the sheet exists, and while this animator is idle. */
@@ -88,6 +96,11 @@ export function SpriteAnimator({
   const [playing, setPlaying] = useState(false);
   const startedAt = useRef(0);
   const completionNotified = useRef(false);
+  const onAnimationEndRef = useRef(onAnimationEnd);
+
+  useEffect(() => {
+    onAnimationEndRef.current = onAnimationEnd;
+  }, [onAnimationEnd]);
 
   useEffect(() => {
     if (!active || reducedMotion) {
@@ -124,7 +137,7 @@ export function SpriteAnimator({
         setPlaying(false);
         if (!completionNotified.current) {
           completionNotified.current = true;
-          onAnimationEnd?.();
+          onAnimationEndRef.current?.();
         }
         return;
       }
@@ -134,7 +147,7 @@ export function SpriteAnimator({
 
     frameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameId);
-  }, [frameDuration, loop, onAnimationEnd, playing, reducedMotion]);
+  }, [frameDuration, frameCount, loop, playing, reducedMotion]);
 
   const sheetVisible = Boolean(sheetUrl && (playing || (active && loop) || (active && holdLastFrame && !reducedMotion)));
   const spriteStyle = useMemo<CSSProperties>(() => ({
@@ -161,7 +174,6 @@ export function SpriteAnimator({
         alt={alt}
         aria-hidden={sheetVisible}
         className={`sprite-animator__fallback ${sheetVisible ? 'sprite-animator__fallback--sheet' : ''}`}
-        onAnimationEnd={onAnimationEnd}
       />
     </div>
   );

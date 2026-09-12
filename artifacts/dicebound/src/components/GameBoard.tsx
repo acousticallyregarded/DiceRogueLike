@@ -1,11 +1,21 @@
-import { Tile, TileType, RunState } from '../engine';
+import { getWalkDirection, Tile, TileType, RunState, WALK_DIRECTION_DELTAS } from '../engine';
+import type { WalkDirection } from '../engine';
 import { MapPin, Sparkles, Sword, Skull, ShoppingBag, Gift, Tent, AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
-import heroUrl from '../assets/hero.png';
+import customWalkSouthEastUrl from '../assets/custom-walk-south-east.png';
+import customWalkSouthWestUrl from '../assets/custom-walk-south-west.png';
+import customWalkNorthWestUrl from '../assets/custom-walk-north-west.png';
+import customWalkNorthEastUrl from '../assets/custom-walk-north-east.png';
+import greenTileUrl from '../assets/tiles/green.png';
+import redTileUrl from '../assets/tiles/red.png';
+import orangeTileUrl from '../assets/tiles/orange.png';
+import creamTileUrl from '../assets/tiles/cream.png';
+import purpleTileUrl from '../assets/tiles/purple.png';
 import { SpriteAnimator, usePrefersReducedMotion } from './SpriteAnimator';
+import type { SpriteName } from './SpriteAnimator';
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
@@ -22,6 +32,9 @@ function getGridCoords(index: number) {
     return { x: 0, y: 6 - (index - 18) };
   }
 }
+
+export { getWalkDirection, WALK_DIRECTION_DELTAS };
+export type { WalkDirection };
 
 export function getTilePosition(index: number = 0) {
   const safeIndex = (Number(index) || 0) % 24;
@@ -95,45 +108,39 @@ function useTileMotion(targetPosition: number, speed: number, reducedMotion: boo
   };
 }
 
-const TILE_THEMES: Record<TileType, { bg: string, color: string, icon: any }> = {
-  start: { bg: '#ffffff', color: 'text-gray-400', icon: MapPin },
-  enemy: { bg: '#e2e8f0', color: 'text-slate-500', icon: Sword },
-  elite: { bg: '#fecaca', color: 'text-red-700', icon: Skull },
-  event: { bg: '#c4b5fd', color: 'text-purple-700', icon: AlertTriangle },
-  shop: { bg: '#fed7aa', color: 'text-orange-600', icon: ShoppingBag },
-  rest: { bg: '#bfdbfe', color: 'text-blue-600', icon: Tent },
-  minigame: { bg: '#fef08a', color: 'text-yellow-700', icon: Gift }
+const TILE_THEMES: Record<TileType, { image: string, color: string, icon: any }> = {
+  start: { image: creamTileUrl, color: 'text-stone-600', icon: MapPin },
+  enemy: { image: creamTileUrl, color: 'text-stone-700', icon: Sword },
+  elite: { image: redTileUrl, color: 'text-red-900', icon: Skull },
+  event: { image: purpleTileUrl, color: 'text-purple-900', icon: AlertTriangle },
+  shop: { image: orangeTileUrl, color: 'text-amber-900', icon: ShoppingBag },
+  rest: { image: greenTileUrl, color: 'text-emerald-900', icon: Tent },
+  minigame: { image: orangeTileUrl, color: 'text-amber-900', icon: Gift }
 };
-
-const TileSVG = ({ bg, thickness = 10 }: { bg: string, thickness?: number }) => (
-  <svg viewBox="0 0 64 42" className="w-[64px] absolute top-0 left-0" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.15))' }}>
-    {/* Left Face */}
-    <path d={`M 0 16 L 32 32 L 32 ${32 + thickness} L 0 ${16 + thickness} Z`} fill={bg} filter="brightness(0.7)" />
-    {/* Right Face */}
-    <path d={`M 32 32 L 64 16 L 64 ${16 + thickness} L 32 ${32 + thickness} Z`} fill={bg} filter="brightness(0.5)" />
-    {/* Top Face */}
-    <path d="M 32 0 L 64 16 L 32 32 L 0 16 Z" fill={bg} />
-  </svg>
-);
 
 export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, visualPosition: number, speed?: number }) {
   const reducedMotion = usePrefersReducedMotion();
   const tileMotion = useTileMotion(visualPosition, speed, reducedMotion);
   const heroPos = tileMotion.position;
-  const heroTravelDirection = useRef(1);
+  const [heroTravelDirection, setHeroTravelDirection] = useState<WalkDirection>('south-east');
   const previousVisualPosition = useRef(visualPosition);
 
   useEffect(() => {
     if (visualPosition === previousVisualPosition.current) return;
-    const previous = getTilePosition(previousVisualPosition.current);
-    const next = getTilePosition(visualPosition);
-    if (next.x !== previous.x) heroTravelDirection.current = next.x > previous.x ? 1 : -1;
+    const direction = getWalkDirection(previousVisualPosition.current, visualPosition);
+    if (direction) setHeroTravelDirection(direction);
     previousVisualPosition.current = visualPosition;
   }, [visualPosition]);
 
   const walking = run.phase === 'moving' || tileMotion.moving;
-  const heroFacingLeft = heroTravelDirection.current < 0;
-  const heroKey = `${visualPosition}-${walking ? 'walking' : 'idle'}`;
+  const heroDirection = heroTravelDirection;
+  const walkSprites: Record<WalkDirection, { sprite: SpriteName; fallbackUrl: string }> = {
+    'south-east': { sprite: 'custom-walk-south-east', fallbackUrl: customWalkSouthEastUrl },
+    'south-west': { sprite: 'custom-walk-south-west', fallbackUrl: customWalkSouthWestUrl },
+    'north-west': { sprite: 'custom-walk-north-west', fallbackUrl: customWalkNorthWestUrl },
+    'north-east': { sprite: 'custom-walk-north-east', fallbackUrl: customWalkNorthEastUrl },
+  };
+  const activeWalkSprite = walkSprites[heroDirection];
   // Follow the same interpolated point as the hero with a tiny amount of
   // breathing room; one transform owns both camera and movement timing.
   const cameraFollow = 0.96;
@@ -175,9 +182,15 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
                 zIndex: p.zIndex 
               }}
             >
-              <TileSVG bg={theme.bg} />
+              <img
+                src={theme.image}
+                alt={`${t.type} tile`}
+                draggable={false}
+                className="absolute top-0 left-0 w-[64px] h-[38px] max-w-none"
+                style={{ filter: 'drop-shadow(0 3px 2px rgba(0,0,0,0.16))' }}
+              />
               {t.type !== 'start' && (
-                <div className="absolute inset-0 flex items-center justify-center -mt-[8px]">
+                <div className="absolute inset-0 flex items-center justify-center">
                   <Icon className={`w-4 h-4 ${theme.color}`} strokeWidth={3} />
                 </div>
               )}
@@ -188,7 +201,6 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         {/* Hero */}
         <div 
           className={`absolute w-[64px] h-[72px] -ml-[32px] -mt-[56px] hero-world-actor ${walking ? 'hero-world-actor--walking' : ''}`}
-          key={heroKey}
           style={{ 
             transform: `translate(${heroPos.x}px, ${heroPos.y}px)`, 
             zIndex: heroPos.zIndex + 1 
@@ -197,14 +209,14 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
           <div className="hero-world-shadow" aria-hidden="true" />
           <div className="hero-world-dust" aria-hidden="true" />
           <SpriteAnimator
-            sprite="hero-walk"
-            fallbackUrl={heroUrl}
+            sprite={activeWalkSprite.sprite}
+            fallbackUrl={activeWalkSprite.fallbackUrl}
             active={walking}
             loop
             trigger={walking ? 1 : 0}
             fps={12}
-            durationMs={TILE_STEP_MS / Math.max(1, speed)}
-            flip={heroFacingLeft}
+            frameCount={9}
+            durationMs={1800}
             alt="Hero"
             className="relative z-[1] drop-shadow-xl"
           />

@@ -39,9 +39,14 @@ state = act(state, { type: 'STEP_MOVE' });
 assert.strictEqual(state.run.phase, 'combat', 'Combat started');
 assert.ok(state.run.enemies.length > 0, 'Enemies generated');
 
-// 4. Multi-enemy combat tick
-while (state.run.phase === 'combat') {
-  state = act(state, { type: 'TICK_COMBAT', dtMs: 1000 });
+// 4. Multi-enemy deliberate combat
+let combatTurns = 0;
+while (state.run.phase === 'combat' && combatTurns++ < 100) {
+  if (state.run.combatTurn === 'player') {
+    state = act(state, { type: 'PLAYER_ATTACK' });
+  } else {
+    state = act(state, { type: 'RESOLVE_ENEMY_TURN' });
+  }
 }
 
 // Either died or won

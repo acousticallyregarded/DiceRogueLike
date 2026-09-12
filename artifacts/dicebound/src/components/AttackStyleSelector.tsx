@@ -5,10 +5,12 @@ export function AttackStyleSelector({
   run,
   dispatch,
   compact = false,
+  disabled = false,
 }: {
   run: RunState;
   dispatch: (action: GameAction) => void;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <section
@@ -23,14 +25,14 @@ export function AttackStyleSelector({
             Attack style
           </div>
           <div className="text-[9px] font-bold text-slate-300">
-            Current: {formatDamageType(run.selectedDamageType)}
+            Current: {formatDamageType(run.selectedDamageType)} • choose freely
           </div>
         </div>
         <span className="text-[8px] font-bold text-slate-400 text-right max-w-[118px]">
-          Arcane stances are a Dicebound adaptation, not full D&amp;D rules.
+          Select a stance, then press Attack to commit the turn.
         </span>
       </div>
-      <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5" role="group">
+      <div className="mt-2 grid grid-cols-4 gap-1.5 pb-0.5" role="group">
         {ATTACK_STYLES.map((style) => {
           const selected = run.selectedDamageType === style.id;
           return (
@@ -38,14 +40,15 @@ export function AttackStyleSelector({
               key={style.id}
               type="button"
               aria-pressed={selected}
+              disabled={disabled}
               aria-label={`${style.label} (${style.damageType})`}
               title={style.description}
               onClick={() => dispatch({ type: "SELECT_ATTACK", damageType: style.id })}
-              className={`shrink-0 rounded-lg border-2 px-2 py-1 text-[10px] font-black transition-all active:translate-y-0.5 ${
+               className={`min-w-0 rounded-lg border-2 px-1 py-1 text-[10px] font-black transition-all active:translate-y-0.5 ${
                 selected
                   ? "border-amber-300 bg-amber-400 text-slate-950 shadow-[0_2px_0_#f59e0b]"
-                  : "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-300"
-              }`}
+                 : "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-300"
+               } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
             >
               {style.label}
             </button>

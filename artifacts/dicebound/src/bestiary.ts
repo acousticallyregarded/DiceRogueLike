@@ -2,8 +2,8 @@
  * Dicebound's compact monster reference.
  *
  * The damage traits in this file are adapted from the SRD 5.1 creature
- * entries. Dicebound uses these traits in an auto-battle rather than trying
- * to reproduce the full D&D ruleset.
+ * entries. Dicebound uses these traits in its deliberate turn-based combat
+ * rather than trying to reproduce the full D&D ruleset.
  */
 
 export type DamageType =

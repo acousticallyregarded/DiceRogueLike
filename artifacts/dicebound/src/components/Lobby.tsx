@@ -1,11 +1,12 @@
-import { GameStateV4, GameAction } from '../engine';
+import { GameStateV4, GameAction, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE } from '../engine';
 import { Play, Settings2, Sparkles, Sword, Shield, Zap, Box, HelpCircle, BookOpen, Gem, Heart, Wind } from 'lucide-react';
 import { useState } from 'react';
 import { MonsterGuide } from './MonsterGuide';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
-import heroUrl from '../assets/hero.png';
+import heroUrl from '../assets/custom-lobby-hero.png';
+import { SpriteAnimator } from './SpriteAnimator';
 
 export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: GameAction) => void }) {
   const [tab, setTab] = useState<'play' | 'gear' | 'talents'>('play');
@@ -28,7 +29,17 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
            <img src={statueUrl} className="absolute bottom-16 right-4 h-32 object-contain opacity-70" alt="Statue" />
            <img src={treeUrl} className="absolute bottom-12 left-2 h-24 object-contain drop-shadow-md" alt="Tree" />
            <img src={treeUrl} className="absolute bottom-8 right-16 h-28 object-contain drop-shadow-md" alt="Tree" />
-           <img src={heroUrl} className="h-40 object-contain relative z-10 drop-shadow-2xl animate-bounce-slow" alt="Hero" />
+           <div className="h-40 w-40 relative z-10 drop-shadow-2xl">
+             <SpriteAnimator
+               sprite="custom-lobby-hero"
+               fallbackUrl={heroUrl}
+               active
+               loop
+               frameCount={9}
+               durationMs={1800}
+               alt="Hero"
+             />
+           </div>
         </div>
 
         {/* Top Header */}
@@ -115,7 +126,7 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
                            <div className="text-[10px] font-bold text-slate-400">
                              {item.stats.attack ? `+${item.stats.attack} ATK ` : ''}
                              {item.stats.defense ? `+${item.stats.defense} DEF ` : ''}
-                             {item.stats.speed ? `+${item.stats.speed} SPD ` : ''}
+                              {item.stats.speed ? `+${item.stats.speed} Speed ` : ''}
                              {item.stats.maxHp ? `+${item.stats.maxHp} HP ` : ''}
                            </div>
                          </div>
@@ -145,7 +156,7 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
                  {[
                    { id: 'vitality', label: 'Vitality', desc: '+20 Max HP per level', icon: Heart, color: 'text-red-500' },
                    { id: 'power', label: 'Power', desc: '+3 Attack per level', icon: Sword, color: 'text-amber-500' },
-                   { id: 'quickness', label: 'Quickness', desc: '+5 Speed per level', icon: Wind, color: 'text-teal-500' }
+                    { id: 'quickness', label: 'Quickness', desc: `+5 Speed; every 20 above ${COMBAT_SPEED_BASELINE} adds +1 attack damage (cap +${MAX_COMBAT_SPEED_DAMAGE})`, icon: Wind, color: 'text-teal-500' }
                  ].map(t => {
                    const level = meta.talents[t.id as keyof typeof meta.talents];
                    const cost = 50 + level * 25;
@@ -198,9 +209,10 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
               <h2 className="text-2xl font-black text-amber-500 text-center uppercase" style={{ WebkitTextStroke: '1px black' }}>How to Play</h2>
               <div className="text-sm font-semibold text-slate-600 space-y-4">
                 <p><strong>The Board:</strong> Roll two dice to travel around a 24-tile square perimeter. The camera follows you automatically.</p>
-                <p><strong>The Boss:</strong> Rather than a final tile, a Boss encounter is scheduled every 30 rolls. Defeat it to clear the floor!</p>
-                <p><strong>Combat:</strong> Auto-battles against up to 3 enemies. 30 rounds maximum to prevent infinite stalemates.</p>
-                <p><strong>Skills & Upgrades:</strong> Level up through XP to choose 1 of 3 named skill cards. Use the Shop to buy stat boosts.</p>
+                 <p><strong>The Boss:</strong> Rather than a final tile, a Boss encounter is scheduled every 30 rolls. Defeat it to clear the floor!</p>
+                 <p><strong>Combat:</strong> Choose an attack stance, inspect enemies, then press Attack. You may use a consumable instead; enemies respond once after each committed action. There is no round timeout.</p>
+                 <p><strong>Speed:</strong> Your Speed is a combat stat. At {COMBAT_SPEED_BASELINE}, each 20 points above base adds +1 successful outgoing attack damage, capped at +{MAX_COMBAT_SPEED_DAMAGE}.</p>
+                 <p><strong>Skills & Upgrades:</strong> Level up through XP to choose 1 of 3 named skill cards. Use the Shop to buy stat boosts.</p>
                 <p><strong>Lobby Progression:</strong> Earn gems during runs to buy Chests (random equippable gear) and permanent Talents.</p>
               </div>
               <button onClick={() => setShowHelp(false)} className="mt-4 w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-black text-lg border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all">Got it!</button>

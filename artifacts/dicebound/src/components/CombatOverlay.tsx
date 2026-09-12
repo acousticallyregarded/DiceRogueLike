@@ -1,12 +1,13 @@
-import { GameAction, RunState } from '../engine';
+import { ConsumableType, GameAction, RunState } from '../engine';
 import {
   formatDamageType,
   getBestiaryEntry,
   getMonsterArtKey,
   speciesKeyForName,
 } from '../bestiary';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { Backpack, Flame, Heart, Shield, Sword } from 'lucide-react';
 
 import wolfUrl from '../assets/wolf-pixel.png';
 import { WolfPixelSprite } from './WolfPixelSprite';
@@ -18,20 +19,27 @@ import { GoblinPixelSprite } from './GoblinPixelSprite';
 import skeletonUrl from '../assets/skeleton.png';
 import bossUrl from '../assets/boss.png';
 import heroUrl from '../assets/custom-combat-hero.png';
-import { SpriteAnimator, SpriteName } from './SpriteAnimator';
+import drinkPotionUrl from '../assets/custom-drink-potion.png';
+import throwFireBombUrl from '../assets/custom-throw-firebomb.png';
+import guardTonicUrl from '../assets/custom-guard-tonic.png';
+import { SpriteAnimator, SpriteName, usePrefersReducedMotion } from './SpriteAnimator';
 import { AttackStyleSelector } from './AttackStyleSelector';
 
 interface EnemySnapshot {
   id: string;
   name: string;
   hp: number;
-  attackTimer: number;
 }
 
 interface CombatSnapshot {
   phase: RunState['phase'];
   playerHp: number;
-  playerAttackTimer: number;
+  playerAttackSequence: number;
+  heroConsumableSequence: number;
+  lastConsumable: ConsumableType | null;
+  guardActive: boolean;
+  pendingFireBomb: boolean;
+  enemyAttackSequence: number;
   playerRound: number;
   enemies: Record<string, EnemySnapshot>;
 }
@@ -44,8 +52,11 @@ interface EnemyVisualEvent {
 
 interface VisualEvents {
   heroAttack: number;
+  heroDrink: number;
+  heroFireBomb: number;
+  heroGuard: number;
   heroHit: number;
-  heroLastAction: 'attack' | 'hit' | null;
+  heroLastAction: 'attack' | 'drink' | 'fire_bomb' | 'guard' | 'hit' | null;
   enemies: Record<string, EnemyVisualEvent>;
 }
 
@@ -56,22 +67,26 @@ interface DamagePopup {
   enemyId?: string;
 }
 
-const EMPTY_EVENTS: VisualEvents = { heroAttack: 0, heroHit: 0, heroLastAction: null, enemies: {} };
+const EMPTY_EVENTS: VisualEvents = { heroAttack: 0, heroDrink: 0, heroFireBomb: 0, heroGuard: 0, heroHit: 0, heroLastAction: null, enemies: {} };
 const EXIT_DURATION_MS = 650;
 
 function makeSnapshot(run: RunState): CombatSnapshot {
   return {
     phase: run.phase,
     playerHp: run.hp,
-    playerAttackTimer: run.playerCombat?.attackTimer ?? 0,
+    playerAttackSequence: run.playerCombat?.heroAttackSequence ?? 0,
+    heroConsumableSequence: run.playerCombat?.heroConsumableSequence ?? 0,
+    lastConsumable: run.playerCombat?.lastConsumable ?? null,
+    guardActive: run.guardActive,
+    pendingFireBomb: run.playerCombat?.pendingFireBomb ?? false,
+    enemyAttackSequence: run.playerCombat?.enemyAttackSequence ?? 0,
     playerRound: run.playerCombat?.roundCounter ?? 0,
     enemies: Object.fromEntries(run.enemies.map(enemy => [
       enemy.id,
       {
         id: enemy.id,
         name: enemy.name,
-        hp: enemy.hp,
-        attackTimer: enemy.attackTimer,
+         hp: Math.max(0, enemy.hp),
       },
     ])),
   };
@@ -129,15 +144,20 @@ export function CombatOverlay({
   const [visualEvents, setVisualEvents] = useState<VisualEvents>(EMPTY_EVENTS);
   const [damagePopups, setDamagePopups] = useState<DamagePopup[]>([]);
   const [displayRun, setDisplayRun] = useState<RunState | null>(null);
+  const [completedHeroDrink, setCompletedHeroDrink] = useState(0);
+  const [completedHeroFireBomb, setCompletedHeroFireBomb] = useState(0);
+  const [completedHeroGuard, setCompletedHeroGuard] = useState(0);
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [inspectedEnemyId, setInspectedEnemyId] = useState<string | null>(null);
+  const [bagOpen, setBagOpen] = useState(false);
   const eventId = useRef(0);
   const previousSnapshot = useRef<CombatSnapshot | null>(null);
   const previousPhase = useRef<RunState['phase']>(run.phase);
   const latestCombatRun = useRef<RunState | null>(null);
   const enemyArchive = useRef<Record<string, RunState['enemies'][number]>>({});
   const popupTimers = useRef<number[]>([]);
+  const reducedMotion = usePrefersReducedMotion();
 
   // Keep the latest combat state available for the short visual exit after
   // the engine has already removed defeated enemies.
@@ -186,7 +206,29 @@ export function CombatOverlay({
 
     if (!previous || (run.phase === 'combat' && previous.phase !== 'combat')) {
       if (run.phase === 'combat') {
-        setVisualEvents(EMPTY_EVENTS);
+        // Saved enemy-turn consumables have already been consumed by the
+        // engine, but still need their visual replay after the overlay mounts.
+        const restoredPotion = current.lastConsumable === 'health_potion'
+          && run.combatTurn === 'enemy'
+          && current.heroConsumableSequence > 0;
+        const restoredFireBomb = current.lastConsumable === 'fire_bomb'
+          && current.pendingFireBomb
+          && run.combatTurn === 'enemy'
+          && current.heroConsumableSequence > 0;
+        const restoredGuard = current.lastConsumable === 'guard_tonic'
+          && current.guardActive
+          && run.combatTurn === 'enemy'
+          && current.heroConsumableSequence > 0;
+        setVisualEvents(
+          restoredPotion || restoredFireBomb || restoredGuard
+            ? {
+                ...EMPTY_EVENTS,
+                heroDrink: restoredPotion ? ++eventId.current : 0,
+                heroFireBomb: restoredFireBomb ? ++eventId.current : 0,
+                heroGuard: restoredGuard ? ++eventId.current : 0,
+              }
+            : EMPTY_EVENTS,
+        );
         setDamagePopups([]);
       }
       return;
@@ -194,11 +236,17 @@ export function CombatOverlay({
 
     if (previous.phase !== 'combat') return;
 
-    // roundCounter is advanced only by the engine's cooldown wrap. `<=`
-    // also catches an exact 100-point cycle where the timer lands on the same
-    // value after subtracting 100, including the final killing strike.
-    const heroAttacked = current.playerRound > previous.playerRound
-      && current.playerAttackTimer <= previous.playerAttackTimer;
+    // Animations are driven by explicit reducer event counters and actual HP
+    // deltas. Inspecting an enemy or selecting a stance cannot create either.
+    const heroAttacked = current.playerAttackSequence > previous.playerAttackSequence;
+    const heroDrankPotion = current.heroConsumableSequence > previous.heroConsumableSequence
+      && current.lastConsumable === 'health_potion';
+    const heroThrewFireBomb = current.heroConsumableSequence > previous.heroConsumableSequence
+      && current.lastConsumable === 'fire_bomb';
+    const heroGuarded = current.heroConsumableSequence > previous.heroConsumableSequence
+      && current.lastConsumable === 'guard_tonic'
+      && current.guardActive;
+    const enemyResponded = current.enemyAttackSequence > previous.enemyAttackSequence;
     const heroWasHit = current.playerHp < previous.playerHp;
     const enemyUpdates: Array<{ id: string, kind: 'attack' | 'hit' | 'death' }> = [];
     const newPopups: DamagePopup[] = [];
@@ -207,9 +255,6 @@ export function CombatOverlay({
       const oldEnemy = previous.enemies[enemy.id];
       if (!oldEnemy) return;
 
-      if (run.phase === 'combat' && enemy.attackTimer < oldEnemy.attackTimer) {
-        enemyUpdates.push({ id: enemy.id, kind: 'attack' });
-      }
       if (enemy.hp < oldEnemy.hp) {
         enemyUpdates.push({ id: enemy.id, kind: 'hit' });
         newPopups.push({
@@ -220,6 +265,12 @@ export function CombatOverlay({
         });
       }
     });
+
+    if (enemyResponded) {
+      Object.values(current.enemies).forEach(enemy => {
+        if (enemy.hp > 0) enemyUpdates.push({ id: enemy.id, kind: 'attack' });
+      });
+    }
 
     // Dead enemies are filtered by the engine in the same action that applies
     // the killing hit, so use the previous snapshot for the death visual.
@@ -244,8 +295,11 @@ export function CombatOverlay({
       });
     }
 
-    if (heroAttacked || heroWasHit || enemyUpdates.length > 0) {
+    if (heroAttacked || heroDrankPotion || heroThrewFireBomb || heroGuarded || heroWasHit || enemyUpdates.length > 0) {
       const heroAttackTrigger = heroAttacked ? ++eventId.current : 0;
+      const heroDrinkTrigger = heroDrankPotion ? ++eventId.current : 0;
+      const heroFireBombTrigger = heroThrewFireBomb ? ++eventId.current : 0;
+      const heroGuardTrigger = heroGuarded ? ++eventId.current : 0;
       const heroHitTrigger = heroWasHit ? ++eventId.current : 0;
       setVisualEvents(existing => {
         const enemies = { ...existing.enemies };
@@ -260,8 +314,15 @@ export function CombatOverlay({
         });
         return {
           heroAttack: heroAttacked ? heroAttackTrigger : existing.heroAttack,
+          heroDrink: heroDrankPotion ? heroDrinkTrigger : existing.heroDrink,
+          heroFireBomb: heroThrewFireBomb ? heroFireBombTrigger : existing.heroFireBomb,
+          heroGuard: heroGuarded ? heroGuardTrigger : existing.heroGuard,
           heroHit: heroWasHit ? heroHitTrigger : existing.heroHit,
-          heroLastAction: heroWasHit ? (heroAttacked ? 'attack' : 'hit') : (heroAttacked ? 'attack' : existing.heroLastAction),
+          heroLastAction: heroWasHit
+            ? (heroAttacked ? 'attack' : 'hit')
+            : (heroAttacked
+              ? 'attack'
+              : (heroDrankPotion ? 'drink' : (heroThrewFireBomb ? 'fire_bomb' : (heroGuarded ? 'guard' : existing.heroLastAction)))),
           enemies,
         };
       });
@@ -297,11 +358,28 @@ export function CombatOverlay({
     run.enemies,
     run.hp,
     run.phase,
-    run.playerCombat?.attackTimer,
+    run.playerCombat?.heroAttackSequence,
+    run.playerCombat?.heroConsumableSequence,
+    run.playerCombat?.lastConsumable,
+    run.guardActive,
+    run.playerCombat?.pendingFireBomb,
+    run.playerCombat?.enemyAttackSequence,
     run.playerCombat?.roundCounter,
     speed,
   ]);
 
+  const playerDrinkTrigger = visualEvents.heroDrink;
+  const finishHeroDrink = useCallback(() => {
+    setCompletedHeroDrink(playerDrinkTrigger);
+  }, [playerDrinkTrigger]);
+  const playerFireBombTrigger = visualEvents.heroFireBomb;
+  const finishHeroFireBomb = useCallback(() => {
+    setCompletedHeroFireBomb(playerFireBombTrigger);
+  }, [playerFireBombTrigger]);
+  const playerGuardTrigger = visualEvents.heroGuard;
+  const finishHeroGuard = useCallback(() => {
+    setCompletedHeroGuard(playerGuardTrigger);
+  }, [playerGuardTrigger]);
   const renderedRun = run.phase === 'combat' ? run : displayRun;
   if (!visible || !renderedRun || !renderedRun.playerCombat) return null;
   const activeEnemyIds = new Set(renderedRun.enemies.map(enemy => enemy.id));
@@ -316,37 +394,58 @@ export function CombatOverlay({
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
+  const drinkingPotion = playerDrinkTrigger > 0
+    && playerDrinkTrigger > completedHeroDrink
+    && !reducedMotion;
+  const throwingFireBomb = playerFireBombTrigger > 0
+    && playerFireBombTrigger > completedHeroFireBomb
+    && !reducedMotion;
+  const guardingHero = playerGuardTrigger > 0
+    && playerGuardTrigger > completedHeroGuard
+    && !reducedMotion
+    && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
+  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !leaving;
+  const statusLabel = run.combatTurn === 'enemy' ? 'Enemies turn' : 'Your turn';
 
   return (
-    <div className={`absolute top-0 left-0 right-0 h-[60%] flex flex-col z-20 overflow-hidden pt-24 pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}>
-      <div className="absolute top-20 left-0 right-0 flex justify-center z-30 pointer-events-none">
-        <div className="bg-[var(--color-ui-purple)] text-white px-4 py-1 rounded-full font-black text-xs border-2 border-[#1c1c1c] shadow-[0_2px_0_#1c1c1c] uppercase tracking-wider">
-          Floor {renderedRun.floor} • Round {renderedRun.playerCombat.roundCounter}/30
+    <div className={`absolute top-0 left-0 right-0 h-[82%] min-h-[620px] flex flex-col z-20 overflow-hidden pt-24 pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}>
+      <div className="relative z-40 flex shrink-0 flex-col gap-2 px-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full font-black text-[10px] border-2 border-[#1c1c1c] shadow-[0_2px_0_#1c1c1c] uppercase tracking-wider">
+            Floor {renderedRun.floor} • Round {renderedRun.playerCombat.roundCounter}
+          </div>
+          <div
+            className={`pointer-events-none rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider border-2 shadow-sm ${
+              canInput ? 'bg-emerald-100 text-emerald-900 border-emerald-600' : 'bg-slate-200 text-slate-700 border-slate-500'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {statusLabel}{!canInput && run.combatTurn === 'enemy' ? ' • resolving…' : ''}
+          </div>
         </div>
-      </div>
 
-      <div className="absolute top-28 left-3 right-3 z-40">
-        <AttackStyleSelector run={run} dispatch={dispatch} compact />
-      </div>
+        <AttackStyleSelector run={run} dispatch={dispatch} compact disabled={!canInput} />
 
-      {run.combatFeedback && (
-        <div
-          role="status"
-          className={`absolute top-[12rem] left-1/2 -translate-x-1/2 z-40 whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-black border-2 shadow-md ${
-            run.combatFeedback.kind === 'immune'
-              ? 'bg-slate-900 text-slate-100 border-slate-300'
-              : run.combatFeedback.kind === 'resisted'
-                ? 'bg-amber-100 text-amber-900 border-amber-500'
-                : run.combatFeedback.kind === 'vulnerable'
-                  ? 'bg-red-100 text-red-900 border-red-500'
-                  : 'bg-white text-slate-800 border-[#1c1c1c]'
-          }`}
-        >
-          {run.combatFeedback.message}
-        </div>
-      )}
+        {run.combatFeedback && (
+          <div
+            role="status"
+            className={`rounded-full px-3 py-1 text-center text-[10px] font-black border-2 shadow-md ${
+              run.combatFeedback.kind === 'immune'
+                ? 'bg-slate-900 text-slate-100 border-slate-300'
+                : run.combatFeedback.kind === 'resisted'
+                  ? 'bg-amber-100 text-amber-900 border-amber-500'
+                  : run.combatFeedback.kind === 'vulnerable'
+                    ? 'bg-red-100 text-red-900 border-red-500'
+                    : 'bg-white text-slate-800 border-[#1c1c1c]'
+            }`}
+          >
+            {run.combatFeedback.message}
+          </div>
+        )}
+      </div>
 
       {inspectedEnemy && (
         <div className="absolute top-[15rem] left-3 right-3 z-50 bg-white rounded-2xl border-4 border-[#1c1c1c] shadow-2xl p-3 text-slate-800">
@@ -394,19 +493,28 @@ export function CombatOverlay({
         <div className="relative flex flex-col items-center">
           <div
             className={`combat-actor w-28 h-28 ${playerAttackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
-            key={`hero-${playerAttackTrigger}-${playerHitTrigger}`}
             style={eventStyle(combatDuration)}
           >
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
               <SpriteAnimator
-                sprite="custom-hero-idle"
-                fallbackUrl={heroUrl}
+                sprite={throwingFireBomb
+                  ? 'custom-throw-firebomb'
+                  : (drinkingPotion ? 'custom-drink-potion' : (guardingHero ? 'custom-guard-tonic' : 'custom-hero-idle'))}
+                fallbackUrl={throwingFireBomb
+                  ? throwFireBombUrl
+                  : (drinkingPotion ? drinkPotionUrl : (guardingHero ? guardTonicUrl : heroUrl))}
                 active
-                loop
-                frameCount={13}
-                durationMs={2600}
+                loop={!throwingFireBomb && !drinkingPotion && !guardingHero}
+                frameCount={throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 13))}
+                durationMs={throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 2600))}
+                trigger={throwingFireBomb
+                  ? playerFireBombTrigger
+                  : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}
                 alt="Hero"
                 className="combat-actor__sprite drop-shadow-xl"
+                onAnimationEnd={throwingFireBomb
+                  ? finishHeroFireBomb
+                  : (drinkingPotion ? finishHeroDrink : (guardingHero ? finishHeroGuard : undefined))}
               />
             </div>
             {playerAttackTrigger > 0 && <span className="sword-arc" key={`arc-${playerAttackTrigger}`} aria-hidden="true" />}
@@ -415,13 +523,10 @@ export function CombatOverlay({
             ))}
           </div>
           <div className="mt-2 w-20 h-4 bg-red-950 border-2 border-[#1c1c1c] rounded overflow-hidden relative shadow-sm">
-            <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, renderedRun.hp / renderedRun.maxHp)})` }} />
+            <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, renderedRun.hp / Math.max(1, renderedRun.maxHp))})` }} />
             <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white text-shadow-sm">
               {Math.floor(renderedRun.hp)}
             </div>
-          </div>
-          <div className="mt-1 w-20 h-1.5 bg-slate-900 border border-[#1c1c1c] rounded-full overflow-hidden">
-            <div className="h-full bg-amber-400" style={{ width: `${Math.min(100, renderedRun.playerCombat.attackTimer)}%` }} />
           </div>
         </div>
 
@@ -489,15 +594,100 @@ export function CombatOverlay({
                   <span className="damage-popup" key={popup.id}>-{popup.amount}</span>
                 ))}
                 <div className="mt-2 w-16 h-3 bg-red-950 border-2 border-[#1c1c1c] rounded overflow-hidden relative shadow-sm">
-                  <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, enemy.hp / enemy.maxHp)})` }} />
-                </div>
-                <div className="mt-1 w-16 h-1.5 bg-slate-900 border border-[#1c1c1c] rounded-full overflow-hidden">
-                  <div className="h-full bg-amber-400" style={{ width: `${Math.min(100, enemy.attackTimer)}%` }} />
+                   <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, Math.max(0, enemy.hp) / Math.max(1, enemy.maxHp))})` }} />
                 </div>
               </div>
             );
           })}
         </div>
+      </div>
+
+      {bagOpen && (
+        <div className="absolute bottom-[4.5rem] left-3 right-3 z-50 rounded-2xl border-4 border-[#1c1c1c] bg-white p-3 text-slate-800 shadow-2xl">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-xs font-black uppercase tracking-wider">Consumables</div>
+            <button
+              type="button"
+              onClick={() => setBagOpen(false)}
+              className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black"
+            >
+              Close
+            </button>
+          </div>
+          <div className="grid gap-2">
+            {([
+              {
+                id: 'health_potion' as const,
+                name: 'Health Potion',
+                description: 'Restore 40% max HP (capped at full health).',
+                count: run.consumables.health_potion,
+                icon: Heart,
+                color: 'text-rose-500',
+                disabled: !canInput || run.consumables.health_potion <= 0 || run.hp >= run.maxHp,
+              },
+              {
+                id: 'fire_bomb' as const,
+                name: 'Fire Bomb',
+                description: 'Fire damage to every living enemy.',
+                count: run.consumables.fire_bomb,
+                icon: Flame,
+                color: 'text-orange-500',
+                disabled: !canInput || run.consumables.fire_bomb <= 0,
+              },
+              {
+                id: 'guard_tonic' as const,
+                name: 'Guard Tonic',
+                description: 'Halve damage from the next enemy response.',
+                count: run.consumables.guard_tonic,
+                icon: Shield,
+                color: 'text-sky-500',
+                disabled: !canInput || run.consumables.guard_tonic <= 0,
+              },
+            ]).map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  disabled={item.disabled}
+                  onClick={() => {
+                    dispatch({ type: 'USE_CONSUMABLE', consumable: item.id });
+                    setBagOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-xl border-2 border-slate-200 bg-slate-50 p-2 text-left transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-black">{item.name} <span className="text-slate-500">×{item.count}</span></span>
+                    <span className="block text-[9px] font-semibold text-slate-500">{item.description}</span>
+                  </span>
+                  <span className="rounded-lg bg-white px-2 py-1 text-[9px] font-black shadow-sm">Use</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="relative z-40 flex shrink-0 gap-2 px-3 pt-2">
+        <button
+          type="button"
+          disabled={!canInput || renderedEnemies.every(enemy => enemy.hp <= 0)}
+          onClick={() => dispatch({ type: 'PLAYER_ATTACK' })}
+          className="flex-1 rounded-2xl border-4 border-[#1c1c1c] bg-amber-400 py-3 text-base font-black uppercase text-slate-950 shadow-[0_4px_0_#1c1c1c] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-[0_4px_0_#1c1c1c]"
+        >
+          <Sword className="mr-1 inline h-5 w-5" /> Attack
+        </button>
+        <button
+          type="button"
+          aria-expanded={bagOpen}
+          disabled={!canInput}
+          onClick={() => setBagOpen(open => !open)}
+          className="rounded-2xl border-4 border-[#1c1c1c] bg-white px-4 py-3 font-black text-slate-800 shadow-[0_4px_0_#1c1c1c] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Backpack className="inline h-5 w-5" />
+          <span className="ml-1 text-xs">Bag</span>
+        </button>
       </div>
     </div>
   );
