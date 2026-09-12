@@ -1,111 +1,112 @@
 import { Tile, TileType } from '../engine';
-import { HeroSprite } from './sprites/HeroSprite';
-import { MonsterSprite } from './sprites/MonsterSprite';
-import { MapPin, Coins, Sparkles, Sword, Skull, ShoppingBag, Gift, SkullIcon } from 'lucide-react';
+import { MapPin, Sparkles, Sword, Skull, ShoppingBag, Gift, SkullIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
-const BOARD_WIDTH = 800;
-const BOARD_HEIGHT = 600;
+const TILE_WIDTH = 64;
+const TILE_HEIGHT = 32;
 
-function getTilePosition(index: number, total: number) {
-  const cols = 6;
-  const row = Math.floor(index / cols);
-  const isEvenRow = row % 2 === 0;
-  const col = isEvenRow ? (index % cols) : (cols - 1 - (index % cols));
-  
-  const cellW = BOARD_WIDTH / cols;
-  const cellH = BOARD_HEIGHT / Math.ceil(total / cols);
-  
-  return {
-    x: col * cellW + cellW / 2,
-    y: row * cellH + cellH / 2
-  };
+function getGridCoords(index: number) {
+  if (index < 7) {
+    return { x: index, y: 0 };
+  } else if (index < 13) {
+    return { x: 6, y: index - 6 };
+  } else if (index < 19) {
+    return { x: 6 - (index - 12), y: 6 };
+  } else {
+    return { x: 0, y: 6 - (index - 18) };
+  }
 }
 
-const TILE_ICONS: Record<TileType, React.ElementType> = {
-  start: MapPin,
-  enemy: Sword,
-  boss: Skull,
-  buff: Sparkles,
-  debuff: SkullIcon,
-  minigame: Gift,
-  shop: ShoppingBag
+export function getTilePosition(index: number) {
+  const { x, y } = getGridCoords(index);
+  const cx = x - 3;
+  const cy = y - 3;
+  
+  const isoX = (cx - cy) * (TILE_WIDTH / 2);
+  const isoY = (cx + cy) * (TILE_HEIGHT / 2);
+  
+  return { x: isoX, y: isoY, zIndex: x + y };
+}
+
+const TILE_THEMES: Record<TileType, { bg: string, color: string, icon: any }> = {
+  start: { bg: '#ffffff', color: 'text-gray-400', icon: MapPin },
+  enemy: { bg: '#e2e8f0', color: 'text-slate-500', icon: SkullIcon },
+  boss: { bg: '#c4b5fd', color: 'text-purple-700', icon: Skull },
+  buff: { bg: '#bfdbfe', color: 'text-blue-600', icon: Sparkles },
+  debuff: { bg: '#fecaca', color: 'text-red-600', icon: SkullIcon },
+  minigame: { bg: '#fef08a', color: 'text-yellow-700', icon: Gift },
+  shop: { bg: '#fed7aa', color: 'text-orange-600', icon: ShoppingBag }
 };
 
-const TILE_COLORS: Record<TileType, string> = {
-  start: "bg-green-600 text-green-100",
-  enemy: "bg-red-900 text-red-100",
-  boss: "bg-purple-900 text-purple-100",
-  buff: "bg-blue-600 text-blue-100",
-  debuff: "bg-zinc-800 text-red-500",
-  minigame: "bg-yellow-600 text-yellow-100",
-  shop: "bg-amber-800 text-amber-100"
-};
+const TileSVG = ({ bg, thickness = 10 }: { bg: string, thickness?: number }) => (
+  <svg viewBox="0 0 64 42" className="w-[64px] absolute top-0 left-0" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.15))' }}>
+    {/* Left Face */}
+    <path d={`M 0 16 L 32 32 L 32 ${32 + thickness} L 0 ${16 + thickness} Z`} fill={bg} filter="brightness(0.7)" />
+    {/* Right Face */}
+    <path d={`M 32 32 L 64 16 L 64 ${16 + thickness} L 32 ${32 + thickness} Z`} fill={bg} filter="brightness(0.5)" />
+    {/* Top Face */}
+    <path d="M 32 0 L 64 16 L 32 32 L 0 16 Z" fill={bg} />
+  </svg>
+);
 
 export function GameBoard({ tiles, position }: { tiles: Tile[], position: number }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const pos = getTilePosition(position, tiles.length);
-    if (containerRef.current) {
-      const el = containerRef.current;
-      const scrollX = pos.x - el.clientWidth / 2;
-      const scrollY = pos.y - el.clientHeight / 2;
-      el.scrollTo({ left: scrollX, top: scrollY, behavior: 'smooth' });
-    }
-  }, [position, tiles.length]);
+  const heroPos = getTilePosition(position);
 
   return (
-    <div 
-      ref={containerRef}
-      className="w-full h-full overflow-hidden bg-emerald-950 relative border-4 border-amber-900/50 rounded-xl shadow-2xl"
-      style={{
-        backgroundImage: 'radial-gradient(#064e3b 2px, transparent 2px)',
-        backgroundSize: '32px 32px'
-      }}
-    >
-      <div 
-        className="relative"
-        style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT }}
-      >
-        <svg className="absolute inset-0 pointer-events-none w-full h-full">
-          <path 
-            fill="none" 
-            stroke="rgba(217, 119, 6, 0.4)" 
-            strokeWidth="12" 
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d={tiles.map((_, i) => {
-              const p = getTilePosition(i, tiles.length);
-              return (i === 0 ? "M " + p.x + " " + p.y : "L " + p.x + " " + p.y);
-            }).join(" ")}
-          />
-        </svg>
-
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="relative w-0 h-0">
+        
+        {/* Scenery - Trees and Statue */}
+        <div className="absolute w-[200px] h-[200px] -ml-[100px] -mt-[140px] z-[0]">
+           <img src="/src/assets/statue.png" className="w-full h-full object-contain" alt="Statue" />
+        </div>
+        
+        <div className="absolute w-[100px] h-[120px] -ml-[180px] -mt-[20px] z-[1]">
+           <img src="/src/assets/tree.png" className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
+        </div>
+        <div className="absolute w-[80px] h-[100px] ml-[100px] -mt-[80px] z-[0]">
+           <img src="/src/assets/tree.png" className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
+        </div>
+        <div className="absolute w-[120px] h-[140px] -ml-[50px] mt-[40px] z-[10]">
+           <img src="/src/assets/tree.png" className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
+        </div>
+        
+        {/* Grid Tiles */}
         {tiles.map((t, i) => {
-          const p = getTilePosition(i, tiles.length);
-          const Icon = TILE_ICONS[t.type];
+          const p = getTilePosition(i);
+          const theme = TILE_THEMES[t.type];
+          const Icon = theme.icon;
+          
           return (
             <div 
               key={t.id}
-              className={"absolute w-12 h-12 -ml-6 -mt-6 rounded-full flex items-center justify-center shadow-lg border-2 border-white/20 transition-transform hover:scale-110 " + TILE_COLORS[t.type]}
-              style={{ left: p.x, top: p.y }}
-              title={t.type + " tile"}
+              className="absolute w-[64px] h-[32px] -ml-[32px] -mt-[16px] transition-transform duration-300"
+              style={{ 
+                transform: `translate(${p.x}px, ${p.y}px)`, 
+                zIndex: p.zIndex 
+              }}
             >
-              <Icon className="w-6 h-6" />
+              <TileSVG bg={theme.bg} />
+              {t.type !== 'start' && (
+                <div className="absolute inset-0 flex items-center justify-center -mt-[8px]">
+                  <Icon className={`w-4 h-4 ${theme.color}`} strokeWidth={3} />
+                </div>
+              )}
             </div>
           );
         })}
 
+        {/* Hero */}
         <div 
-          className="absolute w-16 h-16 -ml-8 -mt-12 transition-all duration-700 ease-in-out drop-shadow-2xl z-10"
+          className="absolute w-[64px] h-[64px] -ml-[32px] -mt-[48px] transition-all duration-500 ease-in-out"
           style={{ 
-            left: getTilePosition(position, tiles.length).x, 
-            top: getTilePosition(position, tiles.length).y 
+            transform: `translate(${heroPos.x}px, ${heroPos.y}px)`, 
+            zIndex: heroPos.zIndex + 1 
           }}
         >
-          <HeroSprite className="w-full h-full drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]" />
+          <img src="/src/assets/hero.png" className="w-full h-full object-contain drop-shadow-xl animate-bounce-slow" alt="Hero" />
         </div>
+
       </div>
     </div>
   );

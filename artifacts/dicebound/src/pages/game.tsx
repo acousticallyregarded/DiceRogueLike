@@ -4,11 +4,11 @@ import { GameBoard } from '../components/GameBoard';
 import { TopBar } from '../components/TopBar';
 import { CombatOverlay } from '../components/CombatOverlay';
 import { ActionOverlay } from '../components/ActionOverlay';
-import { Dices, RefreshCcw } from 'lucide-react';
+import { Dices, FastForward } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Game() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, speed, setSpeed } = useGame();
   const [rolling, setRolling] = useState(false);
   const [diceFace, setDiceFace] = useState(1);
   const [visualPosition, setVisualPosition] = useState(0);
@@ -59,15 +59,23 @@ export default function Game() {
 
   const isMoving = visualPosition !== state.run.position;
   const canRoll = state.run.phase === 'explore' && !rolling && !isMoving;
+  const inCombat = state.run.phase === 'combat';
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans flex flex-col overflow-hidden selection:bg-amber-500/30">
-      <TopBar run={state.run} />
-
-      <main className="flex-1 relative flex items-center justify-center pt-16">
-        <GameBoard tiles={state.run.tiles} position={visualPosition} />
+    <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans">
+      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#e0ff00]">
         
-        {state.run.phase === 'combat' && (
+        {/* Grass Background details */}
+        <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'radial-gradient(#a3e635 2px, transparent 2px)', backgroundSize: '24px 24px' }} />
+
+        {/* Scene Split - If in combat, shrink board to bottom */}
+        <div className={`absolute inset-0 transition-transform duration-700 ease-in-out ${inCombat ? 'translate-y-[40%] scale-90 opacity-40' : 'translate-y-0 scale-100'}`}>
+           <GameBoard tiles={state.run.tiles} position={visualPosition} />
+        </div>
+
+        <TopBar run={state.run} floor={state.run.floor} />
+
+        {inCombat && (
           <CombatOverlay run={state.run} />
         )}
 
@@ -75,44 +83,45 @@ export default function Game() {
 
         {/* Dice rolling overlay */}
         {rolling && (
-          <div className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-            <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center shadow-2xl animate-spin shadow-amber-500/50">
-              <span className="text-6xl font-black text-black">{diceFace}</span>
-            </div>
+          <div className="absolute inset-0 z-40 bg-black/20 flex items-center justify-center pointer-events-none">
+             <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,1)] animate-spin border-4 border-slate-200">
+                <div className="text-5xl font-black text-black -rotate-45">{diceFace}</div>
+             </div>
           </div>
         )}
 
-        {/* Floating dice result */}
-        {!rolling && state.run.lastRoll && state.run.phase === 'explore' && !isMoving && (
-          <div className="absolute bottom-32 right-32 text-amber-500 font-bold text-2xl animate-bounce drop-shadow-md">
-            Rolled {state.run.lastRoll}!
-          </div>
-        )}
-      </main>
-
-      <div className="h-24 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between px-8 shrink-0 z-30">
-        <button 
-          onClick={() => dispatch({ type: 'RESET_SAVE' })}
-          className="text-zinc-600 hover:text-red-500 transition-colors flex items-center gap-2 text-sm"
-          title="Reset completely"
-        >
-          <RefreshCcw className="w-4 h-4" /> Reset Save
-        </button>
-
-        <button
-          onClick={handleRoll}
-          disabled={!canRoll}
-          className={"group relative px-10 py-4 bg-amber-600 hover:bg-amber-500 rounded-full font-bold text-xl text-amber-950 shadow-[0_0_20px_rgba(217,119,6,0.3)] transition-all " + (canRoll ? 'hover:scale-105 hover:shadow-[0_0_40px_rgba(217,119,6,0.6)] cursor-pointer' : 'opacity-50 cursor-not-allowed saturate-0')}
-        >
-          <span className="flex items-center gap-3">
-            <Dices className={"w-6 h-6 " + (canRoll ? 'group-hover:animate-bounce' : '')} />
-            Roll Dice
-          </span>
-        </button>
-        
-        <div className="w-32 text-right text-zinc-500 font-serif italic text-sm">
-          Floor {state.run.floor}
+        {/* Dice Button Bottom */}
+        <div className="absolute bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
+           {state.run.phase === 'explore' && !isMoving && !rolling && (
+              <button 
+                onClick={handleRoll}
+                className="pointer-events-auto relative w-28 h-24 transform transition-transform active:scale-95 group"
+              >
+                 {/* 3D Dice Button CSS drawing */}
+                 <div className="absolute inset-0 bg-[#d9381e] rounded-3xl mt-4" />
+                 <div className="absolute inset-0 bg-[#ff5733] rounded-3xl mb-4 border-b-4 border-[#ff8c70] shadow-[0_0_20px_rgba(255,87,51,0.6)] flex items-center justify-center group-active:translate-y-4 group-active:mb-0 transition-transform">
+                    <Dices className="w-10 h-10 text-white drop-shadow-md" />
+                 </div>
+                 {/* Floating hand icon indicator like in screenshot */}
+                 <div className="absolute -top-10 left-1/2 -ml-4 animate-bounce">
+                    <div className="bg-white text-black px-2 py-1 rounded text-2xl border-2 border-black drop-shadow-md">👇</div>
+                 </div>
+              </button>
+           )}
         </div>
+
+        {/* Speed toggle bottom left */}
+        {state.run.phase === 'combat' && (
+          <div className="absolute bottom-6 left-6 z-30 pointer-events-auto">
+             <button 
+                onClick={() => setSpeed(s => s === 1 ? 2 : 1)}
+                className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-md active:scale-95"
+              >
+                <FastForward className="w-4 h-4 fill-current" /> x{speed}
+             </button>
+          </div>
+        )}
+
       </div>
     </div>
   );

@@ -1,1 +1,1 @@
-- [Visual reference scope](visual-reference.md) — Original prototype approved; reference footage was not viewed, so visual fidelity remains unverified.
+- [Visual reference scope](visual-reference.md) — Screenshots and sampled recording now ground the visual target; distinguish observed behavior from unverified rules.

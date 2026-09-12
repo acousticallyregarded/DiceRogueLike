@@ -29,6 +29,7 @@ export function saveGame(s: GameStateV2): boolean {
 
 export function useGame() {
   const [state, setState] = useState<GameStateV2 | null>(null);
+  const [speed, setSpeed] = useState<number>(1);
   
   useEffect(() => {
     setState(loadGame());
@@ -51,6 +52,11 @@ export function useGame() {
     });
   }, []);
 
+  const speedRef = useRef(speed);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+
   const lastTick = useRef<number>(performance.now());
   useEffect(() => {
     if (!state?.run || state.run.phase !== 'combat') {
@@ -64,7 +70,8 @@ export function useGame() {
       lastTick.current = time;
       
       if (dt > 0) {
-        dispatch({ type: 'TICK_COMBAT', dtMs: Math.min(dt, 100) }); 
+        const scaledDt = dt * speedRef.current;
+        dispatch({ type: 'TICK_COMBAT', dtMs: Math.min(scaledDt, 100 * speedRef.current) }); 
       }
       
       frameId = requestAnimationFrame(loop);
@@ -74,5 +81,5 @@ export function useGame() {
     return () => cancelAnimationFrame(frameId);
   }, [state?.run?.phase, dispatch]);
 
-  return { state, dispatch };
+  return { state, dispatch, speed, setSpeed };
 }

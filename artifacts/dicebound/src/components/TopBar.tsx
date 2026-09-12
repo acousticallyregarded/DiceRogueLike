@@ -1,45 +1,45 @@
 import { RunState } from '../engine';
-import { Heart, Sword, Shield, Wind, Coins, Gem } from 'lucide-react';
+import { Heart, Sword, Shield, Settings, Gem, ShieldAlert } from 'lucide-react';
 
-export function TopBar({ run }: { run: RunState }) {
+export function TopBar({ run, floor }: { run: RunState, floor: number }) {
   return (
-    <div className="absolute top-0 left-0 right-0 h-16 bg-zinc-950/80 backdrop-blur border-b border-amber-900/30 flex items-center justify-between px-6 z-30 shadow-lg">
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <Heart className="w-5 h-5 text-red-500 fill-current" />
-          <div className="w-32 h-4 bg-zinc-900 rounded-full overflow-hidden border border-zinc-700">
-            <div 
-              className="h-full bg-red-500 transition-all duration-300"
-              style={{ width: Math.max(0, (run.hp / run.maxHp) * 100) + "%" }}
-            />
+    <div className="absolute top-4 left-4 right-4 flex flex-col gap-2 z-30 pointer-events-none">
+      <div className="flex justify-between items-start">
+        <div className="flex gap-1.5">
+          {/* Level Pill */}
+          <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto">
+             <span className="text-green-400 mr-1 text-xs">EXP</span> Lv. {floor}
           </div>
-          <span className="text-sm font-bold text-zinc-300 w-16">{Math.floor(run.hp)}/{run.maxHp}</span>
+          {/* Health Pill */}
+          <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto overflow-hidden relative min-w-[90px] justify-center">
+            <div className="absolute inset-0 bg-red-500 z-0 origin-left transition-transform duration-300" style={{ transform: `scaleX(${Math.max(0, run.hp / run.maxHp)})` }} />
+            <Heart className="w-3 h-3 text-white fill-current mr-1 z-10 relative" />
+            <span className="z-10 relative text-xs tracking-tight">{Math.floor(run.hp)} / {run.maxHp}</span>
+          </div>
         </div>
         
-        <div className="hidden md:flex gap-4">
-          <div className="flex items-center gap-1.5 text-zinc-300 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800" title="Attack">
-            <Sword className="w-4 h-4 text-red-400" />
-            <span className="font-bold">{run.attack}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-zinc-300 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800" title="Defense">
-            <Shield className="w-4 h-4 text-blue-400" />
-            <span className="font-bold">{run.defense}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-zinc-300 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800" title="Speed">
-            <Wind className="w-4 h-4 text-green-400" />
-            <span className="font-bold">{run.speed}</span>
-          </div>
+        <div className="flex gap-1.5">
+           {/* Sword */}
+           <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2.5 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto min-w-[50px] justify-center">
+             <Sword className="w-3 h-3 text-white mr-1" />
+             {run.attack}
+           </div>
+           {/* Shield */}
+           <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2.5 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto min-w-[50px] justify-center">
+             <ShieldAlert className="w-3 h-3 text-blue-300 mr-1" />
+             {run.defense}
+           </div>
+           <button className="bg-white text-slate-800 rounded-full p-1 border-2 border-[#1c1c1c] shadow-md pointer-events-auto active:scale-95">
+             <Settings className="w-4 h-4" />
+           </button>
         </div>
       </div>
-
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2 text-yellow-500 font-bold bg-yellow-950/30 px-4 py-1.5 rounded-full border border-yellow-900/50">
-          <Coins className="w-5 h-5" />
-          {run.gold} Gold
-        </div>
-        <div className="flex items-center gap-2 text-fuchsia-400 font-bold bg-fuchsia-950/30 px-4 py-1.5 rounded-full border border-fuchsia-900/50">
-          <Gem className="w-5 h-5" />
-          {run.gemsEarned} Gems
+      
+      {/* Second Row */}
+      <div className="flex gap-2">
+        <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto">
+          <Gem className="w-3 h-3 text-cyan-300 mr-1 fill-current" />
+          {run.gold + run.gemsEarned}
         </div>
       </div>
     </div>
