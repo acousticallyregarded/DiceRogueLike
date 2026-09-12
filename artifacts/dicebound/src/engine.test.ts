@@ -1,113 +1,132 @@
-import { act, createInitialState, GameStateV2 } from './engine.js';
+import assert from "node:assert/strict";
+import {
+  act,
+  calculateDamage,
+  createInitialState,
+  NORMAL_ROSTER,
+  ELITE_ROSTER,
+  validateState,
+  type EnemyState,
+  type Skill,
+} from "./engine.js";
+import {
+  ATTACK_STYLES,
+  BESTIARY,
+  DEFAULT_DAMAGE_TYPE,
+  speciesKeyForName,
+} from "./bestiary.js";
+
+function combatState(enemy: EnemyState, skills: Skill[] = []) {
+  let state = createInitialState();
+  state = act(state, { type: "START_RUN" });
+  const run = state.run!;
+  run.attack = 10;
+  run.speed = 0;
+  run.hp = 50;
+  run.skills = skills;
+  run.enemies = [enemy];
+  run.phase = "combat";
+  run.isBossCombat = false;
+  run.playerCombat = { attackTimer: 100, roundCounter: 0 };
+  return state;
+}
 
 function runAssertions() {
-  console.log("Running engine logic assertions...");
-  
-  let state = createInitialState();
-  
-  // Grant some gems and test purchase (Meta)
-  state.meta.gems = 1000;
-  state = act(state, { type: 'BUY_GEAR', stat: 'weapon' });
-  state = act(state, { type: 'BUY_TALENT', stat: 'vitality' });
-  
-  if (state.meta.gear.weaponLevel !== 1) throw new Error("Weapon purchase failed");
-  if (state.meta.talents.vitality !== 1) throw new Error("Vitality purchase failed");
-  if (state.meta.gems !== 1000 - 50 - 50) throw new Error("Gems not deducted properly");
-  console.log("✓ Meta purchases working");
+  // Traits are applied after defense: resistance floors, vulnerability doubles,
+  // and immunity is exactly zero (never promoted to one).
+  assert.equal(calculateDamage(14, 2, "skeleton", "bludgeoning").amount, 24);
+  assert.equal(calculateDamage(13, 1, "ochre_jelly", "acid").amount, 6);
+  assert.equal(calculateDamage(13, 1, "ochre_jelly", "lightning").amount, 0);
+  assert.equal(calculateDamage(10, 0, "mummy", "slashing").amount, 5);
+  assert.equal(calculateDamage(10, 0, "mummy", "fire").amount, 20);
 
-  // Start run
-  state = act(state, { type: 'START_RUN' });
-  if (!state.run) throw new Error("Run not started");
-  
-  const initialMaxHp = state.run.maxHp; // should be 100 + 1*20 = 120
-  if (initialMaxHp !== 120) throw new Error("Max HP didn't scale with vitality");
-  console.log("✓ Run initialization working");
+  // Save migration defaults the selected stance and only infers known names.
+  let saved = createInitialState();
+  saved = act(saved, { type: "START_RUN" });
+  saved.run!.selectedDamageType = undefined as never;
+  saved.run!.enemies = [
+    { id: "legacy-jelly", name: "Slime", hp: 10, maxHp: 10, attack: 1, defense: 0, speed: 0, attackTimer: 0 },
+    { id: "legacy-boss", name: "The Overlord", hp: 10, maxHp: 10, attack: 1, defense: 0, speed: 0, attackTimer: 0, boss: true },
+  ];
+  const migrated = validateState(saved);
+  assert.equal(migrated.run!.selectedDamageType, DEFAULT_DAMAGE_TYPE);
+  assert.equal(migrated.run!.enemies[0].speciesKey, "ochre_jelly");
+  assert.equal(migrated.run!.enemies[1].speciesKey, undefined);
 
-  // Force position to a boss tile (id: 23)
-  state.run.position = 23;
-  state.run.tiles[23] = { id: 23, type: 'boss' };
-  
-  // Hack enemy in to simulate landing on boss
-  state.run.enemy = {
-    id: "boss1",
-    name: "The Overlord",
-    hp: 1, // 1 hp to kill instantly
+  let selected = act(createInitialState(), { type: "START_RUN" });
+  selected = act(selected, { type: "SELECT_ATTACK", damageType: "fire" });
+  assert.equal(selected.run!.selectedDamageType, "fire");
+
+  // Poison is a real reducer effect but skeleton immunity blocks its damage.
+  const skeleton: EnemyState = {
+    id: "skeleton",
+    name: "Skeleton",
+    speciesKey: "skeleton",
+    hp: 100,
     maxHp: 100,
-    attack: 10,
+    attack: 0,
     defense: 0,
-    speed: 10,
-    boss: true,
-    attackTimer: 0
+    speed: 0,
+    attackTimer: 0,
   };
-  state.run.playerCombat = { attackTimer: 100 }; // ready to attack
-  state.run.phase = "combat";
+  let poisoned = combatState(skeleton, [{
+    id: "poison",
+    name: "Poison Strike",
+    description: "",
+    type: "poison",
+  }]);
+  poisoned.run!.selectedDamageType = "fire";
+  poisoned = act(poisoned, { type: "TICK_COMBAT", dtMs: 0 });
+  const hpAfterHit = poisoned.run!.enemies[0].hp;
+  poisoned = act(poisoned, { type: "TICK_COMBAT", dtMs: 1000 });
+  assert.equal(poisoned.run!.enemies[0].hp, hpAfterHit);
 
-  // Tick combat
-  state = act(state, { type: 'TICK_COMBAT', dtMs: 100 });
-  
-  // Boss dead -> should be reward phase
-  if (state.run.phase !== 'reward') throw new Error("Did not transition to reward after boss death: " + state.run.phase);
-  if (!state.run.rewardOptions || state.run.rewardOptions.length !== 3) throw new Error("No 3 upgrade options offered after boss");
-  console.log("✓ Boss defeat -> Reward phase working");
-
-  // Choose reward
-  const rewardId = state.run.rewardOptions[0].id;
-  state = act(state, { type: 'CHOOSE_REWARD', rewardId });
-  
-  // Floor 1 boss reward -> advances to floor 2
-  if (state.run.floor !== 2) throw new Error("Floor did not advance after boss 1 reward");
-  if (state.run.phase !== 'explore') throw new Error("Did not transition to explore on new floor");
-  console.log("✓ Next floor transition working");
-
-  // Skip to Floor 3 boss
-  state.run.floor = 3;
-  state.run.position = 23;
-  state.run.tiles[23] = { id: 23, type: 'boss' };
-  state.run.enemy = {
-    id: "boss3",
-    name: "Final Boss",
-    hp: 1,
+  // Leech uses actual damage, so an immune hit cannot heal.
+  const jelly: EnemyState = {
+    id: "jelly",
+    name: "Ochre Jelly",
+    speciesKey: "ochre_jelly",
+    hp: 100,
     maxHp: 100,
-    attack: 10,
+    attack: 0,
     defense: 0,
-    speed: 10,
-    boss: true,
-    attackTimer: 0
+    speed: 0,
+    attackTimer: 0,
   };
-  state.run.playerCombat = { attackTimer: 100 };
-  state.run.phase = "combat";
+  let leeched = combatState(jelly, [{
+    id: "leech",
+    name: "Life Leech",
+    description: "",
+    type: "vampire",
+  }]);
+  leeched.run!.hp = 20;
+  leeched.run!.selectedDamageType = "lightning";
+  leeched = act(leeched, { type: "TICK_COMBAT", dtMs: 0 });
+  assert.equal(leeched.run!.hp, 20);
+  assert.equal(leeched.run!.enemies[0].hp, 100);
 
-  // Tick combat
-  state = act(state, { type: 'TICK_COMBAT', dtMs: 100 });
-  
-  // Reward phase
-  if (state.run.phase !== 'reward') throw new Error("Floor 3 Boss did not trigger reward");
-  
-  // Select final reward
-  const finalRewardId = state.run!.rewardOptions![0].id;
-  
-  const gemsBeforeWin = state.meta.gems;
-  state = act(state, { type: 'CHOOSE_REWARD', rewardId: finalRewardId });
-  
-  if (state.run.phase !== 'victory') throw new Error("Did not transition to victory after floor 3 boss reward");
-  if (!state.run.settled) throw new Error("Settlement flag not true on victory");
-  
-  const earned = state.run.gemsEarned + Math.floor(state.run.gold / 10);
-  if (state.meta.gems !== gemsBeforeWin + earned) throw new Error("Gems not awarded correctly on victory");
-  console.log("✓ Final Boss -> Victory and settlement working");
+  // Counter damage goes through the same immunity pipeline and may be zero.
+  const counterJelly = { ...jelly, id: "counter-jelly", attack: 10, attackTimer: 100 };
+  let countered = combatState(counterJelly, [{
+    id: "counter",
+    name: "Counter Mastery",
+    description: "",
+    type: "counter",
+  }]);
+  countered.run!.selectedDamageType = "slashing";
+  countered = act(countered, { type: "TICK_COMBAT", dtMs: 0 });
+  assert.equal(countered.run!.enemies[0].hp, 100);
 
-  // Verify multiple settlements blocked
-  state = act(state, { type: 'RETURN_TO_LOBBY' });
-  if (state.meta.gems !== gemsBeforeWin + earned) throw new Error("Settlement duplicated in RETURN_TO_LOBBY");
-  if (state.run !== null) throw new Error("Run not cleared on return to lobby");
-  console.log("✓ Settlement duplication prevented");
-  
-  console.log("All assertions passed!");
+  // Every displayed species has at least one usable attack stance.
+  for (const speciesKey of [...NORMAL_ROSTER, ...ELITE_ROSTER]) {
+    assert.ok(
+      ATTACK_STYLES.some(style => calculateDamage(10, 0, speciesKey, style.damageType).amount > 0),
+      `${speciesKey} must have a viable stance`,
+    );
+  }
+  assert.equal(speciesKeyForName("Dire Wolf"), "winter_wolf");
+  assert.equal(BESTIARY.mummy.vulnerabilities[0].damageType, "fire");
 }
 
-try {
-  runAssertions();
-} catch (e) {
-  console.error("Assertion Failed:", e);
-  process.exit(1);
-}
+runAssertions();
+console.log("Dicebound engine assertions passed.");

@@ -1,4 +1,10 @@
-import { RunState } from '../engine';
+import { GameAction, RunState } from '../engine';
+import {
+  formatDamageType,
+  getBestiaryEntry,
+  getMonsterArtKey,
+  speciesKeyForName,
+} from '../bestiary';
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 
@@ -9,6 +15,7 @@ import skeletonUrl from '../assets/skeleton.png';
 import bossUrl from '../assets/boss.png';
 import heroUrl from '../assets/hero.png';
 import { SpriteAnimator, SpriteName } from './SpriteAnimator';
+import { AttackStyleSelector } from './AttackStyleSelector';
 
 interface EnemySnapshot {
   id: string;
@@ -66,20 +73,28 @@ function makeSnapshot(run: RunState): CombatSnapshot {
   };
 }
 
-function getMonsterImage(name: string) {
-  if (name.includes('Wolf')) return wolfUrl;
-  if (name.includes('Slime')) return slimeUrl;
-  if (name.includes('Goblin') || name.includes('Orc') || name.includes('Ogre')) return goblinUrl;
-  if (name.includes('Skeleton')) return skeletonUrl;
-  if (name.includes('Overlord')) return bossUrl;
+function getMonsterImage(enemy: RunState['enemies'][number]) {
+  const artKey = getMonsterArtKey(
+    enemy.speciesKey ?? speciesKeyForName(enemy.name),
+    enemy.artKey ?? (enemy.boss ? 'boss' : undefined),
+  );
+  if (artKey === 'wolf') return wolfUrl;
+  if (artKey === 'slime') return slimeUrl;
+  if (artKey === 'goblin') return goblinUrl;
+  if (artKey === 'skeleton') return skeletonUrl;
+  if (artKey === 'boss') return bossUrl;
   return wolfUrl;
 }
 
-function getAttackSprite(name: string): SpriteName {
-  if (name.includes('Wolf')) return 'wolf-attack';
-  if (name.includes('Slime')) return 'slime-attack';
-  if (name.includes('Goblin') || name.includes('Orc') || name.includes('Ogre')) return 'goblin-attack';
-  if (name.includes('Skeleton')) return 'skeleton-attack';
+function getAttackSprite(enemy: RunState['enemies'][number]): SpriteName {
+  const artKey = getMonsterArtKey(
+    enemy.speciesKey ?? speciesKeyForName(enemy.name),
+    enemy.artKey ?? (enemy.boss ? 'boss' : undefined),
+  );
+  if (artKey === 'wolf') return 'wolf-attack';
+  if (artKey === 'slime') return 'slime-attack';
+  if (artKey === 'goblin') return 'goblin-attack';
+  if (artKey === 'skeleton') return 'skeleton-attack';
   return 'boss-attack';
 }
 
@@ -87,12 +102,31 @@ function eventStyle(durationMs: number): CSSProperties {
   return { '--combat-duration': `${durationMs}ms`, '--combat-hit-duration': `${Math.min(durationMs, 320)}ms` } as CSSProperties;
 }
 
-export function CombatOverlay({ run, speed = 1 }: { run: RunState, speed?: number }) {
+function traitSummary(
+  traits: NonNullable<ReturnType<typeof getBestiaryEntry>>["resistances"],
+  suffix: string,
+) {
+  if (traits.length === 0) return 'None';
+  return traits.map(trait => (
+    `${formatDamageType(trait.damageType)}${trait.nonmagicalOnly ? ' (nonmagical)' : ''} ${suffix}`
+  )).join(' • ');
+}
+
+export function CombatOverlay({
+  run,
+  dispatch,
+  speed = 1,
+}: {
+  run: RunState;
+  dispatch: (action: GameAction) => void;
+  speed?: number;
+}) {
   const [visualEvents, setVisualEvents] = useState<VisualEvents>(EMPTY_EVENTS);
   const [damagePopups, setDamagePopups] = useState<DamagePopup[]>([]);
   const [displayRun, setDisplayRun] = useState<RunState | null>(null);
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [inspectedEnemyId, setInspectedEnemyId] = useState<string | null>(null);
   const eventId = useRef(0);
   const previousSnapshot = useRef<CombatSnapshot | null>(null);
   const previousPhase = useRef<RunState['phase']>(run.phase);
@@ -270,6 +304,10 @@ export function CombatOverlay({ run, speed = 1 }: { run: RunState, speed?: numbe
     !activeEnemyIds.has(enemy.id) && visualEvents.enemies[enemy.id]?.deathTrigger
   ));
   const renderedEnemies = [...renderedRun.enemies, ...archivedDeaths];
+  const inspectedEnemy = renderedEnemies.find(enemy => enemy.id === inspectedEnemyId);
+  const inspectedEntry = inspectedEnemy
+    ? getBestiaryEntry(inspectedEnemy.speciesKey ?? speciesKeyForName(inspectedEnemy.name))
+    : undefined;
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
@@ -288,6 +326,69 @@ export function CombatOverlay({ run, speed = 1 }: { run: RunState, speed?: numbe
           Floor {renderedRun.floor} • Round {renderedRun.playerCombat.roundCounter}/30
         </div>
       </div>
+
+      <div className="absolute top-28 left-3 right-3 z-40">
+        <AttackStyleSelector run={run} dispatch={dispatch} compact />
+      </div>
+
+      {run.combatFeedback && (
+        <div
+          role="status"
+          className={`absolute top-[12rem] left-1/2 -translate-x-1/2 z-40 whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-black border-2 shadow-md ${
+            run.combatFeedback.kind === 'immune'
+              ? 'bg-slate-900 text-slate-100 border-slate-300'
+              : run.combatFeedback.kind === 'resisted'
+                ? 'bg-amber-100 text-amber-900 border-amber-500'
+                : run.combatFeedback.kind === 'vulnerable'
+                  ? 'bg-red-100 text-red-900 border-red-500'
+                  : 'bg-white text-slate-800 border-[#1c1c1c]'
+          }`}
+        >
+          {run.combatFeedback.message}
+        </div>
+      )}
+
+      {inspectedEnemy && (
+        <div className="absolute top-[15rem] left-3 right-3 z-50 bg-white rounded-2xl border-4 border-[#1c1c1c] shadow-2xl p-3 text-slate-800">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="text-sm font-black">{inspectedEnemy.name}</div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-purple-600">
+                {inspectedEntry?.family ?? 'Unknown creature'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setInspectedEnemyId(null)}
+              aria-label="Close enemy details"
+              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black"
+            >
+              Close
+            </button>
+          </div>
+          {inspectedEntry ? (
+            <>
+              <p className="mt-1 text-[10px] font-semibold text-slate-600">{inspectedEntry.blurb}</p>
+              <p className="mt-1 text-[10px] font-bold text-slate-700">Hint: {inspectedEntry.tactic}</p>
+              <div className="mt-2 grid gap-1 text-[9px] font-black">
+                <div className="rounded bg-amber-50 px-2 py-1 text-amber-900">
+                  Resistance ½: {traitSummary(inspectedEntry.resistances, '½')}
+                </div>
+                <div className="rounded bg-red-50 px-2 py-1 text-red-900">
+                  Vulnerability 2×: {traitSummary(inspectedEntry.vulnerabilities, '2×')}
+                </div>
+                <div className="rounded bg-slate-200 px-2 py-1 text-slate-900">
+                  Immunity 0: {traitSummary(inspectedEntry.immunities, '0')}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="mt-1 text-[10px] font-bold text-slate-600">
+              No known damage traits. This legacy/custom enemy remains neutral.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 relative flex items-end justify-between px-6 pb-12">
         <div className="relative flex flex-col items-center">
@@ -328,18 +429,28 @@ export function CombatOverlay({ run, speed = 1 }: { run: RunState, speed?: numbe
           {renderedEnemies.map(enemy => {
             const enemyEvent = visualEvents.enemies[enemy.id] ?? { attackTrigger: 0, hitTrigger: 0, deathTrigger: 0 };
             const isDying = enemyEvent.deathTrigger > 0;
-            const enemySprite = getAttackSprite(enemy.name);
+            const enemySprite = getAttackSprite(enemy);
             return (
               <div
                 key={`${enemy.id}-${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`}
                 className={`relative flex flex-col items-center ${isDying ? 'combat-actor--dying' : ''}`}
                 style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${EXIT_DURATION_MS / Math.max(1, speed)}ms` } as CSSProperties}
+                onClick={() => !isDying && setInspectedEnemyId(enemy.id)}
+                role="button"
+                tabIndex={isDying ? -1 : 0}
+                aria-label={`Inspect ${enemy.name}`}
+                onKeyDown={event => {
+                  if (!isDying && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    setInspectedEnemyId(enemy.id);
+                  }
+                }}
               >
                 <div className={`combat-actor combat-actor--enemy w-20 h-20 ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
                     <SpriteAnimator
                       sprite={enemySprite}
-                      fallbackUrl={getMonsterImage(enemy.name)}
+                      fallbackUrl={getMonsterImage(enemy)}
                       active={enemyEvent.attackTrigger > 0}
                       trigger={enemyEvent.attackTrigger}
                       fps={14}

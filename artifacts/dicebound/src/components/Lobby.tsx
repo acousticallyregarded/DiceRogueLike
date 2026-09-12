@@ -1,6 +1,7 @@
 import { GameStateV4, GameAction } from '../engine';
-import { Play, Settings2, Sparkles, Sword, Shield, Zap, Box, HelpCircle, Gem, Heart, Wind } from 'lucide-react';
+import { Play, Settings2, Sparkles, Sword, Shield, Zap, Box, HelpCircle, BookOpen, Gem, Heart, Wind } from 'lucide-react';
 import { useState } from 'react';
+import { MonsterGuide } from './MonsterGuide';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
@@ -9,6 +10,7 @@ import heroUrl from '../assets/hero.png';
 export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: GameAction) => void }) {
   const [tab, setTab] = useState<'play' | 'gear' | 'talents'>('play');
   const [showHelp, setShowHelp] = useState(false);
+  const [showBestiary, setShowBestiary] = useState(false);
 
   const { meta } = state;
 
@@ -35,6 +37,9 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
             <h1 className="text-3xl font-black tracking-tighter uppercase italic text-amber-500" style={{ WebkitTextStroke: '1.5px black' }}>Dicebound</h1>
             <button onClick={() => setShowHelp(true)} aria-label="Help" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-slate-700">
               <HelpCircle className="w-4 h-4"/>
+            </button>
+            <button onClick={() => setShowBestiary(true)} aria-label="Open Bestiary" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-purple-700">
+              <BookOpen className="w-4 h-4"/>
             </button>
           </div>
           <div className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
@@ -202,6 +207,8 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
             </div>
           </div>
         )}
+
+        {showBestiary && <MonsterGuide onClose={() => setShowBestiary(false)} />}
 
       </div>
     </div>

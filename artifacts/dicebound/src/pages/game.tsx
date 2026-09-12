@@ -5,12 +5,15 @@ import { TopBar } from '../components/TopBar';
 import { CombatOverlay } from '../components/CombatOverlay';
 import { ActionOverlay } from '../components/ActionOverlay';
 import { DiceButton } from '../components/DiceButton';
+import { AttackStyleSelector } from '../components/AttackStyleSelector';
+import { MonsterGuide } from '../components/MonsterGuide';
 import { FastForward, BookOpen } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Game() {
   const { state, dispatch, speed, setSpeed } = useGame();
   const [showSkills, setShowSkills] = useState(false);
+  const [showBestiary, setShowBestiary] = useState(false);
 
   if (!state) return null;
 
@@ -35,7 +38,22 @@ export default function Game() {
 
         <TopBar run={r} />
 
-         <CombatOverlay run={r} speed={speed} />
+         <CombatOverlay run={r} dispatch={dispatch} speed={speed} />
+
+         {!inCombat && (r.phase === 'explore' || r.phase === 'moving') && (
+           <div className="absolute top-20 left-3 right-16 z-40">
+             <AttackStyleSelector run={r} dispatch={dispatch} />
+           </div>
+         )}
+
+         <button
+           type="button"
+           onClick={() => setShowBestiary(true)}
+           aria-label="Open Bestiary"
+           className="absolute top-20 right-3 z-40 rounded-full bg-white p-2 border-4 border-[#1c1c1c] shadow-[0_3px_0_#1c1c1c] active:translate-y-1 active:shadow-none"
+         >
+           <BookOpen className="w-5 h-5 text-purple-700" />
+         </button>
 
         <ActionOverlay run={r} dispatch={dispatch} meta={state.meta} />
 
@@ -91,6 +109,8 @@ export default function Game() {
             </div>
           </div>
         )}
+
+        {showBestiary && <MonsterGuide onClose={() => setShowBestiary(false)} />}
 
       </div>
     </div>

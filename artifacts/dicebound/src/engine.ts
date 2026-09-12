@@ -1,3 +1,15 @@
+import {
+  ATTACK_STYLES,
+  DEFAULT_DAMAGE_TYPE,
+  DamageType,
+  getBestiaryEntry,
+  getDamageModifier,
+  isAttackStyle,
+  isDamageType,
+  speciesKeyForName,
+  type MonsterSpeciesKey,
+} from "./bestiary";
+
 function uuid() {
   return Math.random().toString(36).substring(2, 9);
 }
@@ -32,6 +44,10 @@ export interface MetaState {
 export interface EnemyState {
   id: string;
   name: string;
+  /** Stable bestiary key. Optional for version 4 save compatibility. */
+  speciesKey?: MonsterSpeciesKey;
+  /** Explicit art identity keeps existing sprites independent of names. */
+  artKey?: "wolf" | "goblin" | "skeleton" | "slime" | "boss";
   hp: number;
   maxHp: number;
   attack: number;
@@ -39,7 +55,20 @@ export interface EnemyState {
   speed: number;
   attackTimer: number;
   poisoned?: boolean;
+  poisonTimerMs?: number;
+  damageType?: DamageType;
   boss?: boolean;
+}
+
+export type CombatFeedbackKind = "immune" | "resisted" | "vulnerable" | "normal";
+
+export interface CombatFeedback {
+  id: string;
+  kind: CombatFeedbackKind;
+  damageType: DamageType;
+  amount: number;
+  targetName: string;
+  message: string;
 }
 
 export interface PlayerCombatState {
@@ -91,6 +120,9 @@ export interface RunState {
   enemies: EnemyState[];
   playerCombat: PlayerCombatState | null;
   isBossCombat: boolean;
+  /** Player stance. Old saves default to slashing during migration. */
+  selectedDamageType: DamageType;
+  combatFeedback?: CombatFeedback | null;
   
   skills: Skill[];
   skillOptions: Skill[] | null;
@@ -111,6 +143,7 @@ export type GameAction =
   | { type: "ROLL_DICE" }
   | { type: "STEP_MOVE" }
   | { type: "TICK_COMBAT"; dtMs: number }
+  | { type: "SELECT_ATTACK"; damageType: DamageType }
   | { type: "CHOOSE_SKILL"; skillId: string }
   | { type: "BUY_SHOP"; itemId: string }
   | { type: "REROLL_SHOP" }
@@ -180,16 +213,21 @@ function generateShop(): ShopItem[] {
   return items.sort(() => Math.random() - 0.5).slice(0, 3);
 }
 
-function generateEnemies(count: number, scale: number, isElite: boolean = false): EnemyState[] {
-  const names = ["Goblin", "Slime", "Wolf", "Skeleton", "Bandit"];
-  const eliteNames = ["Orc Warlord", "Dire Wolf", "Skeleton King", "Ogre"];
-  
+export const NORMAL_ROSTER: readonly MonsterSpeciesKey[] = ["wolf", "goblin", "skeleton", "ochre_jelly"];
+export const ELITE_ROSTER: readonly MonsterSpeciesKey[] = ["ogre", "winter_wolf", "mummy"];
+
+export function generateEnemies(count: number, scale: number, isElite: boolean = false): EnemyState[] {
+  const roster = isElite ? ELITE_ROSTER : NORMAL_ROSTER;
   return Array.from({ length: count }).map(() => {
-    const name = isElite ? eliteNames[Math.floor(Math.random() * eliteNames.length)] : names[Math.floor(Math.random() * names.length)];
+    const speciesKey = roster[Math.floor(Math.random() * roster.length)];
+    const entry = getBestiaryEntry(speciesKey);
+    const name = entry?.name ?? "Unknown Monster";
     const hp = Math.floor((20 + scale * 10) * (isElite ? 2 : 1));
     return {
       id: uuid(),
       name,
+      speciesKey,
+      artKey: entry?.artKey,
       hp,
       maxHp: hp,
       attack: Math.floor((5 + scale * 2) * (isElite ? 1.5 : 1)),
@@ -200,11 +238,13 @@ function generateEnemies(count: number, scale: number, isElite: boolean = false)
   });
 }
 
-function generateBoss(floor: number): EnemyState {
+export function generateBoss(floor: number): EnemyState {
   const hp = 150 + floor * 50;
   return {
     id: uuid(),
-    name: "The Overlord",
+    name: "Mummy",
+    speciesKey: "mummy",
+    artKey: "boss",
     hp,
     maxHp: hp,
     attack: 15 + floor * 5,
@@ -227,6 +267,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     r.isBossCombat = true;
     r.enemies = [generateBoss(r.floor)];
     r.playerCombat = { attackTimer: r.skills.some(sk => sk.type === "first_strike") ? 50 : 0, roundCounter: 0 };
+    r.combatFeedback = null;
     r.phase = "combat";
     logMessage(r, "The Boss has arrived!");
     return;
@@ -240,6 +281,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     const count = Math.floor(Math.random() * 3) + 1; // 1 to 3 enemies
     r.enemies = generateEnemies(count, r.floor, tile.type === "elite");
     r.playerCombat = { attackTimer: r.skills.some(sk => sk.type === "first_strike") ? 50 : 0, roundCounter: 0 };
+    r.combatFeedback = null;
     r.phase = "combat";
     r.isBossCombat = false;
     logMessage(r, `Encountered ${count} ${tile.type === "elite" ? "Elite " : ""}enemies!`);
@@ -279,10 +321,101 @@ export function getTalentCost(level: number) {
   return 50 + level * 25;
 }
 
-export function validateState(s: any): GameStateV4 {
-  if (!s || s.meta?.version !== 4) return createInitialState();
-  if (typeof s.meta.gems !== "number") return createInitialState();
-  return s as GameStateV4;
+function migrateEnemy(enemy: any): EnemyState {
+  const speciesKey = getBestiaryEntry(enemy?.speciesKey)
+    ? enemy.speciesKey as MonsterSpeciesKey
+    : speciesKeyForName(enemy?.name);
+  const entry = getBestiaryEntry(speciesKey);
+  return {
+    ...enemy,
+    ...(speciesKey ? { speciesKey } : {}),
+    ...(enemy?.artKey || (entry === undefined && !enemy?.boss) ? {} : { artKey: entry?.artKey ?? "boss" }),
+    attackTimer: typeof enemy?.attackTimer === "number" ? enemy.attackTimer : 0,
+    damageType: isDamageType(enemy?.damageType) ? enemy.damageType : DEFAULT_DAMAGE_TYPE,
+    poisonTimerMs: typeof enemy?.poisonTimerMs === "number" ? enemy.poisonTimerMs : 0,
+  };
+}
+
+export function validateState(input: any): GameStateV4 {
+  if (!input || input.meta?.version !== 4) return createInitialState();
+  if (typeof input.meta.gems !== "number") return createInitialState();
+
+  const s = input as GameStateV4;
+  if (s.run) {
+    s.run.selectedDamageType = isAttackStyle(s.run.selectedDamageType)
+      ? s.run.selectedDamageType
+      : DEFAULT_DAMAGE_TYPE;
+    s.run.combatFeedback = s.run.combatFeedback ?? null;
+    s.run.enemies = Array.isArray(s.run.enemies)
+      ? s.run.enemies.map(migrateEnemy)
+      : [];
+    s.run.playerCombat = s.run.playerCombat
+      ? {
+        attackTimer: typeof s.run.playerCombat.attackTimer === "number" ? s.run.playerCombat.attackTimer : 0,
+        roundCounter: typeof s.run.playerCombat.roundCounter === "number" ? s.run.playerCombat.roundCounter : 0,
+      }
+      : null;
+  }
+  return s;
+}
+
+export interface DamageResolution {
+  amount: number;
+  afterDefense: number;
+  kind: CombatFeedbackKind;
+  damageType: DamageType;
+}
+
+/**
+ * Defense is subtracted before a damage trait is applied. The trait then
+ * halves (floor), doubles, or nullifies the result. Unlike the old combat
+ * loop, immunity is allowed to produce zero damage and is never promoted to
+ * one point.
+ */
+export function calculateDamage(
+  baseDamage: number,
+  defense: number,
+  speciesKey: MonsterSpeciesKey | string | undefined,
+  damageType: DamageType,
+  magical = false,
+): DamageResolution {
+  const afterDefense = Math.max(0, Math.floor(baseDamage - defense));
+  const modifier = getDamageModifier(speciesKey, damageType, magical);
+  let amount = afterDefense;
+  if (modifier.kind === "immune") amount = 0;
+  if (modifier.kind === "resisted") amount = Math.floor(afterDefense / 2);
+  if (modifier.kind === "vulnerable") amount = afterDefense * 2;
+  return { amount, afterDefense, kind: modifier.kind, damageType };
+}
+
+function enemySpecies(enemy: EnemyState): MonsterSpeciesKey | undefined {
+  return enemy.speciesKey ?? speciesKeyForName(enemy.name);
+}
+
+function feedbackMessage(
+  resolution: DamageResolution,
+  targetName: string,
+): string {
+  const type = resolution.damageType.charAt(0).toUpperCase() + resolution.damageType.slice(1);
+  if (resolution.kind === "immune") return `${targetName} is immune to ${type} (0 damage).`;
+  if (resolution.kind === "resisted") return `${targetName} resists ${type} (½ damage).`;
+  if (resolution.kind === "vulnerable") return `${targetName} is vulnerable to ${type} (2× damage).`;
+  return `${type} hits ${targetName} for ${resolution.amount}.`;
+}
+
+function setCombatFeedback(
+  r: RunState,
+  resolution: DamageResolution,
+  targetName: string,
+) {
+  r.combatFeedback = {
+    id: uuid(),
+    kind: resolution.kind,
+    damageType: resolution.damageType,
+    amount: resolution.amount,
+    targetName,
+    message: feedbackMessage(resolution, targetName),
+  };
 }
 
 function getEquippedStats(meta: MetaState) {
@@ -395,6 +528,8 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       enemies: [],
       playerCombat: null,
       isBossCombat: false,
+      selectedDamageType: DEFAULT_DAMAGE_TYPE,
+      combatFeedback: null,
       skills: [],
       skillOptions: null,
       shopItems: null,
@@ -454,10 +589,22 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     }
   }
 
+  if (action.type === "SELECT_ATTACK") {
+    const r = s.run;
+    if (r && isAttackStyle(action.damageType)) {
+      r.selectedDamageType = action.damageType;
+    }
+  }
+
   if (action.type === "TICK_COMBAT") {
     const r = s.run;
     if (!r || r.phase !== "combat" || r.enemies.length === 0 || !r.playerCombat) return s;
     const pc = r.playerCombat;
+    const dtMs = Math.max(0, Number.isFinite(action.dtMs) ? action.dtMs : 0);
+    const activeDamageType = isAttackStyle(r.selectedDamageType)
+      ? r.selectedDamageType
+      : DEFAULT_DAMAGE_TYPE;
+    r.selectedDamageType = activeDamageType;
     
     // Effective stats
     let playerSpeed = r.speed;
@@ -465,14 +612,26 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     let playerDef = r.defense;
     if (r.skills.some(sk => sk.type === "defense_boost")) playerDef *= 1.2;
     
-    pc.attackTimer += playerSpeed * (action.dtMs / 1000);
+    pc.attackTimer += playerSpeed * (dtMs / 1000);
     
     r.enemies.forEach(e => {
-      e.attackTimer += e.speed * (action.dtMs / 1000);
+      e.attackTimer += e.speed * (dtMs / 1000);
       
-      // Poison tick
-      if (e.poisoned && Math.random() < 0.05) {
-        e.hp -= 1; // minor poison tick
+      // Poison is deterministic: one point each elapsed second. It goes
+      // through the same trait pipeline, so poison immunity really blocks it.
+      if (e.poisoned && e.hp > 0) {
+        e.poisonTimerMs = (e.poisonTimerMs ?? 0) + dtMs;
+        while ((e.poisonTimerMs ?? 0) >= 1000 && e.hp > 0) {
+          e.poisonTimerMs = (e.poisonTimerMs ?? 0) - 1000;
+          const poison = calculateDamage(1, 0, enemySpecies(e), "poison");
+          e.hp = Math.max(0, e.hp - poison.amount);
+          setCombatFeedback(r, poison, e.name);
+          if (poison.amount > 0) {
+            logMessage(r, `Poison deals ${poison.amount} damage to ${e.name}.`);
+          } else if (poison.kind === "immune") {
+            logMessage(r, `${e.name} is immune to poison.`);
+          }
+        }
       }
     });
 
@@ -482,16 +641,32 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       
       const target = r.enemies.find(e => e.hp > 0);
       if (target) {
-        let dmg = Math.max(1, r.attack - target.defense);
+        const selectedStyle = ATTACK_STYLES.find(style => style.id === activeDamageType);
+        const resolution = calculateDamage(
+          r.attack,
+          target.defense,
+          enemySpecies(target),
+          activeDamageType,
+          selectedStyle?.magical ?? false,
+        );
+        let dmg = resolution.amount;
         
         if (r.skills.some(sk => sk.type === "execute") && target.hp < target.maxHp * 0.3) dmg *= 2;
         if (r.skills.some(sk => sk.type === "combo") && pc.roundCounter % 3 === 0) dmg *= 1.5;
         
-        target.hp = Math.max(0, Math.floor(target.hp - dmg));
-        logMessage(r, `You strike ${target.name} for ${Math.floor(dmg)} damage.`);
+        const previousHp = target.hp;
+        target.hp = Math.max(0, target.hp - Math.floor(dmg));
+        const finalResolution = { ...resolution, amount: Math.floor(dmg) };
+        setCombatFeedback(r, finalResolution, target.name);
+        logMessage(r, feedbackMessage(finalResolution, target.name));
         
         if (r.skills.some(sk => sk.type === "poison")) target.poisoned = true;
-        if (r.skills.some(sk => sk.type === "vampire")) r.hp = Math.min(r.maxHp, r.hp + Math.floor(dmg * 0.1));
+        if (r.skills.some(sk => sk.type === "poison")) target.poisonTimerMs = 0;
+        // Leech heals only for actual post-trait damage. Immunity therefore
+        // cannot become a free heal.
+        if (r.skills.some(sk => sk.type === "vampire") && finalResolution.amount > 0) {
+          r.hp = Math.min(r.maxHp, r.hp + Math.floor((previousHp - target.hp) * 0.1));
+        }
       }
     }
     
@@ -500,12 +675,20 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
         e.attackTimer -= 100;
         let dmg = Math.max(1, e.attack - playerDef);
         r.hp = Math.max(0, Math.floor(r.hp - dmg));
-        logMessage(r, `${e.name} hits you for ${Math.floor(dmg)} damage.`);
+        logMessage(r, `${e.name} hits you for ${Math.floor(dmg)} slashing damage.`);
         
         if (r.skills.some(sk => sk.type === "counter")) {
-          const counterDmg = Math.max(1, Math.floor(dmg * 0.5));
-          e.hp = Math.max(0, e.hp - counterDmg);
-          logMessage(r, `You counter ${e.name} for ${counterDmg} damage.`);
+          const selectedStyle = ATTACK_STYLES.find(style => style.id === activeDamageType);
+          const counter = calculateDamage(
+            Math.floor(dmg * 0.5),
+            e.defense,
+            enemySpecies(e),
+            activeDamageType,
+            selectedStyle?.magical ?? false,
+          );
+          e.hp = Math.max(0, e.hp - counter.amount);
+          setCombatFeedback(r, counter, e.name);
+          logMessage(r, `You counter ${e.name}: ${feedbackMessage(counter, e.name)}`);
         }
       }
     });
@@ -553,6 +736,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     if (r && r.phase === "event_test_of_might") {
       r.enemies = generateEnemies(2, r.floor + 1, true); // 2 elites
       r.playerCombat = { attackTimer: r.skills.some(sk => sk.type === "first_strike") ? 50 : 0, roundCounter: 0 };
+      r.combatFeedback = null;
       r.phase = "combat";
       logMessage(r, "You accepted the test! Elite enemies appear.");
     }
