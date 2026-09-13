@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Backpack, Flame, Heart, Shield, Sword } from 'lucide-react';
+import { EnemyHealthBar } from './EnemyHealthBar';
 
 import wolfUrl from '../assets/wolf-pixel.png';
 import { WolfPixelSprite } from './WolfPixelSprite';
@@ -215,6 +216,7 @@ export function CombatOverlay({
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [inspectedEnemyId, setInspectedEnemyId] = useState<string | null>(null);
+  const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
   const [bagOpen, setBagOpen] = useState(false);
   const eventId = useRef(0);
   const previousSnapshot = useRef<CombatSnapshot | null>(null);
@@ -481,6 +483,13 @@ export function CombatOverlay({
     !activeEnemyIds.has(enemy.id) && visualEvents.enemies[enemy.id]?.deathTrigger
   ));
   const renderedEnemies = [...renderedRun.enemies, ...archivedDeaths];
+  const livingEnemies = run.enemies.filter(enemy => enemy.hp > 0);
+  const selectedEnemy = livingEnemies.find(enemy => enemy.id === selectedEnemyId) ?? livingEnemies[0];
+  const selectEnemy = (id: string) => {
+    if (run.phase !== 'combat' || !livingEnemies.some(enemy => enemy.id === id)) return;
+    setSelectedEnemyId(id);
+    setInspectedEnemyId(id);
+  };
   const inspectedEnemy = renderedEnemies.find(enemy => enemy.id === inspectedEnemyId);
   const inspectedEntry = inspectedEnemy
     ? getBestiaryEntry(inspectedEnemy.speciesKey ?? speciesKeyForName(inspectedEnemy.name))
@@ -642,23 +651,25 @@ export function CombatOverlay({
             const actorSize = getCombatActorSize(enemy);
             return (
               <div
-                key={`${enemy.id}-${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`}
-                className={`relative flex flex-col items-center ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : ''}`}
+                key={enemy.id}
+                className={`relative flex flex-col items-center rounded-lg ${selectedEnemy?.id === enemy.id && !isDying ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-transparent' : ''} ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : 'cursor-pointer'}`}
                 style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms`,
                   ...(isDying && enemy.boss ? { animationName: 'dicebound-king-death-exit' } : {}),
                 } as CSSProperties}
-                onClick={() => !isDying && setInspectedEnemyId(enemy.id)}
+                onClick={() => !isDying && selectEnemy(enemy.id)}
                 role="button"
                 tabIndex={isDying ? -1 : 0}
-                aria-label={`Inspect ${enemy.name}`}
+                aria-label={`Target ${enemy.name}`}
+                aria-pressed={!isDying && selectedEnemy?.id === enemy.id}
+                aria-disabled={isDying || run.phase !== 'combat'}
                 onKeyDown={event => {
                   if (!isDying && (event.key === 'Enter' || event.key === ' ')) {
                     event.preventDefault();
-                    setInspectedEnemyId(enemy.id);
+                    selectEnemy(enemy.id);
                   }
                 }}
               >
-                <div className={`combat-actor combat-actor--enemy ${actorSize ? '' : 'w-20 h-20'} ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
+                <div key={`${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`} className={`combat-actor combat-actor--enemy ${actorSize ? '' : 'w-20 h-20'} ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
                   style={actorSize ? { width: actorSize.slotWidth, height: actorSize.bodyHeight, flexShrink: 0 } : undefined}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{
                     '--combat-hit-duration': `${hitDuration}ms`,
@@ -752,9 +763,9 @@ export function CombatOverlay({
                 {damagePopups.filter(popup => popup.target === 'enemy' && popup.enemyId === enemy.id).map(popup => (
                   <span className="damage-popup" key={popup.id}>-{popup.amount}</span>
                 ))}
-                <div className="mt-2 w-16 h-3 bg-red-950 border-2 border-[#1c1c1c] rounded overflow-hidden relative shadow-sm">
-                   <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, Math.max(0, enemy.hp) / Math.max(1, enemy.maxHp))})` }} />
-                </div>
+                <EnemyHealthBar name={enemy.name}
+                  hp={livingEnemies.some(living => living.id === enemy.id) ? enemy.hp : 0}
+                  maxHp={enemy.maxHp} reducedMotion={reducedMotion} />
               </div>
             );
           })}
@@ -828,11 +839,17 @@ export function CombatOverlay({
         </div>
       )}
 
+      {run.phase === 'combat' && selectedEnemy && (
+        <div className="relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white">
+          Target: <span className="text-amber-300">{selectedEnemy.name}</span>
+          {livingEnemies.length > 1 && <span className="ml-1 text-white/80">— tap an enemy to change</span>}
+        </div>
+      )}
       <div className="relative z-40 flex shrink-0 gap-2 px-3 pt-2">
         <button
           type="button"
-          disabled={!canInput || renderedEnemies.every(enemy => enemy.hp <= 0)}
-          onClick={() => dispatch({ type: 'PLAYER_ATTACK' })}
+          disabled={!canInput || !selectedEnemy}
+          onClick={() => selectedEnemy && dispatch({ type: 'PLAYER_ATTACK', targetId: selectedEnemy.id })}
           className="flex-1 rounded-2xl border-4 border-[#1c1c1c] bg-amber-400 py-3 text-base font-black uppercase text-slate-950 shadow-[0_4px_0_#1c1c1c] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-[0_4px_0_#1c1c1c]"
         >
           <Sword className="mr-1 inline h-5 w-5" /> Attack
