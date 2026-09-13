@@ -50,7 +50,7 @@ export type CustomOgreSpriteName = 'custom-ogre-idle' | 'custom-ogre-attack' | '
 
 export interface SpriteAnimatorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onAnimationEnd'> {
   /** Name of an optional horizontal sprite sheet. */
-  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName | CustomWolfSpriteName | CustomGoblinSpriteName | CustomOchreSpriteName | CustomSkeletonSpriteName | CustomMummySpriteName | CustomWinterWolfSpriteName | CustomOgreSpriteName | 'custom-hero-idle';
+  sprite: SpriteName | OchreSpriteName | WolfPixelSpriteName | GoblinPixelSpriteName | CustomWolfSpriteName | CustomGoblinSpriteName | CustomOchreSpriteName | CustomSkeletonSpriteName | CustomMummySpriteName | CustomWinterWolfSpriteName | CustomOgreSpriteName | 'custom-hero-idle' | 'center-statue-alert' | 'center-statue-ready';
   frameCount?: number;
   /** Art shown until the sheet exists, and while this animator is idle. */
   fallbackUrl: string;

@@ -3,7 +3,7 @@ import type { WalkDirection } from '../engine';
 import { MapPin, Sword, Skull, ShoppingBag, Gift, Tent, AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import statueUrl from '../assets/statue.png';
+import { CenterStatue } from './CenterStatue';
 import treeUrl from '../assets/tree.png';
 import forestClearingUrl from '../assets/forest-clearing.webp';
 import customWalkSouthEastUrl from '../assets/custom-walk-south-east.png';
@@ -308,20 +308,7 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
               filter: isBossActive ? `drop-shadow(0 0 15px rgba(234, 179, 8, 0.6)) drop-shadow(0 0 30px rgba(34, 197, 94, 0.4))` : 'none'
             }}
           >
-            {/* Statue Image */}
-            <div className="absolute w-[200px] h-[200px] -ml-[100px] -mt-[170px]">
-              <img src={statueUrl} className="w-full h-full object-contain" alt="Statue" />
-              
-              {/* Magic glow overlay */}
-              <div 
-                className="absolute inset-0 transition-opacity ease-in-out mix-blend-color-dodge"
-                style={{
-                  background: 'radial-gradient(circle at 50% 60%, rgba(234,179,8,0.4) 0%, transparent 60%)',
-                  opacity: isBossActive ? 1 : 0,
-                  transitionDuration: reducedMotion ? '0ms' : `${BOSS_AWAKENING_DURATION_MS}ms`
-                }}
-              />
-            </div>
+            <CenterStatue rollsLeft={run.bossRollsLeft} ready={isBossActive && !isAwakening} />
           </div>
         </div>
         
