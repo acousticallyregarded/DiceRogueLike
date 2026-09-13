@@ -1,5 +1,6 @@
 import treeUrl from '../assets/tree.png';
-import { getTilePosition, normalizeTileIndex } from './TrailMath';
+import { getTilePosition } from './TrailMath';
+import { relocateForestProps } from './forest-placement';
 
 const propUrls = Object.entries(import.meta.glob('../assets/forest/*.webp', {
   eager: true, query: '?url', import: 'default',
@@ -71,12 +72,12 @@ for (let i = 0; i < numProps; i++) {
   }
 }
 
-SCENERY.sort((a, b) => a.y - b.y);
+const CLEAR_SCENERY = relocateForestProps(SCENERY, pathPoints);
 
 export function ForestOaks({ cameraTargetY = 0 }: { cameraTargetY?: number }) {
   // Simple culling: only render props that are roughly visible.
   // The screen is ~1000px high max, so +/- 800 from cameraTargetY is safe.
-  const visibleScenery = SCENERY.filter(t => Math.abs(t.y - cameraTargetY) < 1000);
+  const visibleScenery = CLEAR_SCENERY.filter(t => Math.abs(t.y - cameraTargetY) < 1000);
 
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }} aria-hidden="true">
