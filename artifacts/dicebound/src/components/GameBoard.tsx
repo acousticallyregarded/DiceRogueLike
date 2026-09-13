@@ -18,6 +18,7 @@ import purpleTileUrl from '../assets/tiles/purple.png';
 import { SpriteAnimator, usePrefersReducedMotion } from './SpriteAnimator';
 import type { SpriteName } from './SpriteAnimator';
 import { BoardTileObject } from './BoardTileObject';
+import { HeroSprite } from './HeroSprite';
 import { getTilePosition, normalizeTileIndex, getTrailWalkDirection, TILE_WIDTH, TILE_HEIGHT } from './TrailMath';
 
 export { WALK_DIRECTION_DELTAS, getTilePosition, normalizeTileIndex };
@@ -378,7 +379,8 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
         >
           <div className="hero-world-shadow" aria-hidden="true" />
           <div className="hero-world-dust" aria-hidden="true" />
-          <SpriteAnimator
+          <HeroSprite
+            characterId={run.characterId}
             sprite={activeWalkSprite.sprite}
             fallbackUrl={activeWalkSprite.fallbackUrl}
             active={walking}
@@ -388,7 +390,7 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
             frameCount={9}
             durationMs={1800}
             alt="Hero"
-            className="relative z-[1] drop-shadow-xl"
+            className="relative z-[1] drop-shadow-xl w-full h-full"
           />
         </div>
 

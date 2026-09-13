@@ -24,6 +24,7 @@ import {
   DEFAULT_DAMAGE_TYPE,
   speciesKeyForName,
 } from "./bestiary.js";
+import { CHARACTERS, getCharacter } from "./characters.js";
 
 function combatState(enemy: EnemyState, skills: Skill[] = []) {
   let state = createInitialState();
@@ -56,6 +57,98 @@ function startedRun() {
 }
 
 function runAssertions() {
+  // Character definitions supply their own starting build while preserving
+  // the existing meta talent and equipment bonuses.
+  const john = startedRun();
+  assert.equal(john.run!.characterId, "john");
+  assert.deepEqual(
+    {
+      maxHp: john.run!.maxHp,
+      attack: john.run!.attack,
+      defense: john.run!.defense,
+      speed: john.run!.speed,
+    },
+    CHARACTERS.john.baseStats,
+  );
+  assert.deepEqual(john.run!.skills, []);
+  assert.equal(john.run!.selectedDamageType, "slashing");
+
+  const unc = act(createInitialState(), { type: "START_RUN", characterId: "unc" });
+  assert.equal(unc.run!.characterId, "unc");
+  assert.deepEqual(
+    {
+      maxHp: unc.run!.maxHp,
+      attack: unc.run!.attack,
+      defense: unc.run!.defense,
+      speed: unc.run!.speed,
+    },
+    CHARACTERS.unc.baseStats,
+  );
+  assert.deepEqual(unc.run!.skills.map(skill => skill.type), ["fire", "cold"]);
+  assert.equal(unc.run!.selectedDamageType, "fire");
+
+  const alan = act(createInitialState(), { type: "START_RUN", characterId: "alan-a-dale" });
+  assert.equal(alan.run!.characterId, "alan-a-dale");
+  assert.deepEqual(
+    {
+      maxHp: alan.run!.maxHp,
+      attack: alan.run!.attack,
+      defense: alan.run!.defense,
+      speed: alan.run!.speed,
+    },
+    CHARACTERS["alan-a-dale"].baseStats,
+  );
+  assert.deepEqual(alan.run!.skills.map(skill => [skill.name, skill.type]), [
+    ["Restorative Refrain", "vampire"],
+    ["Inspiring Melody", "defense_boost"],
+  ]);
+  assert.equal(alan.run!.selectedDamageType, "slashing");
+
+  // Invalid selections use John only when creating a new run.
+  const invalidSelection = act(createInitialState(), {
+    type: "START_RUN",
+    characterId: "not-a-character" as never,
+  });
+  assert.equal(invalidSelection.run!.characterId, "john");
+  assert.deepEqual(invalidSelection.run!.skills, []);
+  assert.equal(getCharacter("not-a-character").id, "john");
+
+  // Save migration repairs identity without rebalancing an existing run or
+  // replacing its acquired skills.
+  const invalidSave = JSON.parse(JSON.stringify(unc));
+  invalidSave.run.characterId = "not-a-character";
+  invalidSave.run.maxHp = 321;
+  invalidSave.run.attack = 77;
+  invalidSave.run.skills = [{
+    id: "kept-skill",
+    name: "Kept Skill",
+    description: "Kept from the save",
+    type: "poison",
+  }];
+  const migratedInvalidSave = validateState(invalidSave);
+  assert.equal(migratedInvalidSave.run!.characterId, "john");
+  assert.equal(migratedInvalidSave.run!.maxHp, 321);
+  assert.equal(migratedInvalidSave.run!.attack, 77);
+  assert.deepEqual(migratedInvalidSave.run!.skills, invalidSave.run.skills);
+
+  const oldSave = JSON.parse(JSON.stringify(alan));
+  delete oldSave.run.characterId;
+  oldSave.run.defense = 99;
+  const migratedOldSave = validateState(oldSave);
+  assert.equal(migratedOldSave.run!.characterId, "john");
+  assert.equal(migratedOldSave.run!.defense, 99);
+  assert.equal(migratedOldSave.run!.skills[0].name, "Restorative Refrain");
+
+  // Identity survives serialization and a subsequent floor transition.
+  let restoredUnc = validateState(JSON.parse(JSON.stringify(unc)));
+  assert.equal(restoredUnc.run!.characterId, "unc");
+  restoredUnc = act(restoredUnc, { type: "FINISH_TRAIL_CINEMATIC" });
+  restoredUnc.run!.phase = "victory";
+  restoredUnc.run!.victoryReport = null;
+  const nextFloor = act(restoredUnc, { type: "CONTINUE_RUN" });
+  assert.equal(nextFloor.run!.characterId, "unc");
+  assert.equal(nextFloor.run!.floor, 2);
+
   // The finite trail keeps the four walking sheets but never wraps from its
   // final pace back to the first.
   assert.equal(getWalkDirection(0, 1), "south-east");

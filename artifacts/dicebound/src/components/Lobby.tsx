@@ -2,6 +2,7 @@ import { GameStateV4, GameAction, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE
 import { Play, Settings2, Sparkles, Sword, Shield, Zap, Box, HelpCircle, BookOpen, Gem, Heart, Wind } from 'lucide-react';
 import { useState } from 'react';
 import { MonsterGuide } from './MonsterGuide';
+import { CharacterPickerModal } from './CharacterPickerModal';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
@@ -13,6 +14,7 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
   const [tab, setTab] = useState<'play' | 'gear' | 'talents'>('play');
   const [showHelp, setShowHelp] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
+  const [showCharacterPicker, setShowCharacterPicker] = useState(false);
 
   const { meta } = state;
 
@@ -66,7 +68,7 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
            {tab === 'play' && (
              <div className="mt-auto mb-10">
                <button 
-                 onClick={() => dispatch({ type: 'START_RUN' })}
+                 onClick={() => setShowCharacterPicker(true)}
                  className="w-full bg-[#ff5733] hover:bg-[#ff6847] active:bg-[#d9381e] text-white py-6 rounded-[32px] font-black text-3xl uppercase tracking-wider border-4 border-[#1c1c1c] shadow-[0_8px_0_rgba(28,28,28,1)] active:shadow-none active:translate-y-2 transition-all flex justify-center items-center gap-3 group"
                >
                  <Play className="w-8 h-8 fill-current group-hover:animate-bounce" /> Play
@@ -224,6 +226,15 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
 
         {showBestiary && <MonsterGuide onClose={() => setShowBestiary(false)} />}
 
+        {showCharacterPicker && (
+          <CharacterPickerModal
+            onClose={() => setShowCharacterPicker(false)}
+            onConfirm={(characterId) => {
+              setShowCharacterPicker(false);
+              dispatch({ type: 'START_RUN', characterId });
+            }}
+          />
+        )}
       </div>
     </div>
   );

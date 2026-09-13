@@ -9,6 +9,11 @@ import {
   speciesKeyForName,
   type MonsterSpeciesKey,
 } from "./bestiary";
+import { CHARACTERS, getCharacter } from "./characters";
+import type { CharacterId } from "./characters";
+
+export { CHARACTERS, getCharacter };
+export type { CharacterId } from "./characters";
 
 function uuid() {
   return Math.random().toString(36).substring(2, 9);
@@ -123,6 +128,8 @@ export interface ShopItem {
 }
 
 export interface RunState {
+  /** Selected character identity. Old saves migrate to John without rebalance. */
+  characterId?: CharacterId;
   victoryReport?: {
     id: string; boss: boolean; floor: number; xp: number; gold: number;
     gems: number; healing: number; equipment: string[]; showAt: number;
@@ -222,7 +229,7 @@ export const getEnemyTurnDelay = getEnemyResponseDelayMs;
 
 export type GameAction =
   | { type: "DISMISS_VICTORY_REPORT" }
-  | { type: "START_RUN" }
+  | { type: "START_RUN"; characterId?: CharacterId }
   | { type: "ROLL_DICE" }
   | { type: "BEGIN_MOVEMENT" }
   | { type: "STEP_MOVE" }
@@ -677,6 +684,10 @@ export function validateState(input: any): GameStateV4 {
     if (s.run.trailCinematic === "awakening") s.run.trailAwakeningSeen = true;
     if (s.run.trailCinematic === "awakening") s.run.phase = "boss_awakening";
     s.run.pendingTileTrigger = Boolean(s.run.pendingTileTrigger);
+    // Character selection was added after existing v4 saves. Identity is
+    // migrated independently from the run's current stats and skills so an
+    // old or malformed save cannot be rebalanced on load.
+    s.run.characterId = getCharacter(s.run.characterId).id;
     syncTrailCountdown(s.run);
     s.run.skills = Array.isArray(s.run.skills)
       ? s.run.skills.map(skill => skill.type === "speed_boost"
@@ -1222,14 +1233,16 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   }
 
   if (action.type === "START_RUN") {
+    const character = getCharacter(action.characterId);
     const eq = getEquippedStats(s.meta);
-    const mHp = 100 + s.meta.talents.vitality * 20 + eq.maxHp;
+    const mHp = character.baseStats.maxHp + s.meta.talents.vitality * 20 + eq.maxHp;
     s.run = {
+      characterId: character.id,
       hp: mHp,
       maxHp: mHp,
-      attack: 10 + s.meta.talents.power * 3 + eq.attack,
-      defense: 2 + eq.defense,
-      speed: 40 + s.meta.talents.quickness * 5 + eq.speed,
+      attack: character.baseStats.attack + s.meta.talents.power * 3 + eq.attack,
+      defense: character.baseStats.defense + eq.defense,
+      speed: character.baseStats.speed + s.meta.talents.quickness * 5 + eq.speed,
       gold: 0,
       gemsEarned: 0,
       xp: 0,
@@ -1254,9 +1267,11 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       guardActive: false,
       consumables: { health_potion: 3, fire_bomb: 2, guard_tonic: 1 },
       isBossCombat: false,
-      selectedDamageType: DEFAULT_DAMAGE_TYPE,
+      selectedDamageType: character.startingDamageType,
       combatFeedback: null,
-      skills: [],
+      // Skills belong to the run, so clone definitions rather than allowing a
+      // reducer action or save migration to mutate the character catalogue.
+      skills: character.startingSkills.map(skill => ({ ...skill })),
       skillOptions: null,
       shopItems: null,
       shopRerollCost: 10,

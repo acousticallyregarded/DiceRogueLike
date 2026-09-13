@@ -35,6 +35,7 @@ import throwFireBombUrl from '../assets/custom-throw-firebomb.png';
 import heroHitUrl from '../assets/custom-hero-hit.png';
 import guardTonicUrl from '../assets/custom-guard-tonic.png';
 import { SpriteAnimator, SpriteName, usePrefersReducedMotion } from './SpriteAnimator';
+import { HeroSprite } from './HeroSprite';
 import { AttackStyleSelector } from './AttackStyleSelector';
 import { SkeletonKingSprite } from './SkeletonKingSprite';
 import kingUrl from '../assets/skeleton-king.png';
@@ -609,7 +610,8 @@ export function CombatOverlay({
             style={eventStyle(combatDuration)}
           >
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
-              <SpriteAnimator
+              <HeroSprite
+                characterId={run.characterId}
                 sprite={swingingSword ? 'custom-hero-sword' : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'
                   : (drinkingPotion ? 'custom-drink-potion' : (guardingHero ? 'custom-guard-tonic' : 'custom-hero-idle'))}
@@ -624,7 +626,7 @@ export function CombatOverlay({
                   ? playerFireBombTrigger
                   : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}
                 alt="Hero"
-                className="combat-actor__sprite drop-shadow-xl"
+                className="combat-actor__sprite drop-shadow-xl w-full h-full"
                 onAnimationEnd={swingingSword ? finishHeroAttack : reactingToHit ? finishHeroHit : throwingFireBomb
                   ? finishHeroFireBomb
                   : (drinkingPotion ? finishHeroDrink : (guardingHero ? finishHeroGuard : undefined))}

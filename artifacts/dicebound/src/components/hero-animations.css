@@ -1,0 +1,56 @@
+@keyframes hero-walk {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-4px) rotate(-3deg); }
+  75% { transform: translateY(-4px) rotate(3deg); }
+}
+.animate-hero-walk { animation: hero-walk 0.5s linear infinite; }
+
+@keyframes hero-cast {
+  0% { transform: scale(1) translateY(0); }
+  30% { transform: scale(1.1) translateY(-10px); filter: drop-shadow(0 0 10px #00ffff); }
+  70% { transform: scale(1.1) translateY(-10px); filter: drop-shadow(0 0 20px #00ffff); }
+  100% { transform: scale(1) translateY(0); filter: none; }
+}
+.animate-hero-cast { animation: hero-cast ease-out; }
+
+@keyframes hero-music {
+  0% { transform: scale(1) rotate(0); }
+  25% { transform: scale(1.05) rotate(-5deg); filter: drop-shadow(0 0 5px #ff69b4); }
+  50% { transform: scale(1.05) rotate(5deg); filter: drop-shadow(0 0 10px #ff69b4); }
+  75% { transform: scale(1.05) rotate(-5deg); filter: drop-shadow(0 0 5px #ff69b4); }
+  100% { transform: scale(1) rotate(0); filter: none; }
+}
+.animate-hero-music { animation: hero-music ease-in-out; }
+
+@keyframes hero-hit {
+  0% { transform: translateX(0); filter: brightness(1); }
+  20% { transform: translateX(-10px); filter: brightness(2) invert(0.5) sepia(1) hue-rotate(-50deg) saturate(5); }
+  40% { transform: translateX(10px); filter: brightness(2) invert(0.5) sepia(1) hue-rotate(-50deg) saturate(5); }
+  60% { transform: translateX(-10px); }
+  80% { transform: translateX(10px); }
+  100% { transform: translateX(0); filter: brightness(1); }
+}
+.animate-hero-hit { animation: hero-hit ease-in-out; }
+
+@keyframes hero-potion {
+  0% { transform: scale(1); filter: sepia(0); }
+  50% { transform: scale(1.1); filter: sepia(1) hue-rotate(90deg) saturate(3); }
+  100% { transform: scale(1); filter: sepia(0); }
+}
+.animate-hero-potion { animation: hero-potion ease-in-out; }
+
+@keyframes hero-guard {
+  0% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.05); filter: brightness(1.2) drop-shadow(0 0 8px #cccccc); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.animate-hero-guard { animation: hero-guard ease-in-out; }
+
+@keyframes hero-idle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.animate-hero-idle {
+  animation: hero-idle ease-in-out infinite;
+  animation-duration: 2s;
+}
