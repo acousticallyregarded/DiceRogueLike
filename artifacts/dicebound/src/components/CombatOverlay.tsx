@@ -652,7 +652,7 @@ export function CombatOverlay({
             return (
               <div
                 key={enemy.id}
-                className={`relative flex flex-col items-center rounded-lg ${selectedEnemy?.id === enemy.id && !isDying ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-transparent' : ''} ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : 'cursor-pointer'}`}
+                className={`relative flex flex-col items-center rounded-lg ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : 'cursor-pointer'}`}
                 style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms`,
                   ...(isDying && enemy.boss ? { animationName: 'dicebound-king-death-exit' } : {}),
                 } as CSSProperties}
