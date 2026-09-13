@@ -6,6 +6,7 @@ import {
   NORMAL_ROSTER,
   ELITE_ROSTER,
   getCombatSpeedBonus,
+  getPlayerAttackDurationMs,
   getEnemyResponseDelayMs,
   POTION_ANIMATION_DURATION_MS,
   FIRE_BOMB_ANIMATION_DURATION_MS,
@@ -25,6 +26,7 @@ import {
   speciesKeyForName,
 } from "./bestiary.js";
 import { CHARACTERS, getCharacter } from "./characters.js";
+import { UNC_ACTION_DURATIONS } from "./unc-moves.js";
 
 function combatState(enemy: EnemyState, skills: Skill[] = []) {
   let state = createInitialState();
@@ -688,6 +690,177 @@ function runAssertions() {
   const gemsAfterDefeat = defeated.meta.gems;
   defeated = act(defeated, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(defeated.meta.gems, gemsAfterDefeat);
+
+  // Unc's authored action sheets drive the special and class-consumable
+  // timings, while the existing hero timings remain unchanged.
+  assert.deepEqual(UNC_ACTION_DURATIONS, {
+    guard: 5000,
+    health: 4200,
+    special: 8200,
+    death: 8200,
+    hurt: 4200,
+    idle: 3400,
+  });
+  const uncTiming = combatState({ ...skeleton, id: "unc-timing", hp: 1000 });
+  uncTiming.run!.characterId = "unc";
+  uncTiming.run!.combatSpeed = 2;
+  uncTiming.run!.playerCombat!.lastAttackKind = "hold_my_beer";
+  assert.equal(getPlayerAttackDurationMs(uncTiming.run!), UNC_ACTION_DURATIONS.special);
+  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), DEFAULT_ENEMY_RESPONSE_DELAY_MS);
+  uncTiming.run!.combatTurn = "enemy";
+  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.special / 2);
+  uncTiming.run!.playerCombat!.lastConsumable = "health_potion";
+  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.health);
+  uncTiming.run!.playerCombat!.lastConsumable = "guard_tonic";
+  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.guard);
+
+  // Level-up and shop skill candidates use the active character's attack
+  // menu. Wind is not a John/Bard stance, lightning is not an Unc stance,
+  // while poison remains a usable passive for the physical roster.
+  let johnSkillLevel = startedRun();
+  johnSkillLevel.run!.queuedLevels = 1;
+  johnSkillLevel = act(johnSkillLevel, { type: "ROLL_DICE" });
+  assert.ok(johnSkillLevel.run!.skillOptions!.every(skill => skill.type !== "wind"));
+  const learnedExceptPoison: Skill["type"][] = [
+    "fire", "cold", "acid", "lightning", "wind", "vampire",
+    "first_strike", "speed_boost", "defense_boost", "execute", "combo", "counter",
+  ];
+  johnSkillLevel.run!.phase = "explore";
+  johnSkillLevel.run!.skillOptions = null;
+  johnSkillLevel.run!.skills = learnedExceptPoison.map((type, index) => ({
+    id: `learned-${index}`,
+    name: "Learned",
+    description: "",
+    type,
+  }));
+  johnSkillLevel.run!.queuedLevels = 1;
+  johnSkillLevel = act(johnSkillLevel, { type: "ROLL_DICE" });
+  assert.deepEqual(johnSkillLevel.run!.skillOptions!.map(skill => skill.type), ["poison"]);
+  let uncSkillLevel = startedRun();
+  uncSkillLevel = act(uncSkillLevel, { type: "RESET_SAVE" });
+  uncSkillLevel = act(uncSkillLevel, { type: "START_RUN", characterId: "unc" });
+  uncSkillLevel = act(uncSkillLevel, { type: "FINISH_TRAIL_CINEMATIC" });
+  uncSkillLevel.run!.queuedLevels = 1;
+  uncSkillLevel = act(uncSkillLevel, { type: "ROLL_DICE" });
+  assert.ok(uncSkillLevel.run!.skillOptions!.every(skill => skill.type !== "lightning"));
+  let johnShop = startedRun();
+  johnShop.run!.phase = "shop";
+  johnShop.run!.gold = 100;
+  johnShop = act(johnShop, { type: "REROLL_SHOP" });
+  assert.notEqual(
+    johnShop.run!.shopItems!.find(item => item.skill)?.skill?.type,
+    "wind",
+  );
+  let uncShop = act(createInitialState(), { type: "START_RUN", characterId: "unc" });
+  uncShop = act(uncShop, { type: "FINISH_TRAIL_CINEMATIC" });
+  uncShop.run!.phase = "shop";
+  uncShop.run!.gold = 100;
+  uncShop = act(uncShop, { type: "REROLL_SHOP" });
+  assert.notEqual(
+    uncShop.run!.shopItems!.find(item => item.skill)?.skill?.type,
+    "lightning",
+  );
+
+  // Hold My Beer is one committed turn with two bludgeoning hits on one
+  // target. It increments the attack sequence once, never retargets after a
+  // kill, and remains unavailable for the rest of that encounter.
+  const uncEnemy: EnemyState = {
+    ...skeleton,
+    id: "unc-special-target",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 1000,
+    maxHp: 1000,
+    defense: 0,
+    attack: 0,
+  };
+  let uncSpecial = combatState(uncEnemy);
+  uncSpecial.run!.characterId = "unc";
+  uncSpecial.run!.attack = 10;
+  uncSpecial.run!.skills = [];
+  uncSpecial.run!.enemies = [{ ...uncEnemy }, { ...uncEnemy, id: "unc-special-other", hp: 100, maxHp: 100 }];
+  uncSpecial = act(uncSpecial, { type: "UNC_HOLD_MY_BEER", targetId: "unc-special-target" });
+  assert.equal(uncSpecial.run!.playerCombat!.holdMyBeerUsed, true);
+  assert.equal(uncSpecial.run!.playerCombat!.lastAttackKind, "hold_my_beer");
+  assert.equal(uncSpecial.run!.playerCombat!.heroAttackSequence, 1);
+  assert.equal(uncSpecial.run!.playerCombat!.roundCounter, 1);
+  assert.equal(uncSpecial.run!.enemies[0].hp, 980);
+  assert.equal(uncSpecial.run!.enemies[1].hp, 100);
+  assert.equal(uncSpecial.run!.combatTurn, "enemy");
+  assert.equal(getEnemyResponseDelayMs(uncSpecial.run!), UNC_ACTION_DURATIONS.special);
+  const usedSpecial = JSON.stringify(uncSpecial.run);
+  assert.equal(JSON.stringify(act(uncSpecial, {
+    type: "UNC_HOLD_MY_BEER",
+    targetId: "unc-special-other",
+  }).run), usedSpecial);
+  uncSpecial = act(uncSpecial, { type: "RESOLVE_ENEMY_TURN" });
+  uncSpecial = act(uncSpecial, { type: "PLAYER_ATTACK", targetId: "unc-special-other" });
+  assert.equal(uncSpecial.run!.playerCombat!.lastAttackKind, "normal");
+
+  // A first punch that kills cannot spill its second punch to another target.
+  let noSpill = combatState({ ...uncEnemy, id: "unc-special-kill", hp: 5, maxHp: 5 });
+  noSpill.run!.characterId = "unc";
+  noSpill.run!.attack = 10;
+  noSpill.run!.enemies = [
+    { ...uncEnemy, id: "unc-special-kill", hp: 5, maxHp: 5 },
+    { ...uncEnemy, id: "unc-special-spill", hp: 100, maxHp: 100 },
+  ];
+  noSpill = act(noSpill, { type: "UNC_HOLD_MY_BEER", targetId: "unc-special-kill" });
+  assert.equal(noSpill.run!.enemies[0].hp, 100);
+  assert.equal(noSpill.run!.playerCombat!.heroAttackSequence, 1);
+  assert.equal(noSpill.run!.combatTurn, "enemy");
+
+  // A speed-2 Unc special uses half the authored duration for its victory
+  // report; report timing for other heroes remains unaffected elsewhere.
+  let speedSpecial = combatState({ ...uncEnemy, id: "unc-speed-special", hp: 5, maxHp: 5 });
+  speedSpecial.run!.characterId = "unc";
+  speedSpecial.run!.combatSpeed = 2;
+  speedSpecial.run!.attack = 10;
+  speedSpecial.run!.enemies = [{ ...uncEnemy, id: "unc-speed-special", hp: 5, maxHp: 5 }];
+  const originalNow = Date.now;
+  try {
+    Date.now = () => 123456;
+    speedSpecial = act(speedSpecial, { type: "UNC_HOLD_MY_BEER", targetId: "unc-speed-special" });
+    assert.equal(
+      speedSpecial.run!.victoryReport!.showAt,
+      123456 + UNC_ACTION_DURATIONS.special / 2,
+    );
+  } finally {
+    Date.now = originalNow;
+  }
+
+  // Combat initialization starts a fresh special charge, but save migration
+  // preserves a consumed charge during an in-progress fight.
+  let freshSpecial = startedRun();
+  freshSpecial.run!.characterId = "unc";
+  freshSpecial.run!.phase = "event_test_of_might";
+  freshSpecial.run!.trailCinematic = null;
+  freshSpecial.run!.playerCombat = null;
+  freshSpecial = act(freshSpecial, { type: "TEST_OF_MIGHT_ENTER" });
+  assert.equal(freshSpecial.run!.playerCombat!.holdMyBeerUsed, false);
+  freshSpecial.run!.playerCombat!.holdMyBeerUsed = true;
+  const restoredSpecial = validateState(JSON.parse(JSON.stringify(freshSpecial)));
+  assert.equal(restoredSpecial.run!.playerCombat!.holdMyBeerUsed, true);
+
+  // Unc death owns an authored presentation before defeat can be exited. The
+  // marker round-trips through a save and only the finish action clears it.
+  let uncDefeat = combatState({ ...skeleton, id: "unc-death", attack: 1 });
+  uncDefeat.run!.characterId = "unc";
+  uncDefeat.run!.hp = 1;
+  uncDefeat = act(uncDefeat, { type: "PLAYER_ATTACK" });
+  uncDefeat = act(uncDefeat, { type: "RESOLVE_ENEMY_TURN" });
+  assert.equal(uncDefeat.run!.phase, "defeat");
+  assert.equal(uncDefeat.run!.heroDeathPending, true);
+  const deathSnapshot = JSON.stringify(uncDefeat.run);
+  assert.equal(JSON.stringify(act(uncDefeat, { type: "RETURN_TO_LOBBY" }).run), deathSnapshot);
+  assert.equal(JSON.stringify(act(uncDefeat, { type: "START_RUN" }).run), deathSnapshot);
+  const restoredDeath = validateState(JSON.parse(JSON.stringify(uncDefeat)));
+  assert.equal(restoredDeath.run!.heroDeathPending, true);
+  const finishedDeath = act(restoredDeath, { type: "FINISH_HERO_DEATH" });
+  assert.equal(finishedDeath.run!.heroDeathPending, false);
+  const oldDefeat = JSON.parse(JSON.stringify(finishedDeath));
+  delete oldDefeat.run.heroDeathPending;
+  assert.equal(validateState(oldDefeat).run!.heroDeathPending, false);
 
   // Shop listings expose stock, sell consumables, and disappear after a buy.
   let shop = startedRun();

@@ -1,0 +1,34 @@
+.unc-speech {
+  position: absolute;
+  z-index: 50;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 174px;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  border: 2px solid #20201f;
+  border-radius: 13px;
+  background: #fffdf3;
+  color: #20201f;
+  box-shadow: 2px 3px 0 rgb(0 0 0 / 22%);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: none;
+  pointer-events: none;
+}
+
+.unc-speech::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 30px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #20201f;
+  border-bottom: 2px solid #20201f;
+  background: #fffdf3;
+  transform: rotate(45deg);
+}

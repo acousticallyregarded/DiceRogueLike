@@ -2,15 +2,19 @@ import {
   ATTACK_STYLES,
   DEFAULT_DAMAGE_TYPE,
   DamageType,
+  getAttackStyle,
+  getAttackStylesForCharacter,
   getBestiaryEntry,
   getDamageModifier,
   isAttackStyle,
   isDamageType,
   speciesKeyForName,
+  type AttackStyle,
   type MonsterSpeciesKey,
 } from "./bestiary";
 import { CHARACTERS, getCharacter } from "./characters";
 import type { CharacterId } from "./characters";
+import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
 
 export { CHARACTERS, getCharacter };
 export type { CharacterId } from "./characters";
@@ -100,17 +104,28 @@ export interface PlayerCombatState {
   pendingFireBomb?: boolean;
   enemyAttackSequence?: number;
   firstAttackPending?: boolean;
+  /** The style committed by the most recent player attack. */
+  attackDamageType?: DamageType;
+  /** Unc's one-use special is durable for the current fight. */
+  holdMyBeerUsed?: boolean;
+  /** The animation/action committed by the most recent player attack. */
+  lastAttackKind?: "normal" | "hold_my_beer";
 }
 
 export interface Skill {
   id: string;
   name: string;
   description: string;
-  type: "poison" | "heal" | "first_strike" | "speed_boost" | "defense_boost" | "vampire" | "execute" | "combo" | "counter" | "fire" | "cold" | "acid" | "lightning";
+  type: "poison" | "heal" | "first_strike" | "speed_boost" | "defense_boost" | "vampire" | "execute" | "combo" | "counter" | "fire" | "cold" | "acid" | "lightning" | "wind";
 }
 
-export function isAttackStyleLearned(run: Pick<RunState, "skills">, damageType: DamageType): boolean {
-  const style = ATTACK_STYLES.find(candidate => candidate.id === damageType);
+export function isAttackStyleLearned(
+  run: Pick<RunState, "skills"> & { characterId?: CharacterId },
+  damageType: DamageType,
+): boolean {
+  const style = run.characterId
+    ? getAttackStylesForCharacter(run.characterId).find(candidate => candidate.id === damageType)
+    : getAttackStyle(damageType);
   return Boolean(style && (!style.magical || run.skills.some(skill => skill.type === damageType)));
 }
 
@@ -139,6 +154,8 @@ export interface RunState {
   attack: number;
   defense: number;
   speed: number;
+  /** Optional animation playback multiplier supplied by a combat presenter. */
+  combatSpeed?: number;
   gold: number;
   gemsEarned: number;
   
@@ -193,6 +210,8 @@ export interface RunState {
    * continue to load as ordinary movement.
    */
   rollAnimating?: boolean;
+  /** Unc death presentation is pending before the normal defeat modal. */
+  heroDeathPending?: boolean;
 }
 
 export interface GameStateV4 {
@@ -208,19 +227,83 @@ export const DEFAULT_ENEMY_RESPONSE_DELAY_MS = HERO_SWORD_ANIMATION_DURATION_MS;
 export const DICE_ROLL_ANIMATION_DURATION_MS = 800;
 export const BOSS_AWAKENING_DURATION_MS = 2200;
 
+type AttackTimingRun = Pick<RunState, "combatTurn" | "phase" | "playerCombat">
+  & Partial<Pick<RunState, "selectedDamageType" | "skills" | "characterId">>
+  & { combatSpeed?: number };
+
+type AttackStyleRun = Pick<RunState, "selectedDamageType" | "skills">
+  & {
+    characterId?: CharacterId;
+    playerCombat?: Pick<PlayerCombatState, "lastAttackKind"> | null;
+    /** Direct marker accepted for timing callers that only have combat data. */
+    lastAttackKind?: PlayerCombatState["lastAttackKind"] | "special";
+  };
+
+function fallbackDamageType(run: Pick<RunState, "skills"> & { characterId?: CharacterId }): DamageType {
+  if (run.characterId === "unc") {
+    return isAttackStyleLearned(run, "fire") ? "fire" : "bludgeoning";
+  }
+  return DEFAULT_DAMAGE_TYPE;
+}
+
+function resolveAttackStyle(run: AttackStyleRun) {
+  const selected = isAttackStyle(run.selectedDamageType)
+    && isAttackStyleLearned(run, run.selectedDamageType)
+    ? run.selectedDamageType
+    : fallbackDamageType(run);
+  return getAttackStyle(selected) ?? getAttackStyle(DEFAULT_DAMAGE_TYPE)!;
+}
+
+/**
+ * Return the authored attack duration before the presentation's playback
+ * speed multiplier is applied. John and Alan-a-Dale retain the sword timing.
+ */
+export function getPlayerAttackDurationMs(run: AttackStyleRun): number {
+  const lastAttackKind = run.playerCombat?.lastAttackKind ?? run.lastAttackKind;
+  if (
+    run.characterId === "unc"
+    && (lastAttackKind === "hold_my_beer" || lastAttackKind === "special")
+  ) {
+    return UNC_ACTION_DURATIONS.special;
+  }
+  const style = resolveAttackStyle(run);
+  const move = UNC_MOVES[style.damageType as keyof typeof UNC_MOVES];
+  return (!run.characterId || run.characterId === "unc") && move
+    ? move.durationMs
+    : HERO_SWORD_ANIMATION_DURATION_MS;
+}
+
 /**
  * The enemy response delay is derived from committed state rather than UI
  * intent. This keeps saved enemy-turn consumable actions replayable after a
  * reload without consuming another item, while allowing a pending bomb to
  * defer its impact until the animation completes.
  */
-export function getEnemyResponseDelayMs(run: Pick<RunState, "combatTurn" | "phase" | "playerCombat">): number {
+export function getEnemyResponseDelayMs(run: AttackTimingRun): number {
   if (run.phase !== "combat" || run.combatTurn !== "enemy") {
     return DEFAULT_ENEMY_RESPONSE_DELAY_MS;
   }
   if (run.playerCombat?.pendingFireBomb) return FIRE_BOMB_ANIMATION_DURATION_MS;
-  if (run.playerCombat?.lastConsumable === "health_potion") return POTION_ANIMATION_DURATION_MS;
-  if (run.playerCombat?.lastConsumable === "guard_tonic") return GUARD_TONIC_ANIMATION_DURATION_MS;
+  if (run.playerCombat?.lastConsumable === "health_potion") {
+    return run.characterId === "unc"
+      ? UNC_ACTION_DURATIONS.health
+      : POTION_ANIMATION_DURATION_MS;
+  }
+  if (run.playerCombat?.lastConsumable === "guard_tonic") {
+    return run.characterId === "unc"
+      ? UNC_ACTION_DURATIONS.guard
+      : GUARD_TONIC_ANIMATION_DURATION_MS;
+  }
+  const committedDamageType = run.playerCombat?.attackDamageType ?? run.selectedDamageType;
+  if (run.characterId === "unc" && run.skills && committedDamageType) {
+    const speed = Number.isFinite(run.combatSpeed) ? Math.max(1, run.combatSpeed!) : 1;
+    return getPlayerAttackDurationMs({
+      selectedDamageType: committedDamageType,
+      skills: run.skills,
+      characterId: run.characterId,
+      playerCombat: run.playerCombat,
+    }) / speed;
+  }
   return DEFAULT_ENEMY_RESPONSE_DELAY_MS;
 }
 
@@ -238,8 +321,10 @@ export type GameAction =
   | { type: "FIGHT_BOSS" }
   | { type: "SELECT_ATTACK"; damageType: DamageType }
   | { type: "PLAYER_ATTACK"; targetId?: string }
+  | { type: "UNC_HOLD_MY_BEER"; targetId?: string }
   | { type: "USE_CONSUMABLE"; consumable: ConsumableType }
   | { type: "RESOLVE_ENEMY_TURN" }
+  | { type: "FINISH_HERO_DEATH" }
   | { type: "CHOOSE_SKILL"; skillId: string }
   | { type: "BUY_SHOP"; itemId: string }
   | { type: "REROLL_SHOP" }
@@ -359,12 +444,17 @@ function getNextLevelXp(level: number): number {
   return Math.floor(100 * Math.pow(1.5, level - 1));
 }
 
-function generateSkills(count: number, currentSkills: Skill[]): Skill[] {
+function generateSkills(
+  count: number,
+  currentSkills: Skill[],
+  characterId?: CharacterId,
+): Skill[] {
   const pool: Skill[] = [
     { id: "s_fire", name: "Ember", description: "Learn the fire attack style", type: "fire" },
     { id: "s_cold", name: "Frost", description: "Learn the cold attack style", type: "cold" },
     { id: "s_acid", name: "Acid", description: "Learn the acid attack style", type: "acid" },
     { id: "s_lightning", name: "Spark", description: "Learn the lightning attack style", type: "lightning" },
+    { id: "s_wind", name: "Gale", description: "Learn the wind attack style", type: "wind" },
     { id: "s_poison", name: "Poison Strike", description: "Attacks apply poison; poison ticks once at the start of each turn", type: "poison" },
     { id: "s_heal", name: "Life Leech", description: "Heal for 10% of damage dealt", type: "vampire" },
     { id: "s_first_strike", name: "First Strike", description: "Your first attack deals 50% bonus damage", type: "first_strike" },
@@ -375,11 +465,23 @@ function generateSkills(count: number, currentSkills: Skill[]): Skill[] {
     { id: "s_counter", name: "Counter Mastery", description: "Retaliate for 50% of incoming damage", type: "counter" },
   ];
   
-  const available = pool.filter(p => !currentSkills.find(cs => cs.type === p.type));
+  const supportedAttackStyles = new Set(
+    getAttackStylesForCharacter(characterId).map(style => style.id),
+  );
+  const available = pool.filter(p => (
+    !currentSkills.find(cs => cs.type === p.type)
+    && (
+      // Poison is also Unc's authored attack move, but this skill is a
+      // passive effect and remains usable by John and Alan-a-Dale.
+      p.type === "poison"
+      || !isAttackStyle(p.type)
+      || supportedAttackStyles.has(p.type)
+    )
+  ));
   return available.sort(() => Math.random() - 0.5).slice(0, count).map(s => ({ ...s, id: uuid() }));
 }
 
-function generateShop(): ShopItem[] {
+function generateShop(characterId?: CharacterId): ShopItem[] {
   const items: ShopItem[] = [
     { id: uuid(), name: "Health Potion", description: "Restore 40% max HP, capped at full health", type: "consumable", consumable: "health_potion", cost: 25, stock: 1 },
     { id: uuid(), name: "Fire Bomb", description: "Deal fire damage to every living enemy", type: "consumable", consumable: "fire_bomb", cost: 45, stock: 1 },
@@ -389,7 +491,7 @@ function generateShop(): ShopItem[] {
     { id: uuid(), name: "Wind Boots", description: "+15 Speed; every 20 above 40 adds +1 successful attack damage (cap +5)", type: "stat", stat: "speed", value: 15, cost: 50, stock: 1 },
   ];
   // Add a random skill
-  const skills = generateSkills(1, []);
+  const skills = generateSkills(1, [], characterId);
   if (skills.length > 0) {
     items.push({ id: uuid(), name: "Skill: " + skills[0].name, description: skills[0].description, type: "skill", skill: skills[0], cost: 150, stock: 1 });
   }
@@ -471,6 +573,7 @@ function initializeBossCombat(r: RunState) {
     pendingFireBomb: false,
     enemyAttackSequence: 0,
     firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
+    holdMyBeerUsed: false,
   };
   r.combatTurn = "player";
   r.guardActive = false;
@@ -543,6 +646,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
       pendingFireBomb: false,
       enemyAttackSequence: 0,
       firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
+      holdMyBeerUsed: false,
     };
     r.combatTurn = "player";
     r.guardActive = false;
@@ -552,7 +656,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     logMessage(r, `Encountered ${count} ${tile.type === "elite" ? "Elite " : ""}enemies!`);
   } else if (tile?.type === "shop") {
     r.phase = "shop";
-    r.shopItems = generateShop();
+    r.shopItems = generateShop(r.characterId);
     r.shopRerollCost = 10;
     logMessage(r, "A wandering merchant offers their wares.");
   } else if (tile?.type === "event") {
@@ -699,6 +803,10 @@ export function validateState(input: any): GameStateV4 {
     s.run.log = Array.isArray(s.run.log) ? s.run.log : [];
     s.run.shopRerollCost = typeof s.run.shopRerollCost === "number" ? s.run.shopRerollCost : 10;
     s.run.settled = Boolean(s.run.settled);
+    // Old defeated saves did not have a death-presentation marker. Preserve a
+    // genuinely pending Unc presentation while defaulting missing markers to
+    // the completed state.
+    s.run.heroDeathPending = Boolean(s.run.heroDeathPending);
     s.run.lastRolls = isDiceRoll(s.run.lastRolls)
       ? s.run.lastRolls
       : null;
@@ -723,9 +831,14 @@ export function validateState(input: any): GameStateV4 {
     // Saves from before the roll-animation marker represent ordinary movement.
     s.run.rollAnimating = s.run.phase === "moving" && Boolean(s.run.rollAnimating);
     s.run.isBossCombat = Boolean(s.run.isBossCombat);
-    s.run.selectedDamageType = isAttackStyle(s.run.selectedDamageType) && isAttackStyleLearned(s.run, s.run.selectedDamageType)
+    // Unc's authored menu intentionally does not include the legacy blade or
+    // lightning stances. Keep an already-valid Unc move, otherwise migrate an
+    // old selection to fire (the starting magical style) or Punch without
+    // changing any run progression, inventory, or stats.
+    s.run.selectedDamageType = isAttackStyle(s.run.selectedDamageType)
+      && isAttackStyleLearned(s.run, s.run.selectedDamageType)
       ? s.run.selectedDamageType
-      : DEFAULT_DAMAGE_TYPE;
+      : fallbackDamageType(s.run);
     s.run.combatFeedback = s.run.combatFeedback ?? null;
     s.run.enemies = Array.isArray(s.run.enemies)
       ? s.run.enemies.map(migrateEnemy)
@@ -746,6 +859,14 @@ export function validateState(input: any): GameStateV4 {
         firstAttackPending: typeof s.run.playerCombat.firstAttackPending === "boolean"
           ? s.run.playerCombat.firstAttackPending
           : s.run.skills.some(skill => skill.type === "first_strike"),
+        holdMyBeerUsed: Boolean(s.run.playerCombat.holdMyBeerUsed),
+        ...(s.run.playerCombat.lastAttackKind === "normal"
+          || s.run.playerCombat.lastAttackKind === "hold_my_beer"
+          ? { lastAttackKind: s.run.playerCombat.lastAttackKind }
+          : {}),
+        ...(isAttackStyle(s.run.playerCombat.attackDamageType)
+          ? { attackDamageType: s.run.playerCombat.attackDamageType }
+          : {}),
       }
       : null;
     s.run.combatTurn = run.combatTurn === "enemy" ? "enemy" : "player";
@@ -771,6 +892,7 @@ export function validateState(input: any): GameStateV4 {
         heroConsumableSequence: 0,
         pendingFireBomb: false,
         enemyAttackSequence: 0,
+        holdMyBeerUsed: false,
       };
       if (run.combatTurn !== "enemy") s.run.combatTurn = "player";
     }
@@ -878,6 +1000,7 @@ function gainXp(r: RunState, amount: number) {
 function settleDefeat(s: GameStateV4, r: RunState) {
   r.phase = "defeat";
   r.combatTurn = "player";
+  if (r.characterId === "unc") r.heroDeathPending = true;
   if (!r.settled) {
     s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
     r.settled = true;
@@ -885,14 +1008,25 @@ function settleDefeat(s: GameStateV4, r: RunState) {
   logMessage(r, "You have been defeated...");
 }
 
-function finishVictory(r: RunState) {
+function finishVictory(r: RunState, attackDurationMs = getPlayerAttackDurationMs(r)) {
+  const authoredPresentationDuration = r.isBossCombat
+    ? Math.max(5200, attackDurationMs)
+    : attackDurationMs;
+  const playbackSpeed = r.characterId === "unc" && Number.isFinite(r.combatSpeed)
+    ? Math.max(1, r.combatSpeed!)
+    : 1;
   const report = {
     id: uuid(), boss: r.isBossCombat, floor: r.floor,
     xp: r.isBossCombat ? 0 : 40 + r.floor * 10,
     gold: r.isBossCombat ? 100 + r.floor * 20 : 15 + r.floor * 5,
     gems: r.isBossCombat ? 50 * r.floor : 0,
     healing: 0, equipment: [] as string[],
-    showAt: Date.now() + (r.isBossCombat ? 5200 : HERO_SWORD_ANIMATION_DURATION_MS),
+    // The report must not replace an authored Unc attack sheet while it is
+    // still playing. Boss reports retain their established presentation
+    // minimum, while ordinary encounters use the committed attack duration.
+    // Unc's authored presentation is paced by the committed combat speed.
+    // John and Alan-a-Dale deliberately retain their existing report timing.
+    showAt: Date.now() + authoredPresentationDuration / playbackSpeed,
   };
   if (r.isBossCombat) {
     r.gemsEarned += report.gems;
@@ -934,16 +1068,63 @@ function applyPoisonTicks(r: RunState) {
 }
 
 function activeStyle(r: RunState) {
-  const damageType = isAttackStyle(r.selectedDamageType) && isAttackStyleLearned(r, r.selectedDamageType)
-    ? r.selectedDamageType
-    : DEFAULT_DAMAGE_TYPE;
-  r.selectedDamageType = damageType;
-  return ATTACK_STYLES.find(style => style.id === damageType) ?? ATTACK_STYLES[0];
+  const style = resolveAttackStyle(r);
+  r.selectedDamageType = style.damageType;
+  return style;
 }
 
 function beginEnemyTurn(r: RunState) {
   r.combatTurn = "enemy";
   r.phase = "combat";
+}
+
+/**
+ * Apply one physical or magical player hit. Hold My Beer calls this twice
+ * with the same target and sequence number, so every punch gets the ordinary
+ * defense/trait and skill modifiers while combo/attack sequencing remains one
+ * committed hero attack.
+ */
+function applyPlayerAttackHit(
+  r: RunState,
+  target: EnemyState,
+  style: AttackStyle,
+  attackSequence: number,
+) {
+  const pc = r.playerCombat!;
+  const resolution = calculateDamage(
+    r.attack,
+    target.defense,
+    enemySpecies(target),
+    style.damageType,
+    style.magical,
+  );
+  let damage = resolution.amount;
+  if (damage > 0) damage += getCombatSpeedBonus(r.speed);
+  if (r.skills.some(skill => skill.type === "speed_boost")) damage = Math.floor(damage * 1.2);
+  if (pc.firstAttackPending) {
+    damage = Math.floor(damage * 1.5);
+    pc.firstAttackPending = false;
+  }
+  if (r.skills.some(skill => skill.type === "execute") && target.hp < target.maxHp * 0.3) {
+    damage *= 2;
+  }
+  if (r.skills.some(skill => skill.type === "combo") && attackSequence % 3 === 0) {
+    damage = Math.floor(damage * 1.5);
+  }
+
+  const previousHp = target.hp;
+  target.hp = Math.max(0, target.hp - Math.floor(damage));
+  const finalResolution = { ...resolution, amount: Math.floor(damage) };
+  setCombatFeedback(r, finalResolution, target.name);
+  logMessage(r, feedbackMessage(finalResolution, target.name));
+
+  if (r.skills.some(skill => skill.type === "poison") && target.hp > 0) {
+    target.poisoned = true;
+    target.poisonTimerMs = 0;
+  }
+  if (r.skills.some(skill => skill.type === "vampire") && finalResolution.amount > 0) {
+    r.hp = Math.min(r.maxHp, r.hp + Math.floor((previousHp - target.hp) * 0.1));
+  }
 }
 
 function resolvePlayerAttack(s: GameStateV4, targetId?: string) {
@@ -953,6 +1134,8 @@ function resolvePlayerAttack(s: GameStateV4, targetId?: string) {
 
   const pc = r.playerCombat;
   const style = activeStyle(r);
+  pc.attackDamageType = style.damageType;
+  pc.lastAttackKind = "normal";
   pc.roundCounter++;
   applyPoisonTicks(r);
   const target = (targetId ? r.enemies.find(enemy => enemy.id === targetId && enemy.hp > 0) : undefined)
@@ -960,43 +1143,52 @@ function resolvePlayerAttack(s: GameStateV4, targetId?: string) {
 
   if (target) {
     pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
-    const resolution = calculateDamage(
-      r.attack,
-      target.defense,
-      enemySpecies(target),
-      style.damageType,
-      style.magical,
-    );
-    let damage = resolution.amount;
-    if (damage > 0) damage += getCombatSpeedBonus(r.speed);
-    if (r.skills.some(skill => skill.type === "speed_boost")) damage = Math.floor(damage * 1.2);
-    if (pc.firstAttackPending) {
-      damage = Math.floor(damage * 1.5);
-      pc.firstAttackPending = false;
-    }
-    if (r.skills.some(skill => skill.type === "execute") && target.hp < target.maxHp * 0.3) damage *= 2;
-    if (r.skills.some(skill => skill.type === "combo") && (pc.heroAttackSequence ?? 0) % 3 === 0) {
-      damage = Math.floor(damage * 1.5);
-    }
-
-    const previousHp = target.hp;
-    target.hp = Math.max(0, target.hp - Math.floor(damage));
-    const finalResolution = { ...resolution, amount: Math.floor(damage) };
-    setCombatFeedback(r, finalResolution, target.name);
-    logMessage(r, feedbackMessage(finalResolution, target.name));
-
-    if (r.skills.some(skill => skill.type === "poison") && target.hp > 0) {
-      target.poisoned = true;
-      target.poisonTimerMs = 0;
-    }
-    if (r.skills.some(skill => skill.type === "vampire") && finalResolution.amount > 0) {
-      r.hp = Math.min(r.maxHp, r.hp + Math.floor((previousHp - target.hp) * 0.1));
-    }
+    applyPlayerAttackHit(r, target, style, pc.heroAttackSequence);
   }
 
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
   if (r.enemies.length === 0) {
     finishVictory(r);
+  } else {
+    beginEnemyTurn(r);
+  }
+}
+
+function resolveHoldMyBeer(s: GameStateV4, targetId?: string) {
+  const r = s.run;
+  if (
+    !r
+    || r.characterId !== "unc"
+    || r.phase !== "combat"
+    || r.combatTurn === "enemy"
+    || !r.playerCombat
+    || r.playerCombat.holdMyBeerUsed
+    || r.enemies.length === 0
+  ) return;
+
+  const pc = r.playerCombat;
+  const target = (targetId ? r.enemies.find(enemy => enemy.id === targetId && enemy.hp > 0) : undefined)
+    ?? r.enemies.find(enemy => enemy.hp > 0);
+  if (!target) return;
+
+  const style = getAttackStyle("bludgeoning")!;
+  pc.holdMyBeerUsed = true;
+  pc.lastAttackKind = "hold_my_beer";
+  pc.attackDamageType = style.damageType;
+  pc.roundCounter++;
+  applyPoisonTicks(r);
+  pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
+
+  // Keep the selected target stable across both punches. If the first punch
+  // kills it, the second punch is intentionally skipped rather than spilling
+  // over into another enemy.
+  for (let punch = 0; punch < 2 && target.hp > 0; punch++) {
+    applyPlayerAttackHit(r, target, style, pc.heroAttackSequence);
+  }
+
+  r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
+  if (r.enemies.length === 0) {
+    finishVictory(r, UNC_ACTION_DURATIONS.special);
   } else {
     beginEnemyTurn(r);
   }
@@ -1012,6 +1204,7 @@ function resolveConsumable(s: GameStateV4, consumable: ConsumableType) {
   r.consumables[consumable]--;
   r.playerCombat.roundCounter++;
   r.playerCombat.lastConsumable = consumable;
+  delete r.playerCombat.attackDamageType;
   r.playerCombat.heroConsumableSequence = (r.playerCombat.heroConsumableSequence ?? 0) + 1;
   applyPoisonTicks(r);
 
@@ -1065,13 +1258,20 @@ function resolveEnemyTurn(s: GameStateV4) {
     r.playerCombat.pendingFireBomb = false;
     resolveFireBomb(r);
     if (r.enemies.length === 0) {
-      finishVictory(r);
+      finishVictory(r, Math.max(FIRE_BOMB_ANIMATION_DURATION_MS, getPlayerAttackDurationMs(r)));
       r.playerCombat.lastConsumable = null;
       return;
     }
   }
 
-  const style = activeStyle(r);
+  // Use the style committed by the preceding player attack for counter
+  // damage. A selected Unc move must remain stable for the entire enemy turn,
+  // even if a caller presents a stale or partially migrated save.
+  const committedStyle = r.playerCombat.attackDamageType;
+  const style = committedStyle && isAttackStyle(committedStyle)
+    && isAttackStyleLearned(r, committedStyle)
+    ? getAttackStyle(committedStyle)!
+    : resolveAttackStyle(r);
   let playerDefense = r.defense;
   if (r.skills.some(skill => skill.type === "defense_boost")) playerDefense *= 1.2;
   const guardMultiplier = r.guardActive ? 0.5 : 1;
@@ -1135,6 +1335,13 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   if (action.type === "RESET_SAVE") {
     return createInitialState();
   }
+  if (action.type === "FINISH_HERO_DEATH") {
+    if (s.run?.phase === "defeat") s.run.heroDeathPending = false;
+    return s;
+  }
+  // A pending death presentation owns the run. In particular, do not let a
+  // reload or an eager exit/start action skip directly to another screen.
+  if (s.run?.heroDeathPending) return s;
 
   if (s.run) {
     const maxPosition = Math.max(0, s.run.tiles.length - 1);
@@ -1278,6 +1485,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       log: [{ id: uuid(), msg: "You enter the realm. The adventure begins!" }],
       settled: false,
       rollAnimating: false,
+      heroDeathPending: false,
     };
   }
 
@@ -1290,7 +1498,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     // Check level up first before rolling
     if (r.queuedLevels > 0) {
       r.phase = "level_up";
-      r.skillOptions = generateSkills(3, r.skills);
+      r.skillOptions = generateSkills(3, r.skills, r.characterId);
       return s;
     }
     if (remainingTrailPaces(r) <= 0) {
@@ -1380,7 +1588,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       }
       r.queuedLevels--;
       if (r.queuedLevels > 0) {
-        r.skillOptions = generateSkills(3, r.skills);
+          r.skillOptions = generateSkills(3, r.skills, r.characterId);
       } else {
         r.skillOptions = null;
         r.phase = "explore";
@@ -1398,6 +1606,10 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "PLAYER_ATTACK") {
     resolvePlayerAttack(s, action.targetId);
+  }
+
+  if (action.type === "UNC_HOLD_MY_BEER") {
+    resolveHoldMyBeer(s, action.targetId);
   }
 
   if (action.type === "USE_CONSUMABLE") {
@@ -1428,6 +1640,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
         pendingFireBomb: false,
         enemyAttackSequence: 0,
         firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
+        holdMyBeerUsed: false,
       };
       r.combatTurn = "player";
       r.guardActive = false;
@@ -1495,7 +1708,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     if (r && r.phase === "shop") {
       if (r.gold >= r.shopRerollCost) {
         r.gold -= r.shopRerollCost;
-        r.shopItems = generateShop();
+        r.shopItems = generateShop(r.characterId);
         r.shopRerollCost += 10;
         logMessage(r, "Rerolled shop wares.");
       }
@@ -1519,11 +1732,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
         r.hp -= 20;
         logMessage(r, "The dice betrayed you! Lost 20 HP.");
         if (r.hp <= 0) {
-          r.phase = "defeat";
-          if (!r.settled) {
-            s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
-            r.settled = true;
-          }
+          settleDefeat(s, r);
         } else {
           r.phase = "explore";
         }

@@ -6,6 +6,8 @@
  * rather than trying to reproduce the full D&D ruleset.
  */
 
+import { UNC_MOVES, type UncDamageType } from "./unc-moves";
+
 export type DamageType =
   | "slashing"
   | "piercing"
@@ -15,6 +17,7 @@ export type DamageType =
   | "lightning"
   | "acid"
   | "poison"
+  | "wind"
   | "necrotic";
 
 export type PhysicalDamageType = "slashing" | "piercing" | "bludgeoning";
@@ -48,6 +51,14 @@ export interface BestiaryEntry {
   resistances: DamageTrait[];
   vulnerabilities: DamageTrait[];
   immunities: DamageTrait[];
+}
+
+export interface AttackStyle {
+  id: DamageType;
+  label: string;
+  damageType: DamageType;
+  description: string;
+  magical: boolean;
 }
 
 const trait = (damageType: DamageType, nonmagicalOnly = false): DamageTrait => ({
@@ -145,13 +156,7 @@ export const BESTIARY: Record<MonsterSpeciesKey, BestiaryEntry> = {
 
 export const BESTIARY_ENTRIES = Object.values(BESTIARY);
 
-export const ATTACK_STYLES: ReadonlyArray<{
-  id: DamageType;
-  label: string;
-  damageType: DamageType;
-  description: string;
-  magical: boolean;
-}> = [
+export const ATTACK_STYLES: ReadonlyArray<AttackStyle> = [
   { id: "slashing", label: "Slash", damageType: "slashing", description: "A quick nonmagical blade stance.", magical: false },
   { id: "piercing", label: "Pierce", damageType: "piercing", description: "A focused nonmagical point stance.", magical: false },
   { id: "bludgeoning", label: "Bludgeon", damageType: "bludgeoning", description: "A crushing nonmagical impact stance.", magical: false },
@@ -160,6 +165,42 @@ export const ATTACK_STYLES: ReadonlyArray<{
   { id: "acid", label: "Acid", damageType: "acid", description: "An adapted Dicebound arcane stance.", magical: true },
   { id: "lightning", label: "Spark", damageType: "lightning", description: "An adapted Dicebound arcane stance.", magical: true },
 ];
+
+const UNC_ATTACK_STYLE_ORDER: readonly UncDamageType[] = [
+  "poison",
+  "bludgeoning",
+  "wind",
+  "acid",
+  "cold",
+  "fire",
+];
+
+export const UNC_ATTACK_STYLES: ReadonlyArray<AttackStyle> = UNC_ATTACK_STYLE_ORDER.map(damageType => ({
+  id: damageType,
+  label: UNC_MOVES[damageType].label,
+  damageType,
+  description: damageType === "bludgeoning"
+    ? "A direct nonmagical punch."
+    : "An authored Unc attack move.",
+  magical: damageType !== "bludgeoning",
+}));
+
+const ALL_ATTACK_STYLES: ReadonlyArray<AttackStyle> = [
+  ...ATTACK_STYLES,
+  ...UNC_ATTACK_STYLES.filter(style => !ATTACK_STYLES.some(existing => existing.id === style.id)),
+];
+
+/**
+ * Return the menu for a character without changing the long-standing
+ * seven-style menu used by John and Alan-a-Dale.
+ */
+export function getAttackStylesForCharacter(characterId?: string): ReadonlyArray<AttackStyle> {
+  return characterId === "unc" ? UNC_ATTACK_STYLES : ATTACK_STYLES;
+}
+
+export function getAttackStyle(damageType: DamageType): AttackStyle | undefined {
+  return ALL_ATTACK_STYLES.find(style => style.id === damageType);
+}
 
 export const DEFAULT_DAMAGE_TYPE: DamageType = "slashing";
 
@@ -173,12 +214,13 @@ export function isDamageType(value: unknown): value is DamageType {
     || value === "lightning"
     || value === "acid"
     || value === "poison"
+    || value === "wind"
     || value === "necrotic"
   );
 }
 
-export function isAttackStyle(value: unknown): value is typeof ATTACK_STYLES[number]["id"] {
-  return ATTACK_STYLES.some(style => style.id === value);
+export function isAttackStyle(value: unknown): value is DamageType {
+  return ALL_ATTACK_STYLES.some(style => style.id === value);
 }
 
 /**

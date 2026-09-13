@@ -1,2 +1,3 @@
 - [Visual reference scope](visual-reference.md) — Screenshots and sampled recording now ground the visual target; distinguish observed behavior from unverified rules.
 - [Character animation](character-animation.md) — Preserve character identity with source-art cutouts; synchronize combat animation with real events.
+- [Browser tests and hot reload](browser-test-hmr.md) — Keep hooks stable during browser verification; concurrent edits can cause misleading hook-order failures.

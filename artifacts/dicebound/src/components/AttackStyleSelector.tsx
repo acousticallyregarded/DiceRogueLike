@@ -1,4 +1,4 @@
-import { ATTACK_STYLES, formatDamageType } from "../bestiary";
+import { getAttackStylesForCharacter, formatDamageType } from "../bestiary";
 import { GameAction, RunState, isAttackStyleLearned } from "../engine";
 
 export function AttackStyleSelector({
@@ -32,8 +32,8 @@ export function AttackStyleSelector({
           Select a stance, then press Attack to commit the turn.
         </span>
       </div>
-      <div className="mt-2 grid grid-cols-4 gap-1.5 pb-0.5" role="group">
-        {ATTACK_STYLES.map((style) => {
+      <div className={`mt-2 grid ${run.characterId === 'unc' ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5 pb-0.5`} role="group">
+        {getAttackStylesForCharacter(run.characterId).map((style) => {
           const selected = run.selectedDamageType === style.id;
           const locked = !isAttackStyleLearned(run, style.id);
           return (

@@ -1,4 +1,4 @@
-import { ConsumableType, GameAction, RunState, HERO_SWORD_ANIMATION_DURATION_MS } from '../engine';
+import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs } from '../engine';
 import {
   formatDamageType,
   getBestiaryEntry,
@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Backpack, Flame, Heart, Shield, Sword } from 'lucide-react';
 import { EnemyHealthBar } from './EnemyHealthBar';
+import { UNC_ACTION_DURATIONS } from '../unc-moves';
 
 import wolfUrl from '../assets/wolf-pixel.png';
 import { WolfPixelSprite } from './WolfPixelSprite';
@@ -276,7 +277,9 @@ export function CombatOverlay({
         activeEnemyIds.has(enemy.id)
           ? duration
           : Math.max(duration, deathExitDurationMs(enemy, speed))
-      ), EXIT_DURATION_MS / Math.max(MIN_COMBAT_SPEED, speed));
+      ), (latestCombatRun.current.characterId === 'unc'
+        ? Math.max(EXIT_DURATION_MS, run.heroDeathPending ? UNC_ACTION_DURATIONS.death : getPlayerAttackDurationMs(run))
+        : EXIT_DURATION_MS) / Math.max(MIN_COMBAT_SPEED, speed));
       setVisible(true);
       const timer = window.setTimeout(() => {
         setVisible(false);
@@ -477,8 +480,9 @@ export function CombatOverlay({
   const finishHeroAttack = useCallback(() => {
     setCompletedHeroAttack(visualEvents.heroAttack);
   }, [visualEvents.heroAttack]);
-  const renderedRun = run.phase === 'combat' ? run : displayRun;
-  if (!visible || !renderedRun || !renderedRun.playerCombat) return null;
+  const renderedRun = run.phase === 'combat' || run.heroDeathPending ? run : displayRun;
+  if ((!visible && !run.heroDeathPending) || !renderedRun || !renderedRun.playerCombat
+    || (run.phase === 'defeat' && !run.heroDeathPending)) return null;
   const activeEnemyIds = new Set(renderedRun.enemies.map(enemy => enemy.id));
   const archivedDeaths = Object.values(enemyArchive.current).filter(enemy => (
     !activeEnemyIds.has(enemy.id) && visualEvents.enemies[enemy.id]?.deathTrigger
@@ -519,8 +523,11 @@ export function CombatOverlay({
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
-  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !leaving && !bossAnimating;
-  const statusLabel = run.combatTurn === 'enemy' || bossAnimating ? 'Enemies turn' : 'Your turn';
+  const uncRecovering = run.characterId === 'unc' && reactingToHit;
+  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !leaving && !bossAnimating && !uncRecovering;
+  const statusLabel = run.heroDeathPending ? 'Defeated'
+    : uncRecovering ? 'Recovering'
+    : run.combatTurn === 'enemy' || bossAnimating ? 'Enemies turn' : 'Your turn';
 
   return (
     <div className={`absolute top-0 left-0 right-0 h-[82%] min-h-[620px] flex flex-col z-20 overflow-hidden pt-24 pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}>
@@ -612,7 +619,11 @@ export function CombatOverlay({
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
               <HeroSprite
                 characterId={run.characterId}
-                sprite={swingingSword ? 'custom-hero-sword' : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
+                damageType={renderedRun.selectedDamageType}
+                playbackSpeed={speed}
+                sprite={run.heroDeathPending ? 'unc-death' : swingingSword
+                  ? run.characterId === 'unc' && run.playerCombat?.lastAttackKind === 'hold_my_beer' ? 'unc-special' : 'custom-hero-sword'
+                  : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'
                   : (drinkingPotion ? 'custom-drink-potion' : (guardingHero ? 'custom-guard-tonic' : 'custom-hero-idle'))}
                 fallbackUrl={reactingToHit ? heroHitUrl : throwingFireBomb
@@ -621,7 +632,7 @@ export function CombatOverlay({
                 active
                 loop={!swingingSword && !reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
                 frameCount={swingingSword ? 13 : reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
-                durationMs={swingingSword ? HERO_SWORD_ANIMATION_DURATION_MS / Math.max(1, speed) : reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 1800)))}
+                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 1800)))}
                 trigger={swingingSword ? playerAttackTrigger : reactingToHit ? playerHitTrigger : throwingFireBomb
                   ? playerFireBombTrigger
                   : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}
@@ -841,6 +852,19 @@ export function CombatOverlay({
         </div>
       )}
 
+      {run.phase === 'combat' && run.characterId === 'unc' && (
+        <div className="relative z-40 px-3 pt-2">
+          <button type="button"
+            disabled={!canInput || !selectedEnemy || Boolean(run.playerCombat?.holdMyBeerUsed)}
+            onClick={() => selectedEnemy && dispatch({ type: 'UNC_HOLD_MY_BEER', targetId: selectedEnemy.id })}
+            className="w-full rounded-xl border-2 border-amber-700 bg-amber-100 px-3 py-2 text-sm font-black text-amber-950 disabled:opacity-45 disabled:cursor-not-allowed">
+            Hold My Beer
+            <span className="ml-2 text-[10px] font-semibold">
+              {run.playerCombat?.holdMyBeerUsed ? 'Used this fight' : 'Two punches · once per fight'}
+            </span>
+          </button>
+        </div>
+      )}
       {run.phase === 'combat' && selectedEnemy && (
         <div className="relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white">
           Target: <span className="text-amber-300">{selectedEnemy.name}</span>

@@ -9,6 +9,7 @@ import {
   getEnemyResponseDelayMs,
 } from '../engine';
 import { toast } from 'sonner';
+import { UNC_ACTION_DURATIONS } from '../unc-moves';
 
 const KEY_V4 = "dicebound-save-v4";
 
@@ -38,16 +39,30 @@ export function saveGame(s: GameStateV4): boolean {
 export function useGame() {
   const [state, setState] = useState<GameStateV4 | null>(null);
   const [speed, setSpeed] = useState<number>(1);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
   
   useEffect(() => {
-    setState(loadGame());
+    const loaded = loadGame();
+    if (loaded.run?.characterId === 'unc') {
+      const savedSpeed = loaded.run.combatSpeed;
+      const restoredSpeed = Number.isFinite(savedSpeed) ? Math.max(1, savedSpeed!) : 1;
+      speedRef.current = restoredSpeed;
+      setSpeed(restoredSpeed);
+    }
+    setState(loaded);
   }, []);
 
   const dispatch = useCallback((action: GameAction) => {
     setState(prev => {
       if (!prev) return prev;
       try {
-        const next = act(prev, action);
+        // Store the playback pace with Unc's committed action so response,
+        // victory, and reload presentation agree on the same duration.
+        const actionState = prev.run?.characterId === 'unc'
+          ? { ...prev, run: { ...prev.run, combatSpeed: speedRef.current } }
+          : prev;
+        const next = act(actionState, action);
         if (!saveGame(next)) {
           toast.error("Failed to save game progress");
         }
@@ -64,6 +79,14 @@ export function useGame() {
   // realtime loop. Enemy turns are scheduled once after a committed player
   // action, including after reloading an enemy-turn save.
   const moveTick = useRef<number>(performance.now());
+  const responseSpeed = state?.run?.characterId === 'unc' ? speed : 1;
+
+  useEffect(() => {
+    if (!state?.run?.heroDeathPending) return;
+    const timer = window.setTimeout(() => dispatch({ type: 'FINISH_HERO_DEATH' }),
+      UNC_ACTION_DURATIONS.death / Math.max(1, speed));
+    return () => window.clearTimeout(timer);
+  }, [state?.run?.heroDeathPending, dispatch, speed]);
 
   useEffect(() => {
     if (state?.run?.phase !== 'combat' || state.run.combatTurn !== 'enemy') return;
@@ -71,7 +94,7 @@ export function useGame() {
       dispatch({ type: 'RESOLVE_ENEMY_TURN' });
     }, getEnemyResponseDelayMs(state.run));
     return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.combatTurn, state?.run?.phase]);
+  }, [dispatch, state?.run?.combatTurn, state?.run?.phase, responseSpeed]);
 
   // The reducer commits the actual dice result before the presentation starts.
   // Holding movement here keeps the displayed pair stable and means a save

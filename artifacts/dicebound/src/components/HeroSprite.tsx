@@ -1,18 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { SpriteAnimator, SpriteAnimatorProps, usePrefersReducedMotion } from './SpriteAnimator';
 import './hero-animations.css';
+import type { DamageType } from '../bestiary';
+import { UncSprite } from './UncSprite';
 
-import uncSvg from '../assets/characters/unc.svg';
 import alanSvg from '../assets/characters/alan.svg';
 
 export interface HeroSpriteProps extends SpriteAnimatorProps {
   characterId?: string;
+  damageType?: DamageType;
+  playbackSpeed?: number;
 }
 
-export function HeroSprite({ characterId = 'john', className = '', style, ...props }: HeroSpriteProps) {
+export function HeroSprite({ characterId = 'john', damageType, playbackSpeed, className = '', style, ...props }: HeroSpriteProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const isUnc = characterId === 'unc';
-  const imgSrc = isUnc ? uncSvg : alanSvg;
+  const imgSrc = alanSvg;
 
   const { trigger, durationMs, onAnimationEnd, active, loop, sprite, alt } = props;
 
@@ -22,7 +24,7 @@ export function HeroSprite({ characterId = 'john', className = '', style, ...pro
   }, [onAnimationEnd]);
 
   useEffect(() => {
-    if (characterId === 'john') return;
+    if (characterId === 'john' || characterId === 'unc') return;
     if (!active && (!trigger || trigger <= 0)) return;
     
     if (trigger && trigger > 0 && durationMs) {
@@ -37,11 +39,14 @@ export function HeroSprite({ characterId = 'john', className = '', style, ...pro
   if (characterId === 'john') {
     return <SpriteAnimator className={className} style={style} {...props} trigger={trigger} durationMs={durationMs} active={active} loop={loop} sprite={sprite} alt={alt} onAnimationEnd={onAnimationEnd} />;
   }
+  if (characterId === 'unc') {
+    return <UncSprite {...props} damageType={damageType} playbackSpeed={playbackSpeed} className={className} style={style} />;
+  }
 
   let animClass = '';
   if (!reducedMotion) {
     if (sprite.includes('walk')) animClass = 'animate-hero-walk';
-    if (sprite === 'custom-hero-sword') animClass = isUnc ? 'animate-hero-cast' : 'animate-hero-music';
+    if (sprite === 'custom-hero-sword') animClass = 'animate-hero-music';
     if (sprite === 'custom-hero-hit') animClass = 'animate-hero-hit';
     if (sprite === 'custom-throw-firebomb') animClass = 'animate-hero-cast';
     if (sprite === 'custom-drink-potion') animClass = 'animate-hero-potion';
