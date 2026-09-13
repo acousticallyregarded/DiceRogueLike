@@ -30,6 +30,7 @@ export type SpriteName =
   | 'custom-guard-tonic'
   | 'custom-lobby-hero'
   | 'unc-selection'
+  | 'bard-selection'
   | 'custom-hero-hit'
   | 'custom-hero-sword'
   | 'hero-attack'

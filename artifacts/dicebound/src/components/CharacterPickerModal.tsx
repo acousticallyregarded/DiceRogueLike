@@ -1,9 +1,9 @@
 import { X, Sword, Shield, Wind, Heart, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { CHARACTERS, CharacterId } from '../characters';
-import { HeroSprite } from './HeroSprite';
 import johnUrl from '../assets/custom-lobby-hero.png';
 import uncSelectionUrl from '../assets/characters/unc-selection.png';
+import bardSelectionUrl from '../assets/characters/bard-selection.png';
 import { SpriteAnimator } from './SpriteAnimator';
 
 interface CharacterPickerModalProps {
@@ -66,25 +66,16 @@ export function CharacterPickerModal({ onClose, onConfirm }: CharacterPickerModa
               >
                 <div className="flex gap-4 items-center">
                   <div className="w-16 h-16 shrink-0 bg-slate-200 rounded-xl border-2 border-slate-300 flex items-center justify-center overflow-hidden">
-                    {char.id === 'john' || char.id === 'unc' ? (
                       <SpriteAnimator
-                        sprite={char.id === 'john' ? 'custom-lobby-hero' : 'unc-selection'}
-                        fallbackUrl={char.id === 'john' ? johnUrl : uncSelectionUrl}
+                        sprite={char.id === 'john' ? 'custom-lobby-hero' : char.id === 'unc' ? 'unc-selection' : 'bard-selection'}
+                        fallbackUrl={char.id === 'john' ? johnUrl : char.id === 'unc' ? uncSelectionUrl : bardSelectionUrl}
                         active
                         loop
-                        frameCount={char.id === 'john' ? 9 : 17}
-                        durationMs={char.id === 'john' ? 1800 : 3400}
-                        alt={char.id === 'john' ? 'John eating' : 'Unc raising his arm'}
+                        frameCount={char.id === 'john' ? 9 : char.id === 'unc' ? 17 : 21}
+                        durationMs={char.id === 'john' ? 1800 : char.id === 'unc' ? 3400 : 4200}
+                        alt={char.id === 'john' ? 'John eating' : char.id === 'unc' ? 'Unc raising his arm' : 'Alan-a-Dale playing his lute'}
                         className="w-14 h-14"
                       />
-                    ) : <HeroSprite 
-                      characterId={char.id} 
-                      sprite="custom-lobby-hero" 
-                      fallbackUrl={johnUrl}
-                      active={isSelected} 
-                      loop 
-                      className="w-12 h-12"
-                    />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
@@ -94,7 +85,6 @@ export function CharacterPickerModal({ onClose, onConfirm }: CharacterPickerModa
                     <div className="text-xs font-bold text-fuchsia-600 uppercase tracking-wider mb-1">
                       {char.className}
                     </div>
-                    {char.id === 'alan-a-dale' && <div className="text-[9px] font-semibold text-slate-500">Placeholder artwork</div>}
                     <div className="grid grid-cols-2 gap-1 text-[10px] font-bold text-slate-600 mt-1">
                       <div className="flex items-center gap-1"><Heart className="w-3 h-3 text-red-500" /> {char.baseStats.maxHp}</div>
                       <div className="flex items-center gap-1"><Sword className="w-3 h-3 text-amber-500" /> {char.baseStats.attack}</div>
