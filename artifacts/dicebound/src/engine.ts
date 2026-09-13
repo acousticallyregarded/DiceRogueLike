@@ -59,6 +59,7 @@ export interface EnemyState {
   poisonTimerMs?: number;
   damageType?: DamageType;
   boss?: boolean;
+  lastBossAttack?: "sword" | "fireball";
 }
 
 export type ConsumableType = "health_potion" | "fire_bomb" | "guard_tonic";
@@ -409,8 +410,8 @@ export function generateBoss(floor: number): EnemyState {
   const hp = 150 + floor * 50;
   return {
     id: uuid(),
-    name: "Mummy",
-    speciesKey: "mummy",
+    name: "Skeleton King",
+    speciesKey: "skeleton",
     artKey: "boss",
     hp,
     maxHp: hp,
@@ -525,6 +526,9 @@ export function getTalentCost(level: number) {
 }
 
 function migrateEnemy(enemy: any): EnemyState {
+  if (enemy?.boss && enemy?.name === "Mummy") {
+    enemy = { ...enemy, name: "Skeleton King", speciesKey: "skeleton", artKey: "boss" };
+  }
   const speciesKey = getBestiaryEntry(enemy?.speciesKey)
     ? enemy.speciesKey as MonsterSpeciesKey
     : speciesKeyForName(enemy?.name);
@@ -939,11 +943,15 @@ function resolveEnemyTurn(s: GameStateV4) {
   // which case that enemy is no longer living and does not retaliate.
   for (const enemy of r.enemies) {
     if (enemy.hp <= 0) continue;
+    if (enemy.boss) {
+      enemy.lastBossAttack = enemy.lastBossAttack === "sword" ? "fireball" : "sword";
+      enemy.damageType = enemy.lastBossAttack === "fireball" ? "fire" : "slashing";
+    }
     let damage = Math.max(1, Math.floor(enemy.attack - playerDefense));
     damage = Math.floor(damage * guardMultiplier);
     r.hp = Math.max(0, r.hp - damage);
     r.playerCombat.enemyAttackSequence = (r.playerCombat.enemyAttackSequence ?? 0) + 1;
-    logMessage(r, `${enemy.name} hits you for ${damage} slashing damage.`);
+    logMessage(r, `${enemy.name}${enemy.boss ? enemy.lastBossAttack === "fireball" ? " casts a fireball" : " strikes with his sword" : " hits you"} for ${damage} ${enemy.damageType ?? "slashing"} damage.`);
 
     if (r.hp <= 0) break;
 

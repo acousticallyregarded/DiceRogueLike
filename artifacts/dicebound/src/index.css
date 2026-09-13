@@ -214,6 +214,11 @@ body {
   100% { opacity: 0; transform: translateY(10px) scale(0.86); filter: saturate(0.6); }
 }
 
+@keyframes dicebound-king-death-exit {
+  0%, 96.15% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(4px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .board-tile-surface {
     transition: none !important;

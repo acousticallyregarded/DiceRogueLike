@@ -132,7 +132,17 @@ function runAssertions() {
   finalLanding = act(finalLanding, { type: "FIGHT_BOSS" });
   assert.equal(finalLanding.run!.phase, "combat");
   assert.equal(finalLanding.run!.isBossCombat, true);
-  assert.equal(finalLanding.run!.enemies[0].name, "Mummy");
+  assert.equal(finalLanding.run!.enemies[0].name, "Skeleton King");
+  let kingTurns = JSON.parse(JSON.stringify(finalLanding));
+  kingTurns.run.hp = 1000;
+  kingTurns.run.maxHp = 1000;
+  kingTurns.run.attack = 0;
+  for (const expected of ["sword", "fireball", "sword"]) {
+    kingTurns = act(kingTurns, { type: "PLAYER_ATTACK" });
+    kingTurns = act(kingTurns, { type: "RESOLVE_ENEMY_TURN" });
+    assert.equal(kingTurns.run.enemies[0].lastBossAttack, expected);
+    assert.equal(kingTurns.run.enemies[0].damageType, expected === "fireball" ? "fire" : "slashing");
+  }
   assert.equal(finalLanding.run!.combatTurn, "player");
   const bossSnapshot = JSON.stringify(finalLanding.run);
   finalLanding = act(finalLanding, { type: "FIGHT_BOSS" });

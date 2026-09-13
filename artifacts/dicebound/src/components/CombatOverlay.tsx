@@ -35,6 +35,8 @@ import heroHitUrl from '../assets/custom-hero-hit.png';
 import guardTonicUrl from '../assets/custom-guard-tonic.png';
 import { SpriteAnimator, SpriteName, usePrefersReducedMotion } from './SpriteAnimator';
 import { AttackStyleSelector } from './AttackStyleSelector';
+import { SkeletonKingSprite } from './SkeletonKingSprite';
+import kingUrl from '../assets/skeleton-king.png';
 
 interface EnemySnapshot {
   id: string;
@@ -105,6 +107,7 @@ function makeSnapshot(run: RunState): CombatSnapshot {
 }
 
 function getMonsterImage(enemy: RunState['enemies'][number]) {
+  if (enemy.boss) return kingUrl;
   const speciesKey = enemy.speciesKey ?? speciesKeyForName(enemy.name);
   if (speciesKey === 'wolf') return customWolfUrl;
   if (speciesKey === 'goblin') return goblinPixelUrl;
@@ -153,7 +156,7 @@ function isCustomOgreEnemy(enemy: RunState['enemies'][number]) {
 }
 
 function deathExitDurationMs(enemy: RunState['enemies'][number] | undefined, speed: number) {
-  const duration = enemy && isCustomWolfEnemy(enemy)
+  const duration = enemy?.boss ? 5200 : enemy && isCustomWolfEnemy(enemy)
     ? CUSTOM_WOLF_DEATH_EXIT_MS
     : enemy && isCustomGoblinEnemy(enemy) ? CUSTOM_GOBLIN_DEATH_EXIT_MS
     : enemy && isCustomOchreEnemy(enemy) ? CUSTOM_OCHRE_DEATH_EXIT_MS
@@ -217,6 +220,22 @@ export function CombatOverlay({
   const enemyArchive = useRef<Record<string, RunState['enemies'][number]>>({});
   const popupTimers = useRef<number[]>([]);
   const reducedMotion = usePrefersReducedMotion();
+  const [bossAnimating, setBossAnimating] = useState(false);
+  const bossSequence = run.playerCombat?.enemyAttackSequence ?? 0;
+  const priorBossSequence = useRef(bossSequence);
+  useEffect(() => {
+    const changed = bossSequence > priorBossSequence.current;
+    priorBossSequence.current = bossSequence;
+    const boss = run.enemies.find(enemy => enemy.boss);
+    if (!changed || !boss || reducedMotion) {
+      setBossAnimating(false);
+      return;
+    }
+    setBossAnimating(true);
+    const timer = window.setTimeout(() => setBossAnimating(false),
+      (boss.lastBossAttack === 'fireball' ? 4200 : 1800) / Math.max(1, speed));
+    return () => window.clearTimeout(timer);
+  }, [bossSequence, reducedMotion, speed]);
 
   // Keep the latest combat state available for the short visual exit after
   // the engine has already removed defeated enemies.
@@ -481,8 +500,8 @@ export function CombatOverlay({
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
-  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !leaving;
-  const statusLabel = run.combatTurn === 'enemy' ? 'Enemies turn' : 'Your turn';
+  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !leaving && !bossAnimating;
+  const statusLabel = run.combatTurn === 'enemy' || bossAnimating ? 'Enemies turn' : 'Your turn';
 
   return (
     <div className={`absolute top-0 left-0 right-0 h-[82%] min-h-[620px] flex flex-col z-20 overflow-hidden pt-24 pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}>
@@ -615,7 +634,9 @@ export function CombatOverlay({
               <div
                 key={`${enemy.id}-${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`}
                 className={`relative flex flex-col items-center ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : ''}`}
-                style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms` } as CSSProperties}
+                style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms`,
+                  ...(isDying && enemy.boss ? { animationName: 'dicebound-king-death-exit' } : {}),
+                } as CSSProperties}
                 onClick={() => !isDying && setInspectedEnemyId(enemy.id)}
                 role="button"
                 tabIndex={isDying ? -1 : 0}
@@ -629,7 +650,11 @@ export function CombatOverlay({
               >
                 <div className={`combat-actor combat-actor--enemy w-20 h-20 ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
-                    {customWolf ? (
+                    {enemy.boss ? (
+                      <SkeletonKingSprite attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger} dying={isDying}
+                        speed={speed} attack={enemy.lastBossAttack} />
+                    ) : customWolf ? (
                       <CustomWolfSprite
                         attackTrigger={enemyEvent.attackTrigger}
                         hitTrigger={enemyEvent.hitTrigger}
