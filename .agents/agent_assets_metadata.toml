@@ -98,3 +98,17 @@ mtime_ms = 1789245048713
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/5cbc0238-e95c-4948-a4c9-70e135ecadd3/acb60b35-dd91-44d9-88e6-958744885801"
 storage_version_token = "1789245056630868"
 content_type = "audio/mpeg"
+
+[[outputs]]
+id = "GM1K4aqnu0-efN8LdN-fD"
+uri = "file://artifacts/dicebound/src/assets/statue.png"
+type = "image"
+title = "Center Statue — Original PNG"
+description = "Original 1024 × 1024 PNG used for the statue in the center of the game board, ready to download and animate."
+logical_id = "631b73bd-5c18-4f19-8ff4-a9d8725a3d69"
+content_hash = "sha256:f0c9656ec6801df693be1d67d47bafc87bebc845e5dda2ade7b69365f9511fa5"
+size = 1736079
+mtime_ms = 1789220403915
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/631b73bd-5c18-4f19-8ff4-a9d8725a3d69/e91cfeca-432b-4a50-9d71-051ae8f6a5e6"
+storage_version_token = "1789259158962590"
+content_type = "image/png"
