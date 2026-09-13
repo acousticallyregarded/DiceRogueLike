@@ -10,6 +10,8 @@ export function getCombatActorSize(enemy: EnemyState) {
     ? { frame: 140, body: 100, bottom: 20, height: 170, slot: 120 }
     : species === 'wolf'
       ? { frame: 132, body: 76, bottom: 26, height: 76 * 160 / 132, slot: 100 }
+    : species === 'winter_wolf'
+      ? { frame: 128, body: 62, bottom: 33, height: 62 * 240 / 128, slot: 120 }
     : species === 'goblin'
       ? { frame: 96, body: 65, bottom: 15, height: 116, slot: 76 }
       : species === 'skeleton'
