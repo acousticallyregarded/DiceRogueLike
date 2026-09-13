@@ -238,7 +238,21 @@ function runAssertions() {
 
   let selected = act(createInitialState(), { type: "START_RUN" });
   selected = act(selected, { type: "SELECT_ATTACK", damageType: "fire" });
+  assert.equal(selected.run!.selectedDamageType, "slashing");
+  selected.run!.phase = "combat";
+  selected.run!.combatTurn = "player";
+  selected = act(selected, { type: "SELECT_ATTACK", damageType: "fire" });
+  assert.equal(selected.run!.selectedDamageType, "slashing");
+  for (const damageType of ["piercing", "bludgeoning", "slashing"] as const) {
+    selected = act(selected, { type: "SELECT_ATTACK", damageType });
+    assert.equal(selected.run!.selectedDamageType, damageType);
+    assert.equal(selected.run!.combatTurn, "player");
+  }
+  selected.run!.skills.push({ id: "learn-fire", name: "Ember", description: "", type: "fire" });
+  selected = act(selected, { type: "SELECT_ATTACK", damageType: "fire" });
   assert.equal(selected.run!.selectedDamageType, "fire");
+  selected.run!.skills = [];
+  assert.equal(validateState(selected).run!.selectedDamageType, "slashing");
 
   // Poison is a real discrete-turn effect but skeleton immunity blocks its damage.
   const skeleton: EnemyState = {
@@ -286,6 +300,7 @@ function runAssertions() {
   }]);
   leeched.run!.hp = 20;
   leeched.run!.selectedDamageType = "lightning";
+  leeched.run!.skills.push({ id: "learn-spark", name: "Spark", description: "", type: "lightning" });
   leeched.run!.attack = 10;
   leeched = act(leeched, { type: "PLAYER_ATTACK" });
   assert.equal(leeched.run!.hp, 20);

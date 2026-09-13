@@ -100,7 +100,12 @@ export interface Skill {
   id: string;
   name: string;
   description: string;
-  type: "poison" | "heal" | "first_strike" | "speed_boost" | "defense_boost" | "vampire" | "execute" | "combo" | "counter";
+  type: "poison" | "heal" | "first_strike" | "speed_boost" | "defense_boost" | "vampire" | "execute" | "combo" | "counter" | "fire" | "cold" | "acid" | "lightning";
+}
+
+export function isAttackStyleLearned(run: Pick<RunState, "skills">, damageType: DamageType): boolean {
+  const style = ATTACK_STYLES.find(candidate => candidate.id === damageType);
+  return Boolean(style && (!style.magical || run.skills.some(skill => skill.type === damageType)));
 }
 
 export interface ShopItem {
@@ -324,6 +329,10 @@ function getNextLevelXp(level: number): number {
 
 function generateSkills(count: number, currentSkills: Skill[]): Skill[] {
   const pool: Skill[] = [
+    { id: "s_fire", name: "Ember", description: "Learn the fire attack style", type: "fire" },
+    { id: "s_cold", name: "Frost", description: "Learn the cold attack style", type: "cold" },
+    { id: "s_acid", name: "Acid", description: "Learn the acid attack style", type: "acid" },
+    { id: "s_lightning", name: "Spark", description: "Learn the lightning attack style", type: "lightning" },
     { id: "s_poison", name: "Poison Strike", description: "Attacks apply poison; poison ticks once at the start of each turn", type: "poison" },
     { id: "s_heal", name: "Life Leech", description: "Heal for 10% of damage dealt", type: "vampire" },
     { id: "s_first_strike", name: "First Strike", description: "Your first attack deals 50% bonus damage", type: "first_strike" },
@@ -365,13 +374,22 @@ function generateShop(): ShopItem[] {
 export const NORMAL_ROSTER: readonly MonsterSpeciesKey[] = ["wolf", "goblin", "skeleton", "ochre_jelly"];
 export const ELITE_ROSTER: readonly MonsterSpeciesKey[] = ["ogre", "winter_wolf", "mummy"];
 
-export function generateEnemies(count: number, scale: number, isElite: boolean = false): EnemyState[] {
+export function getEncounterCount(level: number, isElite: boolean, roll = Math.random()): number {
+  if (isElite) return level >= 8 && roll >= 0.8 ? 2 : 1;
+  if (level <= 2) return 1;
+  if (level <= 5) return roll >= 0.65 ? 2 : 1;
+  return roll >= 0.9 ? 3 : roll >= 0.35 ? 2 : 1;
+}
+
+export function generateEnemies(count: number, scale: number, isElite: boolean = false, level: number = 1): EnemyState[] {
+  // Floors raise difficulty, but cannot outpace an under-levelled hero.
+  const tier = Math.max(1, Math.min(scale, 1 + (level - 1) / 3));
   const roster = isElite ? ELITE_ROSTER : NORMAL_ROSTER;
   return Array.from({ length: count }).map(() => {
     const speciesKey = roster[Math.floor(Math.random() * roster.length)];
     const entry = getBestiaryEntry(speciesKey);
     const name = entry?.name ?? "Unknown Monster";
-    const hp = Math.floor((20 + scale * 10) * (isElite ? 2 : 1));
+    const hp = Math.floor((16 + tier * 8) * (isElite ? 1.5 : 1));
     return {
       id: uuid(),
       name,
@@ -379,9 +397,9 @@ export function generateEnemies(count: number, scale: number, isElite: boolean =
       artKey: entry?.artKey,
       hp,
       maxHp: hp,
-      attack: Math.floor((5 + scale * 2) * (isElite ? 1.5 : 1)),
-      defense: Math.floor((1 + scale * 0.5) * (isElite ? 1.5 : 1)),
-      speed: Math.floor(30 + scale * 2 + (isElite ? 10 : 0)),
+      attack: Math.floor((3 + tier * 2) * (isElite ? 1.4 : 1)),
+      defense: Math.floor(1 + (tier - 1) * (isElite ? 0.75 : 0.5)),
+      speed: Math.floor(30 + tier * 2 + (isElite ? 10 : 0)),
       attackTimer: 0
     };
   });
@@ -452,8 +470,8 @@ function triggerTile(s: GameStateV4, r: RunState) {
     logMessage(r, "Passed Start! Healed 20 HP.");
     r.hp = Math.min(r.maxHp, r.hp + 20);
   } else if (tile.type === "enemy" || tile.type === "elite") {
-    const count = Math.floor(Math.random() * 3) + 1; // 1 to 3 enemies
-    r.enemies = generateEnemies(count, r.floor, tile.type === "elite");
+    const count = getEncounterCount(r.level, tile.type === "elite");
+    r.enemies = generateEnemies(count, r.floor, tile.type === "elite", r.level);
     r.playerCombat = {
       attackTimer: 0,
       roundCounter: 0,
@@ -565,7 +583,7 @@ export function validateState(input: any): GameStateV4 {
     // Saves from before the roll-animation marker represent ordinary movement.
     s.run.rollAnimating = s.run.phase === "moving" && Boolean(s.run.rollAnimating);
     s.run.isBossCombat = Boolean(s.run.isBossCombat);
-    s.run.selectedDamageType = isAttackStyle(s.run.selectedDamageType)
+    s.run.selectedDamageType = isAttackStyle(s.run.selectedDamageType) && isAttackStyleLearned(s.run, s.run.selectedDamageType)
       ? s.run.selectedDamageType
       : DEFAULT_DAMAGE_TYPE;
     s.run.combatFeedback = s.run.combatFeedback ?? null;
@@ -746,6 +764,9 @@ function finishVictory(r: RunState) {
     r.gold += 15 + r.floor * 5;
     gainXp(r, 40 + r.floor * 10);
     logMessage(r, "Enemies defeated! Gained gold and XP.");
+    const recovery = Math.min(r.maxHp - r.hp, Math.ceil(r.maxHp * 0.08));
+    r.hp += recovery;
+    if (recovery > 0) logMessage(r, `Caught your breath: recovered ${recovery} HP.`);
     r.phase = "explore";
   }
   r.combatTurn = "player";
@@ -772,7 +793,7 @@ function applyPoisonTicks(r: RunState) {
 }
 
 function activeStyle(r: RunState) {
-  const damageType = isAttackStyle(r.selectedDamageType)
+  const damageType = isAttackStyle(r.selectedDamageType) && isAttackStyleLearned(r, r.selectedDamageType)
     ? r.selectedDamageType
     : DEFAULT_DAMAGE_TYPE;
   r.selectedDamageType = damageType;
@@ -1137,11 +1158,8 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "SELECT_ATTACK") {
     const r = s.run;
-    if (r && isAttackStyle(action.damageType) && (
-      r.phase === "explore"
-      || r.phase === "moving"
-      || (r.phase === "combat" && r.combatTurn !== "enemy")
-    )) {
+    if (r && isAttackStyle(action.damageType) && isAttackStyleLearned(r, action.damageType)
+      && r.phase === "combat" && r.combatTurn !== "enemy") {
       r.selectedDamageType = action.damageType;
     }
   }

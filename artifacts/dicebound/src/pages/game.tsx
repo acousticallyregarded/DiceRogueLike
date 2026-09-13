@@ -5,7 +5,6 @@ import { TopBar } from '../components/TopBar';
 import { CombatOverlay } from '../components/CombatOverlay';
 import { ActionOverlay } from '../components/ActionOverlay';
 import { DiceButton } from '../components/DiceButton';
-import { AttackStyleSelector } from '../components/AttackStyleSelector';
 import { MonsterGuide } from '../components/MonsterGuide';
 import { FastForward, BookOpen } from 'lucide-react';
 import { useState } from 'react';
@@ -71,12 +70,6 @@ export default function Game() {
         <TopBar run={r} />
 
          <CombatOverlay run={r} dispatch={dispatch} speed={speed} />
-
-         {!inCombat && (r.phase === 'explore' || r.phase === 'moving') && (
-           <div className="absolute top-20 left-3 right-16 z-40">
-             <AttackStyleSelector run={r} dispatch={dispatch} />
-           </div>
-         )}
 
          <button
            type="button"
