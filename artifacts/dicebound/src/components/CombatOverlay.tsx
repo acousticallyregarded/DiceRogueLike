@@ -37,6 +37,7 @@ import { SpriteAnimator, SpriteName, usePrefersReducedMotion } from './SpriteAni
 import { AttackStyleSelector } from './AttackStyleSelector';
 import { SkeletonKingSprite } from './SkeletonKingSprite';
 import kingUrl from '../assets/skeleton-king.png';
+import { BattleBackdrop } from './BattleBackdrop';
 
 interface EnemySnapshot {
   id: string;
@@ -584,6 +585,7 @@ export function CombatOverlay({
       )}
 
       <div className="flex-1 relative flex items-end justify-between px-6 pb-12">
+        <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} />
         <div className="relative flex flex-col items-center">
           <div
             className={`combat-actor w-28 h-28 ${playerAttackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
@@ -599,8 +601,8 @@ export function CombatOverlay({
                   : (drinkingPotion ? drinkPotionUrl : (guardingHero ? guardTonicUrl : heroUrl))}
                 active
                 loop={!reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
-                frameCount={reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 13)))}
-                durationMs={reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 2600)))}
+                frameCount={reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
+                durationMs={reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 1800)))}
                 trigger={reactingToHit ? playerHitTrigger : throwingFireBomb
                   ? playerFireBombTrigger
                   : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}
@@ -648,7 +650,7 @@ export function CombatOverlay({
                   }
                 }}
               >
-                <div className={`combat-actor combat-actor--enemy w-20 h-20 ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
+                <div className={`combat-actor combat-actor--enemy ${enemy.boss ? 'w-40 h-40' : 'w-20 h-20'} ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
                     {enemy.boss ? (
                       <SkeletonKingSprite attackTrigger={enemyEvent.attackTrigger}
