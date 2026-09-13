@@ -14,6 +14,7 @@ import greenTileUrl from '../assets/tiles/green.png';
 import redTileUrl from '../assets/tiles/red.png';
 import orangeTileUrl from '../assets/tiles/orange.png';
 import creamTileUrl from '../assets/tiles/cream.png';
+import alabasterWallUrl from '../assets/tiles/alabaster-wall.png';
 import purpleTileUrl from '../assets/tiles/purple.png';
 import { SpriteAnimator, usePrefersReducedMotion } from './SpriteAnimator';
 import type { SpriteName } from './SpriteAnimator';
@@ -392,7 +393,9 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
                   height: `${PIT_DEPTH}px`,
                   transformOrigin: 'top left',
                   transform: 'skewY(26.565deg)',
-                  background: 'linear-gradient(to bottom, #78716c, #292524)'
+                  backgroundImage: `linear-gradient(to bottom, rgba(43,36,24,0.12), rgba(29,25,19,0.64)), url(${alabasterWallUrl})`,
+                  backgroundSize: `100% 100%, ${TILE_WALL_FACE_WIDTH}px ${TILE_WALL_FACE_WIDTH}px`,
+                  backgroundRepeat: 'no-repeat, repeat',
                 }}
               />
               {/* Right Wall Skirt (Front-Right face) */}
@@ -405,7 +408,9 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
                   height: `${PIT_DEPTH}px`,
                   transformOrigin: 'top left',
                   transform: 'skewY(-26.565deg)',
-                  background: 'linear-gradient(to bottom, #57534e, #1c1917)'
+                  backgroundImage: `linear-gradient(to bottom, rgba(43,36,24,0.30), rgba(29,25,19,0.76)), url(${alabasterWallUrl})`,
+                  backgroundSize: `100% 100%, ${TILE_WALL_FACE_WIDTH}px ${TILE_WALL_FACE_WIDTH}px`,
+                  backgroundRepeat: 'no-repeat, repeat',
                 }}
               />
 
