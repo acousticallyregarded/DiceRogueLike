@@ -112,3 +112,17 @@ mtime_ms = 1789220403915
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/631b73bd-5c18-4f19-8ff4-a9d8725a3d69/e91cfeca-432b-4a50-9d71-051ae8f6a5e6"
 storage_version_token = "1789259158962590"
 content_type = "image/png"
+
+[[outputs]]
+id = "ExjvvAkzZirTMvxEGkaQx"
+uri = "file://attached_assets/generated_audio/dicebound-battle-music.mp3"
+type = "audio"
+title = "Dicebound — Battle Music"
+description = "Original 60-second instrumental fantasy battle theme with driving drums, strings, and heroic brass. Now plays during combat."
+logical_id = "0b845b4b-498b-4177-956b-708604ba0ee4"
+content_hash = "sha256:d4475152c27f51ddd124e238250ddde79c0e0dc01ef6e008a3592daf378e96a0"
+size = 960515
+mtime_ms = 1789262411662
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41a6e4c6-12b9-4622-b569-69e702a07070/0b845b4b-498b-4177-956b-708604ba0ee4/1ab0b27e-d40f-4757-a866-e0bb264daec2"
+storage_version_token = "1789262446855884"
+content_type = "audio/mpeg"

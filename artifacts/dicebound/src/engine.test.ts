@@ -204,6 +204,13 @@ function runAssertions() {
   };
   bossVictory = act(bossVictory, { type: "PLAYER_ATTACK" });
   assert.equal(bossVictory.run!.phase, "victory");
+  assert.equal(bossVictory.run!.victoryReport!.gold, 120);
+  assert.equal(bossVictory.run!.victoryReport!.gems, 50);
+  assert.equal(bossVictory.run!.victoryReport!.xp, 0);
+  const pendingReport = JSON.stringify(bossVictory);
+  assert.equal(JSON.stringify(act(bossVictory, { type: "CONTINUE_RUN" })), pendingReport);
+  assert.deepEqual(validateState(bossVictory).run!.victoryReport, bossVictory.run!.victoryReport);
+  bossVictory = act(bossVictory, { type: "DISMISS_VICTORY_REPORT" });
   const beforeSettlement = bossVictory.meta.gems;
   bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
   assert.equal(bossVictory.meta.gems, beforeSettlement + 62);
@@ -445,6 +452,13 @@ function runAssertions() {
   assert.equal(lethalBomb.run!.enemies[0].hp, 10);
   lethalBomb = act(lethalBomb, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(lethalBomb.run!.phase, "explore");
+  assert.equal(lethalBomb.run!.victoryReport!.xp, 50);
+  assert.equal(lethalBomb.run!.victoryReport!.gold, 20);
+  assert.deepEqual(lethalBomb.run!.victoryReport!.equipment, []);
+  const beforeReportDismiss = lethalBomb.run!.gold;
+  lethalBomb = act(lethalBomb, { type: "DISMISS_VICTORY_REPORT" });
+  lethalBomb = act(lethalBomb, { type: "DISMISS_VICTORY_REPORT" });
+  assert.equal(lethalBomb.run!.gold, beforeReportDismiss);
   assert.equal(lethalBomb.run!.playerCombat!.enemyAttackSequence, 0);
   const lethalAfterImpact = JSON.stringify(lethalBomb.run);
   lethalBomb = act(lethalBomb, { type: "RESOLVE_ENEMY_TURN" });

@@ -123,6 +123,10 @@ export interface ShopItem {
 }
 
 export interface RunState {
+  victoryReport?: {
+    id: string; boss: boolean; floor: number; xp: number; gold: number;
+    gems: number; healing: number; equipment: string[]; showAt: number;
+  } | null;
   hp: number;
   maxHp: number;
   attack: number;
@@ -205,6 +209,7 @@ export function getEnemyResponseDelayMs(run: Pick<RunState, "combatTurn" | "phas
 export const getEnemyTurnDelay = getEnemyResponseDelayMs;
 
 export type GameAction =
+  | { type: "DISMISS_VICTORY_REPORT" }
   | { type: "START_RUN" }
   | { type: "ROLL_DICE" }
   | { type: "BEGIN_MOVEMENT" }
@@ -760,22 +765,32 @@ function settleDefeat(s: GameStateV4, r: RunState) {
 }
 
 function finishVictory(r: RunState) {
+  const report = {
+    id: uuid(), boss: r.isBossCombat, floor: r.floor,
+    xp: r.isBossCombat ? 0 : 40 + r.floor * 10,
+    gold: r.isBossCombat ? 100 + r.floor * 20 : 15 + r.floor * 5,
+    gems: r.isBossCombat ? 50 * r.floor : 0,
+    healing: 0, equipment: [] as string[],
+    showAt: Date.now() + (r.isBossCombat ? 5200 : HERO_SWORD_ANIMATION_DURATION_MS),
+  };
   if (r.isBossCombat) {
-    r.gemsEarned += 50 * r.floor;
-    r.gold += 100 + r.floor * 20;
+    r.gemsEarned += report.gems;
+    r.gold += report.gold;
     logMessage(r, "Boss defeated! Gained gems and gold.");
     r.phase = "victory";
   } else {
-    r.gold += 15 + r.floor * 5;
-    gainXp(r, 40 + r.floor * 10);
+    r.gold += report.gold;
+    gainXp(r, report.xp);
     logMessage(r, "Enemies defeated! Gained gold and XP.");
     const recovery = Math.min(r.maxHp - r.hp, Math.ceil(r.maxHp * 0.08));
     r.hp += recovery;
+    report.healing = recovery;
     if (recovery > 0) logMessage(r, `Caught your breath: recovered ${recovery} HP.`);
     r.phase = "explore";
   }
   r.combatTurn = "player";
   r.guardActive = false;
+  r.victoryReport = report;
 }
 
 function applyPoisonTicks(r: RunState) {
@@ -990,6 +1005,11 @@ function resolveEnemyTurn(s: GameStateV4) {
 
 export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   const s: GameStateV4 = JSON.parse(JSON.stringify(state));
+  if (action.type === "DISMISS_VICTORY_REPORT") {
+    if (s.run?.victoryReport) s.run.victoryReport = null;
+    return s;
+  }
+  if (s.run?.victoryReport && action.type !== "RESET_SAVE") return s;
 
   if (action.type === "RESET_SAVE") {
     return createInitialState();

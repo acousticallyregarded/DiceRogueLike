@@ -1,7 +1,9 @@
 import { RunState, GameAction, MetaState } from '../engine';
 import { Gift, Coins, Shield, Sword, Heart, Wind, Star, Zap, Skull } from 'lucide-react';
+import { VictoryReport } from './VictoryReport';
 
 export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch: (a: GameAction) => void, meta: MetaState }) {
+  if (run.victoryReport) return <VictoryReport key={run.victoryReport.id} report={run.victoryReport} dispatch={dispatch} />;
   if (run.phase === 'boss_awakening') {
     return (
       <div

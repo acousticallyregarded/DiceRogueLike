@@ -4,7 +4,7 @@ import { MapPin, Sword, Skull, ShoppingBag, Gift, Tent, AlertTriangle } from 'lu
 import { useEffect, useRef, useState } from 'react';
 
 import { CenterStatue } from './CenterStatue';
-import treeUrl from '../assets/tree.png';
+import { ForestOaks } from './ForestOaks';
 import forestClearingUrl from '../assets/forest-clearing.webp';
 import customWalkSouthEastUrl from '../assets/custom-walk-south-east.png';
 import customWalkSouthWestUrl from '../assets/custom-walk-south-west.png';
@@ -312,40 +312,7 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
           </div>
         </div>
         
-        {/* Scenery - Trees */}
-        <div
-          className="absolute z-[1]"
-          style={{
-            width: `${100 * WORLD_SCALE}px`,
-            height: `${120 * WORLD_SCALE}px`,
-            marginLeft: `${-180 * WORLD_SCALE}px`,
-            marginTop: `${-20 * WORLD_SCALE}px`,
-          }}
-        >
-           <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
-        </div>
-        <div
-          className="absolute z-[0]"
-          style={{
-            width: `${80 * WORLD_SCALE}px`,
-            height: `${100 * WORLD_SCALE}px`,
-            marginLeft: `${100 * WORLD_SCALE}px`,
-            marginTop: `${-80 * WORLD_SCALE}px`,
-          }}
-        >
-           <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
-        </div>
-        <div
-          className="absolute z-[10]"
-          style={{
-            width: `${120 * WORLD_SCALE}px`,
-            height: `${140 * WORLD_SCALE}px`,
-            marginLeft: `${-50 * WORLD_SCALE}px`,
-            marginTop: `${40 * WORLD_SCALE}px`,
-          }}
-        >
-           <img src={treeUrl} className="w-full h-full object-contain drop-shadow-xl" alt="Tree" />
-        </div>
+        <ForestOaks />
         
         {/* Grid Tiles */}
         {run.tiles.map((t, i) => {

@@ -1,4 +1,5 @@
 import forestMusicUrl from "../assets/audio/dicebound-forest-music.mp3";
+import battleMusicUrl from "../assets/audio/dicebound-battle-music.mp3";
 import diceRollUrl from "../assets/audio/dicebound-dice-roll.mp3";
 import healingPotionUrl from "../assets/audio/dicebound-healing-potion.mp3";
 import fireBombUrl from "../assets/audio/dicebound-fire-bomb.mp3";
@@ -34,8 +35,9 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   effectsMuted: false,
 };
 
-const AUDIO_FILES: Record<AudioEffectName | "forest-music", string> = {
+const AUDIO_FILES: Record<AudioEffectName | "forest-music" | "battle-music", string> = {
   "forest-music": forestMusicUrl,
+  "battle-music": battleMusicUrl,
   "dice-roll": diceRollUrl,
   "healing-potion": healingPotionUrl,
   "fire-bomb": fireBombUrl,
@@ -217,6 +219,9 @@ class AudioController {
   }
 
   setMusicScene(scene: MusicScene) {
+    const previousTrack = this.musicScene === "combat" ? "battle-music" : "forest-music";
+    const nextTrack = scene === "combat" ? "battle-music" : "forest-music";
+    if (previousTrack !== nextTrack) this.stopMusicSource();
     this.musicScene = scene;
     if (!scene) {
       this.stopMusicSource();
@@ -280,15 +285,16 @@ class AudioController {
     if (!this.context || !this.musicGain) return;
     const target = this.settings.musicMuted || this.settings.musicVolume <= 0
       ? 0
-      : this.settings.musicVolume * (this.musicScene === "combat" ? 0.35 : 1);
+      : this.settings.musicVolume;
     this.musicGain.gain.setTargetAtTime(target, this.context.currentTime, 0.06);
   }
 
   private startMusicIfReady() {
+    const track = this.musicScene === "combat" ? "battle-music" : "forest-music";
     if (
       !this.context
       || this.context.state !== "running"
-      || !this.buffers.has("forest-music")
+      || !this.buffers.has(track)
       || !this.musicScene
       || this.settings.musicMuted
       || this.settings.musicVolume <= 0
@@ -298,12 +304,13 @@ class AudioController {
 
     const source = this.context.createBufferSource();
     const gain = this.context.createGain();
-    source.buffer = this.buffers.get("forest-music")!;
+    source.buffer = this.buffers.get(track)!;
     source.loop = true;
     source.connect(gain);
     gain.connect(this.context.destination);
     this.musicSource = source;
     this.musicGain = gain;
+    gain.gain.value = 0;
     this.applyMusicVolume();
     source.addEventListener("ended", () => {
       if (this.musicSource === source) {

@@ -1,0 +1,14 @@
+.victory-parchment {
+  color: #452c17;
+  font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  background-color: #efdaa6;
+  background-image:
+    radial-gradient(ellipse at 0 20%, #9e652448, transparent 55%),
+    radial-gradient(ellipse at 100% 90%, #9e652448, transparent 50%),
+    repeating-linear-gradient(4deg, #7e552009 0 1px, transparent 1px 5px);
+  border: 1px solid #a77e43;
+  border-radius: 6px 13px 7px 11px;
+  box-shadow: inset 0 0 26px #92612666, 0 16px 40px #0008;
+  text-shadow: 0.3px 0 #452c1740;
+}
+.victory-parchment dd { font-style: italic; font-weight: bold; }
