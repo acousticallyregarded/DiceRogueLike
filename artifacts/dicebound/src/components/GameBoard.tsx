@@ -17,6 +17,7 @@ import creamTileUrl from '../assets/tiles/cream.png';
 import purpleTileUrl from '../assets/tiles/purple.png';
 import { SpriteAnimator, usePrefersReducedMotion } from './SpriteAnimator';
 import type { SpriteName } from './SpriteAnimator';
+import { BoardTileObject } from './BoardTileObject';
 
 /**
  * Board coordinates are deliberately independent from the hero art.  The
@@ -431,7 +432,8 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
                     filter: 'drop-shadow(0 3px 2px rgba(0,0,0,0.16))',
                   }}
                 />
-                {t.type !== 'start' && (
+                <BoardTileObject type={t.type} occupied={i === normalizeTileIndex(tileMotion.contact.supportTile)} />
+                {t.type === 'minigame' && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none -mt-1">
                     <Icon className={`w-5 h-5 ${theme.color}`} strokeWidth={3} />
                   </div>

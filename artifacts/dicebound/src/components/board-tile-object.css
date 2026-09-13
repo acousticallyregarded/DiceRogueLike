@@ -1,0 +1,26 @@
+.board-object-anchor {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  left: 50%;
+  bottom: 10px;
+  margin-left: -30px;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+.board-object-sprite {
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 25%));
+  animation: board-object-frames var(--object-duration) steps(var(--object-steps)) infinite;
+}
+@keyframes board-object-frames {
+  from { background-position: 0% 0; }
+  to { background-position: var(--object-end) 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-object-sprite { animation: none; }
+  .board-object-anchor { transition: none; }
+}
