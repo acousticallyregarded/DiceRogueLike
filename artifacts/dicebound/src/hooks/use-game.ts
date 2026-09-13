@@ -6,7 +6,6 @@ import {
   validateState,
   createInitialState,
   DICE_ROLL_ANIMATION_DURATION_MS,
-  BOSS_AWAKENING_DURATION_MS,
   getEnemyResponseDelayMs,
 } from '../engine';
 import { toast } from 'sonner';
@@ -86,22 +85,13 @@ export function useGame() {
     return () => window.clearTimeout(timer);
   }, [dispatch, state?.run?.phase, state?.run?.rollAnimating]);
 
-  // Awakening is a durable presentation phase. Reloading it safely starts the
-  // same one-shot completion timer; boss_ready deliberately has no timer and
-  // therefore never starts a fight without an explicit player choice.
-  useEffect(() => {
-    if (state?.run?.phase !== 'boss_awakening') return;
-    const timer = window.setTimeout(() => {
-      dispatch({ type: 'COMPLETE_BOSS_AWAKENING' });
-    }, BOSS_AWAKENING_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.phase]);
+  // GameBoard owns cinematic completion, including the rise and sword pose.
 
   useEffect(() => {
     if (!state?.run) return;
     
     let frameId: number;
-    if (state.run.phase !== 'moving' || state.run.rollAnimating) {
+    if (state.run.phase !== 'moving' || state.run.rollAnimating || state.run.trailCinematic) {
       // Reset the movement clock at the boundary of every non-moving phase.
       // Otherwise the first step after the dice presentation could fire
       // immediately using elapsed time from before the roll.
@@ -130,7 +120,7 @@ export function useGame() {
     
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, dispatch, speed]);
+  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, state?.run?.trailCinematic, dispatch, speed]);
 
   return { state, dispatch, speed, setSpeed };
 }

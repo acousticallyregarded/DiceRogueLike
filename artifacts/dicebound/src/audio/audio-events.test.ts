@@ -22,6 +22,7 @@ const enemy = (id: string, hp = 100): EnemyState => ({
 
 function combatState(enemyRoster: EnemyState[] = [enemy("wolf-1")]): GameStateV4 {
   let state = act(createInitialState(), { type: "START_RUN" });
+  state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
   state.run!.hp = 50;
   state.run!.enemies = enemyRoster;
   state.run!.phase = "combat";
@@ -40,7 +41,8 @@ function combatState(enemyRoster: EnemyState[] = [enemy("wolf-1")]): GameStateV4
 
 function runAssertions() {
   // A restored state establishes a baseline rather than replaying its history.
-  const restoredRoll = act(act(createInitialState(), { type: "START_RUN" }), { type: "ROLL_DICE" });
+  const restoredStarted = act(act(createInitialState(), { type: "START_RUN" }), { type: "FINISH_TRAIL_CINEMATIC" });
+  const restoredRoll = act(restoredStarted, { type: "ROLL_DICE" });
   assert.deepEqual(getAudioTransitionEvents(null, validateState(JSON.parse(JSON.stringify(restoredRoll)))), []);
   assert.deepEqual(
     getAudioTransitionEvents(restoredRoll, act(restoredRoll, { type: "ROLL_DICE" })),
@@ -48,7 +50,10 @@ function runAssertions() {
     "duplicate roll cannot replay dice sound",
   );
 
-  const started = act(createInitialState(), { type: "START_RUN" });
+  const started = act(
+    act(createInitialState(), { type: "START_RUN" }),
+    { type: "FINISH_TRAIL_CINEMATIC" },
+  );
   const rolled = act(started, { type: "ROLL_DICE" });
   assert.deepEqual(getAudioTransitionEvents(started, rolled), [{ type: "dice-roll" }]);
 

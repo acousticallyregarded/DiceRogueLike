@@ -6,8 +6,8 @@ import { CombatOverlay } from '../components/CombatOverlay';
 import { ActionOverlay } from '../components/ActionOverlay';
 import { DiceButton } from '../components/DiceButton';
 import { MonsterGuide } from '../components/MonsterGuide';
-import { FastForward, BookOpen } from 'lucide-react';
-import { useState } from 'react';
+import { FastForward, BookOpen, SkipForward } from 'lucide-react';
+import { useState, useCallback } from 'react';
 import { useEffect, useRef } from 'react';
 import { useAudio } from '../audio/use-audio';
 import { useAudioEvents } from '../audio/use-audio-events';
@@ -44,6 +44,10 @@ export default function Game() {
 
   useAudioEvents(state);
 
+  const handleSkipCinematic = useCallback(() => {
+    dispatch({ type: 'FINISH_TRAIL_CINEMATIC' });
+  }, [dispatch]);
+
   if (!state) return null;
 
   if (!state.run) {
@@ -52,14 +56,22 @@ export default function Game() {
 
   const r = state.run;
   const inCombat = r.phase === 'combat';
+  const cinematicType = r.trailCinematic;
+  const isCinematic = Boolean(cinematicType);
+  const hideControls = isCinematic && r.phase !== 'boss_awakening';
 
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans select-none">
-      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#375f35]">
+      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#2b4c2b]">
         
         {/* Scene Split - If in combat, shrink board to bottom */}
         <div className={`absolute inset-0 transition-transform duration-700 ease-in-out ${inCombat ? 'translate-y-[40%] scale-90 opacity-40' : 'translate-y-0 scale-100'}`}>
-           <GameBoard run={r} visualPosition={r.position} speed={speed} />
+           <GameBoard 
+              run={r} 
+              visualPosition={r.position} 
+              speed={speed}
+              onCinematicFinish={handleSkipCinematic}
+           />
         </div>
         <div
           aria-hidden="true"
@@ -67,29 +79,35 @@ export default function Game() {
           style={{ backgroundImage: 'linear-gradient(to bottom, rgba(15,40,26,0.15), transparent 25%, transparent 75%, rgba(15,40,26,0.25))' }}
         />
 
-        <TopBar run={r} />
+        <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+           <TopBar run={r} />
+        </div>
 
-         <CombatOverlay run={r} dispatch={dispatch} speed={speed} />
+        <CombatOverlay run={r} dispatch={dispatch} speed={speed} />
 
-         <button
-           type="button"
-           onClick={() => setShowBestiary(true)}
-           aria-label="Open Bestiary"
-           className="absolute top-20 right-3 z-40 rounded-full bg-white p-2 border-4 border-[#1c1c1c] shadow-[0_3px_0_#1c1c1c] active:translate-y-1 active:shadow-none"
-         >
-           <BookOpen className="w-5 h-5 text-purple-700" />
-         </button>
+        <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+           <button
+             type="button"
+             onClick={() => setShowBestiary(true)}
+             aria-label="Open Bestiary"
+             className="absolute top-20 right-3 z-40 rounded-full bg-white p-2 border-4 border-[#1c1c1c] shadow-[0_3px_0_#1c1c1c] active:translate-y-1 active:shadow-none"
+           >
+             <BookOpen className="w-5 h-5 text-purple-700" />
+           </button>
+        </div>
 
-        <ActionOverlay run={r} dispatch={dispatch} meta={state.meta} />
+        <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+           <ActionOverlay run={r} dispatch={dispatch} meta={state.meta} />
+        </div>
 
         {/* Dice Button Bottom */}
-        <div className="absolute bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
+        <div className={`absolute bottom-6 left-0 right-0 flex justify-center z-30 transition-opacity duration-500 pointer-events-none ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
            <DiceButton run={r} dispatch={dispatch} />
         </div>
 
         {/* Skills panel toggle */}
         {(r.phase === 'explore' || r.phase === 'moving') && (
-          <div className="absolute bottom-6 right-6 z-30">
+          <div className={`absolute bottom-6 right-6 z-30 transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
              <button 
                 onClick={() => setShowSkills(true)}
                 aria-label="Run skills"
@@ -98,6 +116,18 @@ export default function Game() {
                 <BookOpen className="w-6 h-6 text-slate-800" />
              </button>
           </div>
+        )}
+
+        {/* Skip Cinematic Button */}
+        {isCinematic && (
+           <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50">
+             <button 
+                onClick={handleSkipCinematic}
+                className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-sm text-white px-5 py-2.5 rounded-full border-2 border-slate-700 font-bold shadow-xl active:scale-95 transition-all"
+             >
+                Skip Cutscene <SkipForward className="w-4 h-4" />
+             </button>
+           </div>
         )}
 
         {/* Animation pace toggle bottom left */}

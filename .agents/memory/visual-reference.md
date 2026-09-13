@@ -4,6 +4,12 @@ description: Limits of the reference and agreement on initial artwork
 ---
 Treat Dicebound as an original prototype inspired by Rogue Legend, not a verified visual recreation.
 
+The user has explicitly replaced the reference's square loop with a forward forest journey.
+
+**Why:** On 2026-09-13, the user wanted progression toward the Skeleton King with staged statue cutaways rather than circling a walled courtyard. This is an intentional departure from the supplied reference.
+
+**How to apply:** Preserve dice-and-tile gameplay and the uploaded art, but do not restore the square loop or walls when comparing against older screenshots. The second biome is a separate future design, not part of polishing the first forest.
+
 **Why:** The initial YouTube footage was inaccessible. The user subsequently rejected the generic approximation and supplied screenshots and a short recording on 2026-09-12. Sampled recording frames confirm the bright portrait presentation, square isometric perimeter, two dice totaling 11 in the observed roll, camera-follow movement, and upper-screen combat over a dimmed board.
 
 **How to apply:** Use the supplied screenshots and recordings as the visual authority rather than inventing a new style. Keep art replaceable. A second fight recording shows two enemies simultaneously, automatic lunge/strike effects and floating damage numbers, a round counter advancing after the first enemy dies, reward particles, then return to the board and a LEVEL UP overlay with three vertically stacked skill cards (Executioner, Combo Mastery, Counter Mastery). The overlay explicitly says level up; do not treat the wiki's general post-fight upgrade description as proof that every battle grants a choice independently of XP. Exact skill percentages are washed out in the recording and remain unverified.

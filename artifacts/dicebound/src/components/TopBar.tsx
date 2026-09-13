@@ -8,13 +8,17 @@ function getNextLevelXp(level: number): number {
 
 export function TopBar({ run }: { run: RunState }) {
   const nextXp = getNextLevelXp(run.level);
+  
+  // Use bossCountdown if available (new paces logic), else fallback to bossRollsLeft
+  const countdown = run.bossCountdown ?? run.bossRollsLeft;
+  
   const bossStatus = run.phase === 'boss_awakening'
     ? 'STATUE AWAKENING'
     : run.phase === 'boss_ready'
       ? `FLOOR ${run.floor} BOSS READY`
       : run.isBossCombat
         ? 'BOSS BATTLE'
-        : `BOSS IN ${Math.max(0, run.bossRollsLeft)} ROLLS`;
+        : `BOSS IN ${Math.max(0, countdown)} PACES`;
   
   return (
     <div className="absolute top-4 left-4 right-4 flex flex-col gap-2 z-30 pointer-events-none">

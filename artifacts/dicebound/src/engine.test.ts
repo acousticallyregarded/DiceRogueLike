@@ -12,6 +12,7 @@ import {
   GUARD_TONIC_ANIMATION_DURATION_MS,
   DEFAULT_ENEMY_RESPONSE_DELAY_MS,
   BOSS_AWAKENING_DURATION_MS,
+  TRAIL_TILE_COUNT,
   getWalkDirection,
   validateState,
   type EnemyState,
@@ -27,6 +28,7 @@ import {
 function combatState(enemy: EnemyState, skills: Skill[] = []) {
   let state = createInitialState();
   state = act(state, { type: "START_RUN" });
+  state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
   const run = state.run!;
   run.attack = 10;
   run.speed = 0;
@@ -47,21 +49,42 @@ function combatState(enemy: EnemyState, skills: Skill[] = []) {
   return state;
 }
 
+function startedRun() {
+  let state = act(createInitialState(), { type: "START_RUN" });
+  state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
+  return state;
+}
+
 function runAssertions() {
-  // Clockwise perimeter directions use all four sheets, including the
-  // wrapped 23 -> 0 north-east step; backward/non-step updates preserve
-  // facing in the board component rather than forcing a mirror.
+  // The finite trail keeps the four walking sheets but never wraps from its
+  // final pace back to the first.
   assert.equal(getWalkDirection(0, 1), "south-east");
   assert.equal(getWalkDirection(6, 7), "south-west");
   assert.equal(getWalkDirection(12, 13), "north-west");
   assert.equal(getWalkDirection(18, 19), "north-east");
-  assert.equal(getWalkDirection(23, 0), "north-east");
+  assert.equal(getWalkDirection(TRAIL_TILE_COUNT - 1, 0), null);
   assert.equal(getWalkDirection(1, 0), null);
+
+  // New runs begin with a durable intro scene. Every other input is blocked
+  // until that scene is explicitly finished.
+  let intro = act(createInitialState(), { type: "START_RUN" });
+  assert.equal(intro.run!.tiles.length, TRAIL_TILE_COUNT);
+  assert.equal(intro.run!.position, 0);
+  assert.equal(intro.run!.bossCountdown, TRAIL_TILE_COUNT - 1);
+  assert.equal(intro.run!.bossRollsLeft, TRAIL_TILE_COUNT - 1);
+  assert.equal(intro.run!.trailCinematic, "intro");
+  assert.equal(intro.run!.trailIntroSeen, false);
+  assert.equal(intro.run!.tiles[TRAIL_TILE_COUNT - 1].type, "boss");
+  assert.ok(new Set(intro.run!.tiles.map(tile => tile.type)).size >= 6);
+  assert.deepEqual(act(intro, { type: "ROLL_DICE" }).run, intro.run);
+  intro = act(intro, { type: "FINISH_TRAIL_CINEMATIC" });
+  assert.equal(intro.run!.trailCinematic, null);
+  assert.equal(intro.run!.trailIntroSeen, true);
 
   // The reducer owns the one authentic 2d6 roll. The displayed pair and
   // movement budget are committed together, so a second click cannot replace
   // the result while that roll is being presented.
-  let rolled = act(createInitialState(), { type: "START_RUN" });
+  let rolled = startedRun();
   rolled = act(rolled, { type: "ROLL_DICE" });
   assert.equal(rolled.run!.phase, "moving");
   assert.equal(rolled.run!.rollAnimating, true);
@@ -79,44 +102,95 @@ function runAssertions() {
   const startedMoving = act(rolled, { type: "BEGIN_MOVEMENT" });
   assert.equal(startedMoving.run!.rollAnimating, false);
 
-  // Movement takes exactly N clockwise steps, including a 23 -> 0 wrap, and
-  // each intermediate index remains one adjacent tile in the same direction.
-  let wrapped = act(createInitialState(), { type: "START_RUN" });
-  wrapped.run!.position = 22;
-  wrapped.run!.phase = "moving";
-  wrapped.run!.stepsRemaining = 5;
-  wrapped.run!.rollAnimating = false;
-  wrapped.run!.tiles = wrapped.run!.tiles.map(tile => ({ ...tile, type: "start" }));
-  const expectedPositions = [23, 0, 1, 2, 3];
-  let previousPosition = wrapped.run!.position;
-  for (const expectedPosition of expectedPositions) {
-    wrapped = act(wrapped, { type: "STEP_MOVE" });
-    assert.equal(wrapped.run!.position, expectedPosition);
-    assert.equal(getWalkDirection(previousPosition, expectedPosition) !== null, true);
-    previousPosition = expectedPosition;
-  }
-  assert.equal(wrapped.run!.stepsRemaining, 0);
-  assert.equal(wrapped.run!.phase, "explore");
+  // Movement is finite and clamps at the endpoint. An oversized final roll
+  // keeps its ordinary dice faces but cannot move past the boss approach.
+  let finite = startedRun();
+  finite.run!.position = TRAIL_TILE_COUNT - 3;
+  finite.run!.phase = "moving";
+  finite.run!.stepsRemaining = 5;
+  finite.run!.rollAnimating = false;
+  finite.run!.tiles = finite.run!.tiles.map((tile, index) => index === TRAIL_TILE_COUNT - 1
+    ? { ...tile, type: "boss" }
+    : { ...tile, type: "start" });
+  finite = act(finite, { type: "STEP_MOVE" });
+  assert.equal(finite.run!.position, TRAIL_TILE_COUNT - 2);
+  assert.equal(finite.run!.bossCountdown, 1);
+  assert.equal(finite.run!.bossRollsLeft, 1);
+  finite = act(finite, { type: "STEP_MOVE" });
+  assert.equal(finite.run!.position, TRAIL_TILE_COUNT - 1);
+  assert.equal(finite.run!.stepsRemaining, 0);
+  assert.equal(finite.run!.bossCountdown, 0);
+  assert.equal(finite.run!.bossRollsLeft, 0);
+  assert.equal(finite.run!.phase, "boss_awakening");
+  assert.equal(finite.run!.trailCinematic, "awakening");
+  const endpoint = JSON.stringify(finite.run);
+  finite = act(finite, { type: "STEP_MOVE" });
+  assert.equal(JSON.stringify(finite.run), endpoint);
 
-  // The final committed roll finishes its exact movement path before the
-  // statue presentation begins. The threshold has priority over whatever tile
-  // the last step lands on, but it does not create a boss until chosen.
+  // A real final roll still displays both normal six-sided faces even when
+  // its movement budget is clamped to the three remaining paces.
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0.999999;
+    let finalRoll = startedRun();
+    finalRoll.run!.position = TRAIL_TILE_COUNT - 4;
+    finalRoll = act(finalRoll, { type: "ROLL_DICE" });
+    assert.deepEqual(finalRoll.run!.lastRolls, [6, 6]);
+    assert.equal(finalRoll.run!.stepsRemaining, 3);
+    finalRoll = act(finalRoll, { type: "BEGIN_MOVEMENT" });
+    while (finalRoll.run!.phase === "moving") finalRoll = act(finalRoll, { type: "STEP_MOVE" });
+    assert.equal(finalRoll.run!.position, TRAIL_TILE_COUNT - 1);
+    assert.equal(finalRoll.run!.bossRollsLeft, 0);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  // Crossing the alert threshold pauses a roll without skipping its later
+  // landing. This covers both an in-flight threshold and a rolled overshoot.
+  let alert = startedRun();
+  alert.run!.position = TRAIL_TILE_COUNT - 18;
+  alert.run!.phase = "moving";
+  alert.run!.stepsRemaining = 6;
+  alert.run!.rollAnimating = false;
+  alert.run!.tiles = alert.run!.tiles.map((tile, index) => index === TRAIL_TILE_COUNT - 1
+    ? { ...tile, type: "boss" }
+    : { ...tile, type: "start" });
+  alert = act(alert, { type: "STEP_MOVE" });
+  assert.equal(alert.run!.position, TRAIL_TILE_COUNT - 17);
+  assert.equal(alert.run!.trailCinematic, null);
+  alert = act(alert, { type: "STEP_MOVE" });
+  assert.equal(alert.run!.position, TRAIL_TILE_COUNT - 16);
+  assert.equal(alert.run!.bossCountdown, 15);
+  assert.equal(alert.run!.bossRollsLeft, 15);
+  assert.equal(alert.run!.trailCinematic, "alert");
+  const alertSnapshot = JSON.stringify(alert.run);
+  assert.equal(JSON.stringify(act(alert, { type: "STEP_MOVE" }).run), alertSnapshot);
+  alert = act(alert, { type: "FINISH_TRAIL_CINEMATIC" });
+  assert.equal(alert.run!.trailCinematic, null);
+  assert.equal(alert.run!.stepsRemaining, 4);
+  while (alert.run!.stepsRemaining > 0) alert = act(alert, { type: "STEP_MOVE" });
+  assert.equal(alert.run!.position, TRAIL_TILE_COUNT - 12);
+  assert.equal(alert.run!.phase, "explore");
+  assert.equal(alert.run!.trailAlertSeen, true);
+
+  // The final committed roll finishes its exact clamped path before the
+  // blue-fire awakening. The boss is not created until Fight Boss is chosen.
   assert.equal(BOSS_AWAKENING_DURATION_MS, 2200);
-  let finalLanding = act(createInitialState(), { type: "START_RUN" });
-  // ROLL_DICE decrements before movement; this is the committed final roll.
-  finalLanding.run!.bossRollsLeft = 0;
-  finalLanding.run!.position = 0;
+  let finalLanding = startedRun();
+  finalLanding.run!.position = TRAIL_TILE_COUNT - 3;
   finalLanding.run!.stepsRemaining = 2;
   finalLanding.run!.phase = "moving";
   finalLanding.run!.rollAnimating = false;
-  finalLanding.run!.tiles[1] = { id: 1, type: "enemy" };
-  finalLanding.run!.tiles[2] = { id: 2, type: "shop" };
+  finalLanding.run!.tiles = finalLanding.run!.tiles.map((tile, index) => index === TRAIL_TILE_COUNT - 1
+    ? { ...tile, type: "boss" }
+    : { ...tile, type: "start" });
   finalLanding = act(finalLanding, { type: "STEP_MOVE" });
   assert.equal(finalLanding.run!.phase, "moving");
   assert.equal(finalLanding.run!.stepsRemaining, 1);
   finalLanding = act(finalLanding, { type: "STEP_MOVE" });
   assert.equal(finalLanding.run!.phase, "boss_awakening");
   assert.equal(finalLanding.run!.bossRollsLeft, 0);
+  assert.equal(finalLanding.run!.trailCinematic, "awakening");
   assert.deepEqual(finalLanding.run!.enemies, []);
   assert.equal(finalLanding.run!.playerCombat, null);
   const awakeningSnapshot = JSON.stringify(finalLanding.run);
@@ -124,10 +198,10 @@ function runAssertions() {
   finalLanding = act(finalLanding, { type: "ROLL_DICE" });
   finalLanding = act(finalLanding, { type: "SELECT_ATTACK", damageType: "fire" });
   assert.equal(JSON.stringify(finalLanding.run), awakeningSnapshot);
-  finalLanding = act(finalLanding, { type: "COMPLETE_BOSS_AWAKENING" });
+  finalLanding = act(finalLanding, { type: "FINISH_TRAIL_CINEMATIC" });
   assert.equal(finalLanding.run!.phase, "boss_ready");
   const readySnapshot = JSON.stringify(finalLanding.run);
-  finalLanding = act(finalLanding, { type: "COMPLETE_BOSS_AWAKENING" });
+  finalLanding = act(finalLanding, { type: "FINISH_TRAIL_CINEMATIC" });
   assert.equal(JSON.stringify(finalLanding.run), readySnapshot);
   finalLanding = act(finalLanding, { type: "FIGHT_BOSS" });
   assert.equal(finalLanding.run!.phase, "combat");
@@ -149,36 +223,44 @@ function runAssertions() {
   assert.equal(JSON.stringify(finalLanding.run), bossSnapshot);
 
   // Reloading either presentation phase preserves the player's choice point.
-  let savedAwakening = createInitialState();
-  savedAwakening = act(savedAwakening, { type: "START_RUN" });
-  savedAwakening.run!.bossRollsLeft = 0;
+  let savedAwakening = startedRun();
+  savedAwakening.run!.position = TRAIL_TILE_COUNT - 1;
   savedAwakening.run!.phase = "boss_awakening";
+  savedAwakening.run!.trailCinematic = "awakening";
   savedAwakening.run!.enemies = [];
   savedAwakening.run!.playerCombat = null;
   const restoredAwakening = validateState(JSON.parse(JSON.stringify(savedAwakening)));
   assert.equal(restoredAwakening.run!.phase, "boss_awakening");
-  const savedReady = act(restoredAwakening, { type: "COMPLETE_BOSS_AWAKENING" });
+  const savedReady = act(restoredAwakening, { type: "FINISH_TRAIL_CINEMATIC" });
   const restoredReady = validateState(JSON.parse(JSON.stringify(savedReady)));
   assert.equal(restoredReady.run!.phase, "boss_ready");
   assert.equal(restoredReady.run!.enemies.length, 0);
   assert.equal(restoredReady.run!.playerCombat, null);
 
-  // A pending old v4 threshold with no steps left is migrated into awakening,
-  // while an in-flight final roll is left alone until its last step.
-  const pendingLegacy = JSON.parse(JSON.stringify(savedAwakening));
-  pendingLegacy.run.phase = "moving";
-  pendingLegacy.run.stepsRemaining = 0;
-  pendingLegacy.run.rollAnimating = false;
-  assert.equal(validateState(pendingLegacy).run!.phase, "boss_awakening");
-  const inFlightLegacy = JSON.parse(JSON.stringify(savedAwakening));
-  inFlightLegacy.run.phase = "moving";
-  inFlightLegacy.run.stepsRemaining = 1;
-  assert.equal(validateState(inFlightLegacy).run!.phase, "moving");
+  // A legacy 24-tile v4 save keeps its old position and rewards while the
+  // remaining trail is appended. Its countdown is recomputed from paces.
+  const legacy = JSON.parse(JSON.stringify(startedRun()));
+  legacy.run.tiles = legacy.run.tiles.slice(0, 24);
+  legacy.run.position = 12;
+  legacy.run.bossRollsLeft = 1;
+  legacy.run.trailCinematic = undefined;
+  legacy.run.trailIntroSeen = undefined;
+  legacy.run.trailAlertSeen = undefined;
+  legacy.run.trailAwakeningSeen = undefined;
+  legacy.meta.inventory = [{ id: "kept", name: "Kept", type: "weapon", stats: { attack: 3 }, rarity: "common" }];
+  legacy.meta.gems = 17;
+  const migratedTrail = validateState(legacy);
+  assert.equal(migratedTrail.run!.tiles.length, TRAIL_TILE_COUNT);
+  assert.equal(migratedTrail.run!.position, 12);
+  assert.equal(migratedTrail.run!.bossCountdown, TRAIL_TILE_COUNT - 1 - 12);
+  assert.equal(migratedTrail.run!.bossRollsLeft, TRAIL_TILE_COUNT - 1 - 12);
+  assert.equal(migratedTrail.meta.gems, 17);
+  assert.equal(migratedTrail.meta.inventory[0].id, "kept");
+  assert.equal(migratedTrail.run!.trailIntroSeen, true);
 
   // Boss victory settles once; continuing starts the next floor with a fresh
   // statue schedule and no stale boss combat state.
-  let bossVictory = createInitialState();
-  bossVictory = act(bossVictory, { type: "START_RUN" });
+  let bossVictory = startedRun();
   bossVictory.run!.phase = "combat";
   bossVictory.run!.isBossCombat = true;
   bossVictory.run!.attack = 100;
@@ -215,7 +297,9 @@ function runAssertions() {
   bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
   assert.equal(bossVictory.meta.gems, beforeSettlement + 62);
   assert.equal(bossVictory.run!.floor, 2);
-  assert.equal(bossVictory.run!.bossRollsLeft, 30);
+  assert.equal(bossVictory.run!.bossCountdown, TRAIL_TILE_COUNT - 1);
+  assert.equal(bossVictory.run!.bossRollsLeft, TRAIL_TILE_COUNT - 1);
+  assert.equal(bossVictory.run!.position, 0);
   assert.equal(bossVictory.run!.phase, "explore");
   assert.equal(bossVictory.run!.isBossCombat, false);
   assert.deepEqual(bossVictory.run!.enemies, []);
@@ -233,8 +317,7 @@ function runAssertions() {
   assert.equal(calculateDamage(10, 0, "mummy", "fire").amount, 20);
 
   // Save migration defaults the selected stance and only infers known names.
-  let saved = createInitialState();
-  saved = act(saved, { type: "START_RUN" });
+  let saved = startedRun();
   saved.run!.selectedDamageType = undefined as never;
   saved.run!.enemies = [
     { id: "legacy-jelly", name: "Slime", hp: 10, maxHp: 10, attack: 1, defense: 0, speed: 0, attackTimer: 0 },
@@ -253,7 +336,7 @@ function runAssertions() {
   const preservedEnemyTurn = validateState(enemyTurnSave);
   assert.equal(preservedEnemyTurn.run!.combatTurn, "enemy");
 
-  let selected = act(createInitialState(), { type: "START_RUN" });
+  let selected = startedRun();
   selected = act(selected, { type: "SELECT_ATTACK", damageType: "fire" });
   assert.equal(selected.run!.selectedDamageType, "slashing");
   selected.run!.phase = "combat";
@@ -514,7 +597,7 @@ function runAssertions() {
   assert.equal(defeated.meta.gems, gemsAfterDefeat);
 
   // Shop listings expose stock, sell consumables, and disappear after a buy.
-  let shop = act(createInitialState(), { type: "START_RUN" });
+  let shop = startedRun();
   shop.run!.phase = "shop";
   shop.run!.gold = 1000;
   shop = act(shop, { type: "REROLL_SHOP" });

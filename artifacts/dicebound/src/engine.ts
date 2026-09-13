@@ -14,7 +14,7 @@ function uuid() {
   return Math.random().toString(36).substring(2, 9);
 }
 
-export type TileType = "start" | "enemy" | "elite" | "event" | "shop" | "rest" | "minigame";
+export type TileType = "start" | "enemy" | "elite" | "event" | "shop" | "rest" | "minigame" | "boss";
 
 export interface Tile {
   id: number;
@@ -139,6 +139,8 @@ export interface RunState {
   level: number;
   queuedLevels: number;
 
+  /** Finite trail countdown in remaining paces (legacy alias retained below). */
+  bossCountdown?: number;
   bossRollsLeft: number;
   floor: number;
   
@@ -146,6 +148,16 @@ export interface RunState {
   tiles: Tile[];
   lastRolls: [number, number] | null;
   stepsRemaining: number;
+  /**
+   * Trail presentation state is durable so a refresh cannot replay a scene
+   * or allow input while a scene is in progress.
+   */
+  trailCinematic?: "intro" | "alert" | "awakening" | null;
+  trailIntroSeen?: boolean;
+  trailAlertSeen?: boolean;
+  trailAwakeningSeen?: boolean;
+  /** A landing waiting for the alert presentation to finish. */
+  pendingTileTrigger?: boolean;
   
   phase: "explore" | "moving" | "combat" | "boss_awakening" | "boss_ready" | "level_up" | "shop" | "event_test_of_might" | "rest" | "minigame" | "victory" | "defeat";
   
@@ -214,6 +226,7 @@ export type GameAction =
   | { type: "ROLL_DICE" }
   | { type: "BEGIN_MOVEMENT" }
   | { type: "STEP_MOVE" }
+  | { type: "FINISH_TRAIL_CINEMATIC" }
   | { type: "COMPLETE_BOSS_AWAKENING" }
   | { type: "FIGHT_BOSS" }
   | { type: "SELECT_ATTACK"; damageType: DamageType }
@@ -239,7 +252,9 @@ export type GameAction =
   | { type: "BUY_TALENT"; stat: "vitality" | "quickness" | "power" }
   | { type: "RESET_SAVE" };
 
-const BOARD_SIZE = 24;
+/** Number of paces in the finite first-level forest trail. */
+export const TRAIL_TILE_COUNT = 64;
+const ALERT_REMAINING_PACES = 15;
 
 export type DiceRoll = [number, number];
 
@@ -285,8 +300,8 @@ function getBoardGridCoords(index: number) {
 }
 
 function normalizeBoardIndex(index: number) {
-  const safeIndex = Number.isFinite(index) ? Math.trunc(index) % BOARD_SIZE : 0;
-  return safeIndex < 0 ? safeIndex + BOARD_SIZE : safeIndex;
+  const safeIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
+  return Math.min(TRAIL_TILE_COUNT - 1, Math.max(0, safeIndex));
 }
 
 /**
@@ -296,7 +311,9 @@ function normalizeBoardIndex(index: number) {
 export function getWalkDirection(from: number, to: number): WalkDirection | null {
   const fromIndex = normalizeBoardIndex(from);
   const toIndex = normalizeBoardIndex(to);
-  if ((toIndex - fromIndex + BOARD_SIZE) % BOARD_SIZE !== 1) return null;
+  // The trail has a beginning and an end. In particular, the last tile never
+  // wraps back to the first tile as the old square board did.
+  if (toIndex - fromIndex !== 1) return null;
 
   const fromCoords = getBoardGridCoords(fromIndex);
   const toCoords = getBoardGridCoords(toIndex);
@@ -318,8 +335,9 @@ export function getCombatSpeedBonus(speed: number): number {
 }
 
 export function generateBoard(): Tile[] {
-  return Array.from({ length: BOARD_SIZE }).map((_, i) => {
+  return Array.from({ length: TRAIL_TILE_COUNT }).map((_, i) => {
     if (i === 0) return { id: i, type: "start" };
+    if (i === TRAIL_TILE_COUNT - 1) return { id: i, type: "boss" };
     // Distribute varied tiles
     if (i % 6 === 0) return { id: i, type: "rest" };
     if (i % 5 === 0) return { id: i, type: "shop" };
@@ -454,29 +472,59 @@ function initializeBossCombat(r: RunState) {
   logMessage(r, "The Boss has arrived!");
 }
 
+function remainingTrailPaces(r: Pick<RunState, "position" | "tiles">): number {
+  return Math.max(0, r.tiles.length - 1 - r.position);
+}
+
+function syncTrailCountdown(r: RunState) {
+  // bossRollsLeft is retained as a legacy save/UI alias, but both countdown
+  // names now represent trail distance rather than a budget of dice rolls.
+  const remaining = remainingTrailPaces(r);
+  r.bossCountdown = remaining;
+  r.bossRollsLeft = remaining;
+}
+
+function stageTrailAwakening(r: RunState) {
+  r.trailAwakeningSeen = true;
+  r.trailCinematic = "awakening";
+  r.pendingTileTrigger = false;
+  r.isBossCombat = false;
+  r.enemies = [];
+  r.playerCombat = null;
+  r.combatTurn = "player";
+  r.guardActive = false;
+  r.combatFeedback = null;
+  r.rollAnimating = false;
+  r.stepsRemaining = 0;
+  r.phase = "boss_awakening";
+  syncTrailCountdown(r);
+  logMessage(r, "Blue fire gathers around the ancient boss statue...");
+}
+
+function stageTrailAlert(r: RunState): boolean {
+  if (r.trailAlertSeen) return false;
+  r.trailAlertSeen = true;
+  r.trailCinematic = "alert";
+  logMessage(r, "A warning bell echoes through the forest. The boss trail draws near.");
+  return true;
+}
+
 function triggerTile(s: GameStateV4, r: RunState) {
   const tile = r.tiles[r.position];
-  
-  if (r.bossRollsLeft <= 0) {
-    // Reaching the threshold only starts the statue presentation. The boss
-    // roster and combat state are intentionally deferred until the player
-    // accepts the fight after the awakening animation.
-    r.isBossCombat = false;
-    r.enemies = [];
-    r.playerCombat = null;
-    r.combatTurn = "player";
-    r.guardActive = false;
-    r.combatFeedback = null;
-    r.phase = "boss_awakening";
-    logMessage(r, "The ancient boss statue begins to rise...");
+
+  // The final tile is a boss approach, not an automatic fight. The
+  // awakening presentation must complete before the explicit Fight Boss
+  // choice becomes available.
+  if (r.position >= r.tiles.length - 1 || tile?.type === "boss") {
+    stageTrailAwakening(r);
     return;
   }
 
-  if (tile.type === "start") {
+  if (tile?.type === "start") {
     r.phase = "explore";
     logMessage(r, "Passed Start! Healed 20 HP.");
     r.hp = Math.min(r.maxHp, r.hp + 20);
-  } else if (tile.type === "enemy" || tile.type === "elite") {
+  } else if (tile?.type === "enemy" || tile?.type === "elite") {
     const count = getEncounterCount(r.level, tile.type === "elite");
     r.enemies = generateEnemies(count, r.floor, tile.type === "elite", r.level);
     r.playerCombat = {
@@ -495,18 +543,18 @@ function triggerTile(s: GameStateV4, r: RunState) {
     r.phase = "combat";
     r.isBossCombat = false;
     logMessage(r, `Encountered ${count} ${tile.type === "elite" ? "Elite " : ""}enemies!`);
-  } else if (tile.type === "shop") {
+  } else if (tile?.type === "shop") {
     r.phase = "shop";
     r.shopItems = generateShop();
     r.shopRerollCost = 10;
     logMessage(r, "A wandering merchant offers their wares.");
-  } else if (tile.type === "event") {
+  } else if (tile?.type === "event") {
     r.phase = "event_test_of_might";
     logMessage(r, "You face a Test of Might!");
-  } else if (tile.type === "rest") {
+  } else if (tile?.type === "rest") {
     r.phase = "rest";
     logMessage(r, "You found a safe place to rest.");
-  } else if (tile.type === "minigame") {
+  } else if (tile?.type === "minigame") {
     r.phase = "minigame";
     logMessage(r, "A strange minigame awaits.");
   } else {
@@ -553,6 +601,31 @@ function isConsumableType(value: unknown): value is ConsumableType {
   return value === "health_potion" || value === "fire_bomb" || value === "guard_tonic";
 }
 
+function isTileType(value: unknown): value is TileType {
+  return value === "start"
+    || value === "enemy"
+    || value === "elite"
+    || value === "event"
+    || value === "shop"
+    || value === "rest"
+    || value === "minigame"
+    || value === "boss";
+}
+
+function migrateTrailTiles(tiles: unknown): Tile[] {
+  const legacyTiles = Array.isArray(tiles) ? tiles : [];
+  const generated = generateBoard();
+  return generated.map((fallback, index) => {
+    const legacy = legacyTiles[index];
+    if (legacy && isTileType(legacy.type) && index < TRAIL_TILE_COUNT - 1) {
+      // Preserve the old tile at its index, including any future metadata,
+      // while normalizing its identity to the finite trail index.
+      return { ...legacy, id: index, type: legacy.type };
+    }
+    return fallback;
+  });
+}
+
 export function validateState(input: any): GameStateV4 {
   if (!input || input.meta?.version !== 4) return createInitialState();
   if (typeof input.meta.gems !== "number") return createInitialState();
@@ -571,6 +644,40 @@ export function validateState(input: any): GameStateV4 {
   };
   if (s.run) {
     const run = s.run as RunState & { combatTurn?: unknown };
+    const legacyTiles = s.run.tiles;
+    const legacyTileCount = Array.isArray(legacyTiles) ? legacyTiles.length : 0;
+    const legacyBossRollsLeft = s.run.bossRollsLeft;
+    s.run.tiles = migrateTrailTiles(legacyTiles);
+    s.run.position = Number.isFinite(s.run.position)
+      ? Math.min(s.run.tiles.length - 1, Math.max(0, Math.floor(s.run.position)))
+      : 0;
+    // v4 saves predate the finite trail. They already have a meaningful
+    // position, so keep it at the same index and only append the new trail.
+    // Existing presentations are kept intact rather than replayed.
+    const hasTrailIntroSeen = typeof s.run.trailIntroSeen === "boolean";
+    const hasTrailAlertSeen = typeof s.run.trailAlertSeen === "boolean";
+    const hasTrailAwakeningSeen = typeof s.run.trailAwakeningSeen === "boolean";
+    s.run.trailIntroSeen = hasTrailIntroSeen ? s.run.trailIntroSeen : true;
+    s.run.trailAlertSeen = hasTrailAlertSeen
+      ? s.run.trailAlertSeen
+      : s.run.position >= s.run.tiles.length - 1 - ALERT_REMAINING_PACES;
+    s.run.trailAwakeningSeen = hasTrailAwakeningSeen
+      ? s.run.trailAwakeningSeen
+      : s.run.phase === "boss_awakening"
+        || s.run.phase === "boss_ready"
+        || (s.run.phase === "combat" && Boolean(s.run.isBossCombat))
+        || s.run.phase === "victory";
+    s.run.trailCinematic = s.run.trailCinematic === "intro"
+      || s.run.trailCinematic === "alert"
+      || s.run.trailCinematic === "awakening"
+      ? s.run.trailCinematic
+      : null;
+    if (s.run.trailCinematic === "intro") s.run.trailIntroSeen = false;
+    if (s.run.trailCinematic === "alert") s.run.trailAlertSeen = true;
+    if (s.run.trailCinematic === "awakening") s.run.trailAwakeningSeen = true;
+    if (s.run.trailCinematic === "awakening") s.run.phase = "boss_awakening";
+    s.run.pendingTileTrigger = Boolean(s.run.pendingTileTrigger);
+    syncTrailCountdown(s.run);
     s.run.skills = Array.isArray(s.run.skills)
       ? s.run.skills.map(skill => skill.type === "speed_boost"
         ? { ...skill, name: "Momentum", description: "+20% damage on your committed attacks" }
@@ -584,12 +691,24 @@ export function validateState(input: any): GameStateV4 {
     s.run.lastRolls = isDiceRoll(s.run.lastRolls)
       ? s.run.lastRolls
       : null;
-    s.run.bossRollsLeft = Number.isFinite(s.run.bossRollsLeft)
-      ? Math.floor(s.run.bossRollsLeft)
-      : 30;
     s.run.stepsRemaining = Number.isFinite(s.run.stepsRemaining)
       ? Math.max(0, Math.floor(s.run.stepsRemaining))
       : 0;
+    // A pre-trail v4 save could have finished its old roll budget while the
+    // movement hook had not yet committed the landing. Keep its old position
+    // (rather than teleporting it) and resume ordinary exploration toward the
+    // new endpoint instead of leaving it in a zero-step moving phase.
+    if (
+      legacyTileCount > 0
+      && legacyTileCount < TRAIL_TILE_COUNT
+      && Number.isFinite(legacyBossRollsLeft)
+      && legacyBossRollsLeft <= 0
+      && s.run.phase === "moving"
+      && s.run.stepsRemaining <= 0
+    ) {
+      s.run.phase = "explore";
+      s.run.rollAnimating = false;
+    }
     // Saves from before the roll-animation marker represent ordinary movement.
     s.run.rollAnimating = s.run.phase === "moving" && Boolean(s.run.rollAnimating);
     s.run.isBossCombat = Boolean(s.run.isBossCombat);
@@ -645,27 +764,18 @@ export function validateState(input: any): GameStateV4 {
       if (run.combatTurn !== "enemy") s.run.combatTurn = "player";
     }
 
-    // A pre-awakening v4 save could have committed the final roll and then
-    // been written with no movement steps left. Convert that pending threshold
-    // to the new presentation phase rather than leaving the movement loop
-    // waiting forever. A committed roll with steps remaining must still finish
-    // its exact path before awakening.
+    // A save taken exactly on the new endpoint but before the reducer staged
+    // the awakening is repaired into the durable presentation phase.
     if (
       !s.run.isBossCombat
-      && s.run.bossRollsLeft <= 0
-      && (
-        (s.run.phase === "moving" && s.run.stepsRemaining <= 0)
-        || (s.run.phase === "explore" && s.run.enemies.length === 0)
-      )
+      && s.run.position >= s.run.tiles.length - 1
+      && s.run.phase === "moving"
+      && s.run.stepsRemaining <= 0
+      && !s.run.trailCinematic
     ) {
-      s.run.phase = "boss_awakening";
-      s.run.enemies = [];
-      s.run.playerCombat = null;
-      s.run.combatTurn = "player";
-      s.run.guardActive = false;
-      s.run.combatFeedback = null;
-      s.run.rollAnimating = false;
+      stageTrailAwakening(s.run);
     }
+    syncTrailCountdown(s.run);
   }
   return s;
 }
@@ -1015,6 +1125,48 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     return createInitialState();
   }
 
+  if (s.run) {
+    const maxPosition = Math.max(0, s.run.tiles.length - 1);
+    s.run.position = Number.isFinite(s.run.position)
+      ? Math.min(maxPosition, Math.max(0, Math.trunc(s.run.position)))
+      : 0;
+    syncTrailCountdown(s.run);
+  }
+
+  const cinematic = s.run?.trailCinematic;
+  const canFinishCinematic = action.type === "FINISH_TRAIL_CINEMATIC"
+    // Keep the pre-trail hook action as a safe alias for the awakening only.
+    || (action.type === "COMPLETE_BOSS_AWAKENING" && cinematic === "awakening");
+  if (cinematic && !canFinishCinematic) return s;
+
+  if (action.type === "FINISH_TRAIL_CINEMATIC") {
+    const r = s.run;
+    if (!r || !r.trailCinematic) return s;
+    const finished = r.trailCinematic;
+    r.trailCinematic = null;
+    if (finished === "intro") {
+      r.trailIntroSeen = true;
+      logMessage(r, "The forest trail opens before you.");
+    } else if (finished === "alert") {
+      r.trailAlertSeen = true;
+      logMessage(r, "You press onward toward the heart of the forest.");
+      // If the alert was staged on the final step of a roll, do not lose the
+      // landing encounter while the cinematic was on screen.
+      if (
+        (r.pendingTileTrigger || r.phase === "moving")
+        && r.stepsRemaining <= 0
+      ) {
+        r.pendingTileTrigger = false;
+        triggerTile(s, r);
+      }
+    } else if (finished === "awakening") {
+      r.trailAwakeningSeen = true;
+      r.phase = "boss_ready";
+      logMessage(r, "The statue awakens. Choose when to challenge the Floor Boss.");
+    }
+    return s;
+  }
+
   if (action.type === "OPEN_CHEST") {
     if (s.run) return s;
     if (s.meta.gems >= 100) {
@@ -1083,12 +1235,18 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       xp: 0,
       level: 1,
       queuedLevels: 0,
-      bossRollsLeft: 30,
+      bossCountdown: TRAIL_TILE_COUNT - 1,
+      bossRollsLeft: TRAIL_TILE_COUNT - 1,
       floor: 1,
       position: 0,
       tiles: generateBoard(),
       lastRolls: null,
       stepsRemaining: 0,
+      trailCinematic: "intro",
+      trailIntroSeen: false,
+      trailAlertSeen: false,
+      trailAwakeningSeen: false,
+      pendingTileTrigger: false,
       phase: "explore",
       enemies: [],
       playerCombat: null,
@@ -1112,7 +1270,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     const r = s.run;
     // A committed roll owns the run until its movement resolves. The phase
     // check is also the reducer-level guard against rapid/double rolls.
-    if (!r || r.phase !== "explore" || r.rollAnimating) return s;
+    if (!r || r.phase !== "explore" || r.rollAnimating || r.trailCinematic) return s;
     
     // Check level up first before rolling
     if (r.queuedLevels > 0) {
@@ -1120,11 +1278,21 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       r.skillOptions = generateSkills(3, r.skills);
       return s;
     }
+    if (remainingTrailPaces(r) <= 0) {
+      if (r.trailAwakeningSeen) {
+        r.phase = "boss_ready";
+      } else {
+        stageTrailAwakening(r);
+      }
+      return s;
+    }
 
     const [d1, d2] = rollTwoDice();
     r.lastRolls = [d1, d2];
-    r.stepsRemaining = d1 + d2;
-    r.bossRollsLeft--;
+    // Keep the authentic dice faces even when the final roll would overshoot
+    // the finite trail; only the committed movement budget is clamped.
+    r.stepsRemaining = Math.min(d1 + d2, remainingTrailPaces(r));
+    syncTrailCountdown(r);
     r.phase = "moving";
     r.rollAnimating = true;
     logMessage(r, `Rolled a ${d1 + d2}.`);
@@ -1138,23 +1306,43 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "STEP_MOVE") {
     const r = s.run;
-    if (!r || r.phase !== "moving" || r.stepsRemaining <= 0) return s;
+    if (!r || r.phase !== "moving" || r.stepsRemaining <= 0 || r.trailCinematic) return s;
     
     // Direct engine callers may advance immediately after ROLL_DICE. The
     // realtime hook waits for BEGIN_MOVEMENT, but a committed step always
     // ends the roll presentation phase.
     r.rollAnimating = false;
-    r.position = (r.position + 1) % BOARD_SIZE;
-    r.stepsRemaining--;
+    const previousPosition = r.position;
+    r.position = Math.min(r.tiles.length - 1, r.position + 1);
+    r.stepsRemaining = r.position >= r.tiles.length - 1
+      ? 0
+      : Math.max(0, r.stepsRemaining - 1);
+    syncTrailCountdown(r);
+
+    // Alert at the exact 15-pace crossing. Since this happens during the
+    // committed movement, the remaining steps stay durable and resume after
+    // FINISH_TRAIL_CINEMATIC. This also catches a roll that overshoots the
+    // threshold instead of waiting for a later roll.
+    const crossedAlert = r.bossRollsLeft <= ALERT_REMAINING_PACES
+      && r.tiles.length - 1 - previousPosition > ALERT_REMAINING_PACES;
+    if (crossedAlert) stageTrailAlert(r);
     
     if (r.stepsRemaining === 0) {
-      triggerTile(s, r);
+      if (r.trailCinematic) {
+        r.pendingTileTrigger = true;
+      } else {
+        triggerTile(s, r);
+      }
     }
   }
 
   if (action.type === "COMPLETE_BOSS_AWAKENING") {
     const r = s.run;
     if (r && r.phase === "boss_awakening") {
+      if (r.trailCinematic === "awakening") {
+        r.trailCinematic = null;
+      }
+      r.trailAwakeningSeen = true;
       r.phase = "boss_ready";
       logMessage(r, "The statue awakens. Choose when to challenge the Floor Boss.");
     }
@@ -1351,7 +1539,11 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
         s.run.settled = true;
       }
       s.run.floor++;
-      s.run.bossRollsLeft = 30;
+      // Level two reuses the same finite forest trail for now. Restart at its
+      // first pace while keeping the generated tile identities stable.
+      s.run.position = 0;
+      s.run.bossCountdown = s.run.tiles.length - 1;
+      s.run.bossRollsLeft = s.run.tiles.length - 1;
       s.run.phase = "explore";
       s.run.isBossCombat = false;
       s.run.enemies = [];
@@ -1361,6 +1553,11 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       s.run.combatFeedback = null;
       s.run.stepsRemaining = 0;
       s.run.rollAnimating = false;
+      s.run.trailCinematic = null;
+      s.run.trailIntroSeen = true;
+      s.run.trailAlertSeen = false;
+      s.run.trailAwakeningSeen = false;
+      s.run.pendingTileTrigger = false;
       logMessage(s.run, "You venture deeper into Floor " + s.run.floor);
     }
   }
