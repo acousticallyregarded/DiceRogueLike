@@ -363,7 +363,6 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
         {run.tiles.map((t, i) => {
           const p = getTilePosition(i);
           const theme = TILE_THEMES[t.type];
-          const Icon = theme.icon;
           const surfaceDepth = i === normalizeTileIndex(tileMotion.from)
             ? tileMotion.contact.departureDepth
             : i === normalizeTileIndex(tileMotion.to)
@@ -433,11 +432,6 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
                   }}
                 />
                 <BoardTileObject type={t.type} occupied={i === normalizeTileIndex(tileMotion.contact.supportTile)} />
-                {t.type === 'minigame' && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none -mt-1">
-                    <Icon className={`w-5 h-5 ${theme.color}`} strokeWidth={3} />
-                  </div>
-                )}
               </div>
             </div>
           );

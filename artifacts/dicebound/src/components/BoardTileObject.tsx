@@ -5,9 +5,11 @@ import shop from '../assets/board-objects/shop.png';
 import event from '../assets/board-objects/event.png';
 import enemy from '../assets/board-objects/enemy.png';
 import elite from '../assets/board-objects/elite.png';
+import minigame from '../assets/board-objects/minigame.png';
 import './board-tile-object.css';
 
 const OBJECTS = {
+  minigame: { url: minigame, frames: 9 },
   rest: { url: rest, frames: 9 },
   shop: { url: shop, frames: 9 },
   event: { url: event, frames: 9 },

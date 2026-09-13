@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "artifacts/dicebound/src/assets/board-objects"
 OUT.mkdir(parents=True, exist_ok=True)
 FILES = {
+    "minigame": "Idle_custom-The_red_gift_box_bobs_rhythmic_south_1789258181430.gif",
     "rest": "Idle_custom-The_tent_body_compresses_sligh_south_1789258007259.gif",
     "shop": "Idle_custom-The_bag_rhythmically_bobs_up_a_south_1789258007260.gif",
     "event": "Idle_custom-The_golden_triangular_frame_bo_south_1789258007260.gif",
