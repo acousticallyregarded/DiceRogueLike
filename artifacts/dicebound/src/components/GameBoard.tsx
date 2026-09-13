@@ -263,6 +263,18 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      {/* One full-screen painting stays behind the moving trail and camera. */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: `url(${forestClearingUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.8,
+        }}
+      />
       <div 
         className="relative w-0 h-0"
         style={{ 
@@ -270,23 +282,6 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
           transition: cameraTransitionDur > 0 ? `transform ${cameraTransitionDur}ms cubic-bezier(0.4, 0, 0.2, 1)` : 'none'
         }}
       >
-        {/* Ground seamlessly covers the huge area, anchored to coordinate 0,0 but large enough.
-            We use a repeating background. */}
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            width: '6000px',
-            height: '6000px',
-            left: '-3000px',
-            top: '-3000px',
-            zIndex: -1,
-            backgroundImage: `url(${forestClearingUrl})`,
-            backgroundSize: '800px 800px', // or whatever size works
-            backgroundRepeat: 'repeat',
-            opacity: 0.8
-          }}
-        />
-        
         <ForestOaks cameraTargetY={cameraTarget.y} />
         
         {/* Center Statue placed at the end of the trail */}
