@@ -10,8 +10,11 @@ const OAKS = Array.from({ length: 9 }, (_, row) =>
     return { x, y, height, width: height * 0.84, flip: seed % 3 === 0 };
   }),
 ).flat().filter(tree => {
-  // Leave the whole raised board and courtyard open, including its walls.
-  return Math.abs(tree.x) + Math.abs((tree.y - 55) * 2) > 430;
+  // Check the entire canopy, not just the trunk position, against the
+  // board's diamond extended down through the full wall depth.
+  const nearestX = Math.max(0, Math.abs(tree.x) - tree.width / 2);
+  const nearestY = Math.max(0, tree.y - tree.height - 120, -tree.y);
+  return nearestX + nearestY * 2 > 320;
 }).sort((a, b) => a.y - b.y);
 
 export function ForestOaks() {
