@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 
 import { CenterStatue } from './CenterStatue';
 import { ForestOaks } from './ForestOaks';
-import { ForestRiver } from './ForestRiver';
 import forestClearingUrl from '../assets/forest-clearing.webp';
 import customWalkSouthEastUrl from '../assets/custom-walk-south-east.png';
 import customWalkSouthWestUrl from '../assets/custom-walk-south-west.png';
@@ -276,8 +275,6 @@ export function GameBoard({ run, visualPosition, speed = 1 }: { run: RunState, v
           }}
         />
         
-        <ForestRiver />
-
         {/* Pit Courtyard Floor */}
         <div 
           className="absolute pointer-events-none"
