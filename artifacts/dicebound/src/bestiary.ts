@@ -18,7 +18,8 @@ export type DamageType =
   | "acid"
   | "poison"
   | "wind"
-  | "necrotic";
+  | "necrotic"
+  | "psychic";
 
 export type PhysicalDamageType = "slashing" | "piercing" | "bludgeoning";
 export type MonsterSpeciesKey =
@@ -31,6 +32,7 @@ export type MonsterSpeciesKey =
   | "mummy";
 
 export type MonsterArtKey = "wolf" | "goblin" | "skeleton" | "slime" | "boss";
+export type ConditionType = "sleep";
 
 export interface DamageTrait {
   damageType: DamageType;
@@ -51,6 +53,8 @@ export interface BestiaryEntry {
   resistances: DamageTrait[];
   vulnerabilities: DamageTrait[];
   immunities: DamageTrait[];
+  /** Condition immunities are only populated when the reference data knows one. */
+  conditionImmunities?: ConditionType[];
 }
 
 export interface AttackStyle {
@@ -216,6 +220,7 @@ export function isDamageType(value: unknown): value is DamageType {
     || value === "poison"
     || value === "wind"
     || value === "necrotic"
+    || value === "psychic"
   );
 }
 

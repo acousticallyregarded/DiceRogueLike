@@ -1,4 +1,4 @@
-import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getHeroDeathDurationMs } from '../engine';
+import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getHeroDeathDurationMs, BARD_SLEEP_SUCCESS_CHANCE } from '../engine';
 import {
   formatDamageType,
   getBestiaryEntry,
@@ -46,6 +46,7 @@ interface EnemySnapshot {
   id: string;
   name: string;
   hp: number;
+  sleepTurns: number;
 }
 
 interface CombatSnapshot {
@@ -105,6 +106,7 @@ function makeSnapshot(run: RunState): CombatSnapshot {
         id: enemy.id,
         name: enemy.name,
          hp: Math.max(0, enemy.hp),
+        sleepTurns: enemy.sleepTurns ?? 0,
       },
     ])),
   };
@@ -361,7 +363,11 @@ export function CombatOverlay({
 
     if (enemyResponded) {
       Object.values(current.enemies).forEach(enemy => {
-        if (enemy.hp > 0) enemyUpdates.push({ id: enemy.id, kind: 'attack' });
+        // Use the pre-response countdown: the last skipped turn decrements
+        // it to zero, but must still not animate an attack.
+        if (enemy.hp > 0 && !(previous.enemies[enemy.id]?.sleepTurns > 0)) {
+          enemyUpdates.push({ id: enemy.id, kind: 'attack' });
+        }
       });
     }
 
@@ -502,9 +508,11 @@ export function CombatOverlay({
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
-  const swingingSword = playerAttackTrigger > completedHeroAttack
+  const pendingBardSpell = run.characterId === 'alan-a-dale'
+    && Boolean(run.playerCombat?.pendingHeroAttack?.kind.startsWith('bard_'));
+  const swingingSword = pendingBardSpell || (playerAttackTrigger > completedHeroAttack
     && playerAttackTrigger > Math.max(playerHitTrigger, playerDrinkTrigger, playerFireBombTrigger, playerGuardTrigger)
-    && !reducedMotion;
+    && !reducedMotion);
   const reactingToHit = playerHitTrigger > completedHeroHit
     && playerHitTrigger > Math.max(playerAttackTrigger, playerDrinkTrigger, playerFireBombTrigger, playerGuardTrigger)
     && !reducedMotion;
@@ -550,7 +558,12 @@ export function CombatOverlay({
 
         <AttackStyleSelector run={run} dispatch={dispatch} compact disabled={!canInput} />
 
-        {run.combatFeedback && (
+        {!run.playerCombat?.pendingHeroAttack && run.bardSpellFeedback && (
+          <div role="status" className="rounded-xl border-2 border-indigo-300 bg-indigo-950 px-3 py-1 text-center text-[11px] font-bold text-white">
+            {run.bardSpellFeedback}
+          </div>
+        )}
+        {!run.playerCombat?.pendingHeroAttack && !run.bardSpellFeedback && run.combatFeedback && (
           <div
             role="status"
             className={`rounded-full px-3 py-1 text-center text-[10px] font-black border-2 shadow-md ${
@@ -612,7 +625,7 @@ export function CombatOverlay({
 
       <div className="flex-1 relative flex items-end justify-between px-3 pb-12">
         <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} />
-        <div className="relative flex flex-col items-center">
+        <div className={`relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
           <div
             className={`combat-actor w-28 h-28 ${playerAttackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
             style={eventStyle(combatDuration)}
@@ -624,6 +637,9 @@ export function CombatOverlay({
                 playbackSpeed={speed}
                 sprite={run.heroDeathPending ? run.characterId === 'alan-a-dale' ? 'bard-death' : 'unc-death' : swingingSword
                   ? run.characterId === 'unc' && run.playerCombat?.lastAttackKind === 'hold_my_beer' ? 'unc-special'
+                    : run.characterId === 'alan-a-dale' && run.playerCombat?.lastAttackKind === 'bard_sleep' ? 'bard-sleep'
+                    : run.characterId === 'alan-a-dale' && run.playerCombat?.lastAttackKind === 'bard_cutting_words' ? 'bard-cutting-words'
+                    : run.characterId === 'alan-a-dale' && run.playerCombat?.lastAttackKind === 'bard_electric' ? 'bard-electric'
                     : (!run.characterId || run.characterId === 'john') && run.playerCombat?.lastAttackKind === 'takedown' ? 'john-takedown' : 'custom-hero-sword'
                   : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'
@@ -781,6 +797,11 @@ export function CombatOverlay({
                 <EnemyHealthBar name={enemy.name}
                   hp={livingEnemies.some(living => living.id === enemy.id) ? enemy.hp : 0}
                   maxHp={enemy.maxHp} reducedMotion={reducedMotion} />
+                {!isDying && (enemy.sleepTurns ?? 0) > 0 && (
+                  <div role="status" className="mt-1 rounded-full border border-indigo-200 bg-indigo-950 px-2 py-0.5 text-[10px] font-bold text-white">
+                    Asleep · {enemy.sleepTurns} {enemy.sleepTurns === 1 ? 'turn' : 'turns'} left
+                  </div>
+                )}
               </div>
             );
           })}
@@ -854,6 +875,27 @@ export function CombatOverlay({
         </div>
       )}
 
+      {run.phase === 'combat' && run.characterId === 'alan-a-dale' && (
+        <div className="relative z-40 px-3 pt-2">
+          <div className="mb-1 text-center text-[10px] font-bold text-white">Bard spells · cast on selected target</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {([
+              { move: 'sleep', label: 'Sleep', hint: `${BARD_SLEEP_SUCCESS_CHANCE * 100}% chance · 2 turns`, title: `${BARD_SLEEP_SUCCESS_CHANCE * 100}% chance to make the target miss its next two turns.` },
+              { move: 'cutting_words', label: 'Cutting Words', hint: 'Psychic damage', title: 'Deal psychic damage with a cutting remark.' },
+              { move: 'electric', label: 'Electric', hint: 'Lightning damage', title: 'Strike with an electric guitar attack.' },
+            ] as const).map(spell => (
+              <button key={spell.move} type="button"
+                disabled={!canInput || !selectedEnemy}
+                title={spell.title}
+                onClick={() => selectedEnemy && dispatch({ type: 'BARD_ATTACK', move: spell.move, targetId: selectedEnemy.id })}
+                className="rounded-xl border-2 border-indigo-300 bg-indigo-950 px-1 py-2 text-[11px] font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
+                {spell.label}
+                <span className="mt-0.5 block text-[8px] font-medium text-indigo-100">{spell.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {run.phase === 'combat' && (!run.characterId || run.characterId === 'john') && (
         <div className="relative z-40 px-3 pt-2">
           <button type="button"

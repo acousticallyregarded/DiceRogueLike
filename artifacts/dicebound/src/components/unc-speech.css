@@ -1,4 +1,5 @@
-.unc-speech {
+.unc-speech,
+.bard-speech {
   position: absolute;
   z-index: 50;
   bottom: calc(100% + 8px);
@@ -20,7 +21,8 @@
   pointer-events: none;
 }
 
-.unc-speech::after {
+.unc-speech::after,
+.bard-speech::after {
   content: '';
   position: absolute;
   bottom: -7px;

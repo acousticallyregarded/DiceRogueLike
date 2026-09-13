@@ -14,7 +14,7 @@ import {
 } from "./bestiary";
 import { CHARACTERS, getCharacter } from "./characters";
 import type { CharacterId } from "./characters";
-import { BARD_DURATIONS } from "./bard-moves";
+import { BARD_DURATIONS, BARD_MOVES, type BardAttackKind, type BardMove } from "./bard-moves";
 import { JOHN_ATTACK_DURATIONS } from "./john-moves";
 import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
 
@@ -70,6 +70,8 @@ export interface EnemyState {
   poisoned?: boolean;
   poisonTimerMs?: number;
   damageType?: DamageType;
+  /** Number of enemy responses this target still sleeps through (0..2). */
+  sleepTurns?: number;
   boss?: boolean;
   lastBossAttack?: "sword" | "fireball";
 }
@@ -112,14 +114,14 @@ export interface PlayerCombatState {
   /** Unc's one-use special is durable for the current fight. */
   holdMyBeerUsed?: boolean;
   /** The animation/action committed by the most recent player attack. */
-  lastAttackKind?: "normal" | "hold_my_beer" | "takedown";
+  lastAttackKind?: "normal" | "hold_my_beer" | "takedown" | BardAttackKind;
   /** John's one-use Takedown is durable for the current fight. */
   takedownUsed?: boolean;
   /** A committed hero attack whose hit is waiting for its animation impact. */
   pendingHeroAttack?: {
     targetId: string;
     damageType: DamageType;
-    kind: "normal" | "hold_my_beer" | "takedown";
+    kind: "normal" | "hold_my_beer" | "takedown" | BardAttackKind;
   };
   /** The committed hero impact has landed and is waiting for enemy response. */
   heroImpactResolved?: boolean;
@@ -208,6 +210,8 @@ export interface RunState {
   /** Player stance. Old saves default to slashing during migration. */
   selectedDamageType: DamageType;
   combatFeedback?: CombatFeedback | null;
+  /** Bard-only outcome text, consumed by the combat presenter on the next attack. */
+  bardSpellFeedback?: string;
   
   skills: Skill[];
   skillOptions: Skill[] | null;
@@ -239,6 +243,7 @@ export const HERO_SWORD_ANIMATION_DURATION_MS = 2600;
 export const DEFAULT_ENEMY_RESPONSE_DELAY_MS = HERO_SWORD_ANIMATION_DURATION_MS;
 export const DICE_ROLL_ANIMATION_DURATION_MS = 800;
 export const BOSS_AWAKENING_DURATION_MS = 2200;
+export const BARD_SLEEP_SUCCESS_CHANCE = 0.7;
 
 type AttackTimingRun = Pick<RunState, "combatTurn" | "phase" | "playerCombat">
   & Partial<Pick<RunState, "selectedDamageType" | "skills" | "characterId">>
@@ -279,6 +284,20 @@ function getBardAttackDurationMs(style: AttackStyle): number {
   return BARD_DURATIONS.bludgeoning;
 }
 
+function isBardAttackKind(value: unknown): value is BardAttackKind {
+  return value === "bard_sleep"
+    || value === "bard_cutting_words"
+    || value === "bard_electric";
+}
+
+function bardMoveForKind(kind: BardAttackKind): BardMove {
+  return kind.slice("bard_".length) as BardMove;
+}
+
+function getBardMoveDurationMs(kind: BardAttackKind): number {
+  return BARD_MOVES[bardMoveForKind(kind)].durationMs;
+}
+
 function getJohnAttackDurationMs(damageType: DamageType | "takedown"): number {
   return JOHN_ATTACK_DURATIONS[damageType as keyof typeof JOHN_ATTACK_DURATIONS]
     ?? HERO_SWORD_ANIMATION_DURATION_MS;
@@ -290,6 +309,9 @@ function getJohnAttackDurationMs(damageType: DamageType | "takedown"): number {
  */
 export function getPlayerAttackDurationMs(run: AttackStyleRun): number {
   const lastAttackKind = run.playerCombat?.lastAttackKind ?? run.lastAttackKind;
+  if (run.characterId === "alan-a-dale" && isBardAttackKind(lastAttackKind)) {
+    return getBardMoveDurationMs(lastAttackKind);
+  }
   if (
     run.characterId === "unc"
     && (lastAttackKind === "hold_my_beer" || lastAttackKind === "special")
@@ -321,6 +343,9 @@ export function getPlayerAttackDurationMs(run: AttackStyleRun): number {
 export function getPendingHeroAttackDurationMs(run: AttackTimingRun): number {
   const pending = run.playerCombat?.pendingHeroAttack;
   if (!pending) return HERO_SWORD_ANIMATION_DURATION_MS;
+  if (pending.kind && run.characterId === "alan-a-dale" && isBardAttackKind(pending.kind)) {
+    return getBardMoveDurationMs(pending.kind) / combatPlaybackSpeed(run);
+  }
   if (pending.kind === "hold_my_beer" && run.characterId === "unc") {
     return UNC_ACTION_DURATIONS.special / combatPlaybackSpeed(run);
   }
@@ -412,6 +437,7 @@ export type GameAction =
   | { type: "FIGHT_BOSS" }
   | { type: "SELECT_ATTACK"; damageType: DamageType }
   | { type: "PLAYER_ATTACK"; targetId?: string }
+  | { type: "BARD_ATTACK"; move: BardMove; targetId?: string }
   | { type: "UNC_HOLD_MY_BEER"; targetId?: string }
   | { type: "JOHN_TAKEDOWN"; targetId?: string }
   | { type: "USE_CONSUMABLE"; consumable: ConsumableType }
@@ -673,6 +699,7 @@ function initializeBossCombat(r: RunState) {
   r.combatTurn = "player";
   r.guardActive = false;
   r.combatFeedback = null;
+  r.bardSpellFeedback = undefined;
   r.phase = "combat";
   logMessage(r, "The Boss has arrived!");
 }
@@ -748,6 +775,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     r.combatTurn = "player";
     r.guardActive = false;
     r.combatFeedback = null;
+    r.bardSpellFeedback = undefined;
     r.phase = "combat";
     r.isBossCombat = false;
     logMessage(r, `Encountered ${count} ${tile.type === "elite" ? "Elite " : ""}enemies!`);
@@ -795,7 +823,11 @@ function migrateEnemy(enemy: any): EnemyState {
     ? enemy.speciesKey as MonsterSpeciesKey
     : speciesKeyForName(enemy?.name);
   const entry = getBestiaryEntry(speciesKey);
-  return {
+  const hasSleepTurns = typeof enemy?.sleepTurns === "number" && Number.isFinite(enemy.sleepTurns);
+  const sleepTurns = hasSleepTurns
+    ? Math.min(2, Math.max(0, Math.floor(enemy.sleepTurns)))
+    : 0;
+  const migrated: EnemyState = {
     ...enemy,
     ...(speciesKey ? { speciesKey } : {}),
     ...(enemy?.artKey || (entry === undefined && !enemy?.boss) ? {} : { artKey: entry?.artKey ?? "boss" }),
@@ -803,14 +835,39 @@ function migrateEnemy(enemy: any): EnemyState {
     damageType: isDamageType(enemy?.damageType) ? enemy.damageType : DEFAULT_DAMAGE_TYPE,
     poisonTimerMs: typeof enemy?.poisonTimerMs === "number" ? enemy.poisonTimerMs : 0,
   };
+  if (hasSleepTurns) migrated.sleepTurns = sleepTurns;
+  else delete migrated.sleepTurns;
+  return migrated;
 }
 
 function isConsumableType(value: unknown): value is ConsumableType {
   return value === "health_potion" || value === "fire_bomb" || value === "guard_tonic";
 }
 
-function isHeroAttackKind(value: unknown): value is "normal" | "hold_my_beer" | "takedown" {
-  return value === "normal" || value === "hold_my_beer" || value === "takedown";
+function isHeroAttackKind(value: unknown): value is NonNullable<PlayerCombatState["pendingHeroAttack"]>["kind"] {
+  return value === "normal"
+    || value === "hold_my_beer"
+    || value === "takedown"
+    || isBardAttackKind(value);
+}
+
+function isHeroAttackKindAllowedForCharacter(
+  characterId: CharacterId | undefined,
+  kind: NonNullable<PlayerCombatState["pendingHeroAttack"]>["kind"],
+): boolean {
+  if (kind === "normal") return true;
+  if (kind === "hold_my_beer") return characterId === "unc";
+  if (kind === "takedown") return isJohnCharacter(characterId);
+  return characterId === "alan-a-dale";
+}
+
+function isBardDamageTypeForKind(
+  kind: BardAttackKind,
+  damageType: unknown,
+): damageType is DamageType {
+  return (kind === "bard_sleep" || kind === "bard_cutting_words")
+    ? damageType === "psychic"
+    : damageType === "lightning";
 }
 
 function isTileType(value: unknown): value is TileType {
@@ -941,6 +998,9 @@ export function validateState(input: any): GameStateV4 {
       ? s.run.selectedDamageType
       : fallbackDamageType(s.run);
     s.run.combatFeedback = s.run.combatFeedback ?? null;
+    s.run.bardSpellFeedback = typeof s.run.bardSpellFeedback === "string"
+      ? s.run.bardSpellFeedback
+      : undefined;
     s.run.enemies = Array.isArray(s.run.enemies)
       ? s.run.enemies.map(migrateEnemy)
       : [];
@@ -971,14 +1031,20 @@ export function validateState(input: any): GameStateV4 {
             || s.run.playerCombat.pendingHeroAttack?.kind === "takedown",
           )
           : false,
-        ...(s.run.playerCombat.lastAttackKind === "normal"
-          || (s.run.playerCombat.lastAttackKind === "hold_my_beer"
-            && s.run.characterId === "unc")
-          || (s.run.playerCombat.lastAttackKind === "takedown"
-            && isJohnCharacter(s.run.characterId))
+         ...(isHeroAttackKind(s.run.playerCombat.lastAttackKind)
+           && isHeroAttackKindAllowedForCharacter(s.run.characterId, s.run.playerCombat.lastAttackKind)
           ? { lastAttackKind: s.run.playerCombat.lastAttackKind }
           : {}),
-        ...(isAttackStyle(s.run.playerCombat.attackDamageType)
+        ...(
+          (
+            isBardAttackKind(s.run.playerCombat.lastAttackKind)
+              ? s.run.characterId === "alan-a-dale"
+                && isBardDamageTypeForKind(
+                  s.run.playerCombat.lastAttackKind,
+                  s.run.playerCombat.attackDamageType,
+                )
+              : isAttackStyle(s.run.playerCombat.attackDamageType)
+          )
           ? { attackDamageType: s.run.playerCombat.attackDamageType }
           : {}),
         ...(() => {
@@ -991,18 +1057,15 @@ export function validateState(input: any): GameStateV4 {
             && pending
             && typeof pending.targetId === "string"
             && pending.targetId.length > 0
-            && isAttackStyle(pending.damageType)
-            && isAttackStyleLearned(s.run!, pending.damageType)
             && isHeroAttackKind(pending.kind)
-            && (
-              pending.kind === "normal"
-              || (pending.kind === "hold_my_beer" && s.run!.characterId === "unc")
-              || (pending.kind === "takedown" && isJohnCharacter(s.run!.characterId))
-            )
-            && (
-              pending.kind === "normal"
-              || pending.damageType === "bludgeoning"
-            )
+             && isHeroAttackKindAllowedForCharacter(s.run!.characterId, pending.kind)
+             && (
+               isBardAttackKind(pending.kind)
+                 ? isBardDamageTypeForKind(pending.kind, pending.damageType)
+                 : isAttackStyle(pending.damageType)
+                   && isAttackStyleLearned(s.run!, pending.damageType)
+                   && (pending.kind === "normal" || pending.damageType === "bludgeoning")
+             )
             && Boolean(target);
           return valid
             ? {
@@ -1231,6 +1294,22 @@ function activeStyle(r: RunState) {
   return style;
 }
 
+function bardAttackStyle(kind: BardAttackKind): AttackStyle {
+  const move = BARD_MOVES[bardMoveForKind(kind)];
+  return {
+    id: move.damageType,
+    label: bardMoveForKind(kind),
+    damageType: move.damageType,
+    description: "An authored bard ability.",
+    magical: move.magical,
+  };
+}
+
+function isSleepImmune(enemy: EnemyState): boolean {
+  const entry = getBestiaryEntry(enemySpecies(enemy));
+  return Boolean(entry?.conditionImmunities?.includes("sleep"));
+}
+
 function beginEnemyTurn(r: RunState) {
   r.combatTurn = "enemy";
   r.phase = "combat";
@@ -1299,6 +1378,7 @@ function resolvePlayerAttack(s: GameStateV4, targetId?: string) {
 
   // Commit the action before its presentation starts. Damage, poison ticks,
   // leech healing, and feedback all belong to FINISH_HERO_ATTACK.
+  delete r.bardSpellFeedback;
   pc.attackDamageType = style.damageType;
   pc.lastAttackKind = "normal";
   pc.roundCounter++;
@@ -1307,6 +1387,42 @@ function resolvePlayerAttack(s: GameStateV4, targetId?: string) {
     targetId: target.id,
     damageType: style.damageType,
     kind: "normal",
+  };
+  pc.heroImpactResolved = false;
+  beginEnemyTurn(r);
+}
+
+function resolveBardAttack(s: GameStateV4, move: BardMove, targetId?: string) {
+  const r = s.run;
+  if (
+    !r
+    || r.characterId !== "alan-a-dale"
+    || r.phase !== "combat"
+    || r.combatTurn === "enemy"
+    || !r.playerCombat
+    || !Object.prototype.hasOwnProperty.call(BARD_MOVES, move)
+    || r.enemies.length === 0
+  ) return;
+
+  const pc = r.playerCombat;
+  // Bard abilities deliberately honor an explicitly chosen target instead of
+  // silently retargeting a stale presenter selection.
+  const target = targetId
+    ? r.enemies.find(enemy => enemy.id === targetId && enemy.hp > 0)
+    : r.enemies.find(enemy => enemy.hp > 0);
+  if (!target) return;
+
+  const kind = `bard_${move}` as BardAttackKind;
+  const style = bardAttackStyle(kind);
+  delete r.bardSpellFeedback;
+  pc.lastAttackKind = kind;
+  pc.attackDamageType = style.damageType;
+  pc.roundCounter++;
+  pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
+  pc.pendingHeroAttack = {
+    targetId: target.id,
+    damageType: style.damageType,
+    kind,
   };
   pc.heroImpactResolved = false;
   beginEnemyTurn(r);
@@ -1330,6 +1446,7 @@ function resolveHoldMyBeer(s: GameStateV4, targetId?: string) {
   if (!target) return;
 
   const style = getAttackStyle("bludgeoning")!;
+  delete r.bardSpellFeedback;
   pc.holdMyBeerUsed = true;
   pc.lastAttackKind = "hold_my_beer";
   pc.attackDamageType = style.damageType;
@@ -1362,6 +1479,7 @@ function resolveJohnTakedown(s: GameStateV4, targetId?: string) {
   if (!target) return;
 
   const style = getAttackStyle("bludgeoning")!;
+  delete r.bardSpellFeedback;
   pc.takedownUsed = true;
   pc.lastAttackKind = "takedown";
   pc.attackDamageType = style.damageType;
@@ -1383,19 +1501,27 @@ function finishHeroAttack(s: GameStateV4) {
   const pending = pc.pendingHeroAttack;
   if (!pending) return;
 
-  const style = isAttackStyle(pending.damageType)
-    && isAttackStyleLearned(r, pending.damageType)
-    ? getAttackStyle(pending.damageType)
-    : undefined;
+  const style = isBardAttackKind(pending.kind)
+    ? (
+      r.characterId === "alan-a-dale"
+      && isBardDamageTypeForKind(pending.kind, pending.damageType)
+        ? bardAttackStyle(pending.kind)
+        : undefined
+    )
+    : isAttackStyle(pending.damageType)
+      && isAttackStyleLearned(r, pending.damageType)
+      ? getAttackStyle(pending.damageType)
+      : undefined;
   const validSnapshot = typeof pending.targetId === "string"
     && pending.targetId.length > 0
     && isHeroAttackKind(pending.kind)
+    && isHeroAttackKindAllowedForCharacter(r.characterId, pending.kind)
     && (
-      pending.kind === "normal"
-      || (pending.kind === "hold_my_beer" && r.characterId === "unc")
-      || (pending.kind === "takedown" && isJohnCharacter(r.characterId))
+      isBardAttackKind(pending.kind)
+        ? isBardDamageTypeForKind(pending.kind, pending.damageType)
+        : pending.kind === "normal"
+          || pending.damageType === "bludgeoning"
     )
-    && (pending.kind === "normal" || pending.damageType === "bludgeoning")
     && Boolean(style);
   if (!validSnapshot) {
     delete pc.pendingHeroAttack;
@@ -1407,6 +1533,10 @@ function finishHeroAttack(s: GameStateV4) {
   // Clear the durable commit before doing any outcome work. This makes the
   // action idempotent even if a presenter dispatches the finish twice.
   delete pc.pendingHeroAttack;
+  // Sleep's save is rolled exactly once when the authored impact finishes.
+  // Keep this before poison feedback IDs so a pre-existing poison cannot
+  // consume or reorder the spell's outcome roll.
+  const sleepRoll = pending.kind === "bard_sleep" ? Math.random() : undefined;
   applyPoisonTicks(r);
 
   const target = r.enemies.find(enemy => enemy.id === pending.targetId && enemy.hp > 0);
@@ -1414,14 +1544,33 @@ function finishHeroAttack(s: GameStateV4) {
   // Poison can kill the committed target before impact. In that case the
   // attack never retargets, including for Hold My Beer.
   if (style && target) {
-    for (let punch = 0; punch < (pending.kind === "hold_my_beer" ? 2 : 1) && target.hp > 0; punch++) {
-      applyPlayerAttackHit(
-        r,
-        target,
-        style,
-        pc.heroAttackSequence ?? 0,
-        pending.kind === "takedown" ? r.attack * 2 : r.attack,
-      );
+    if (pending.kind === "bard_sleep") {
+      // Sleep has no HP impact and never consumes vampire healing. Its one
+      // random outcome is intentionally decided at impact, not at cast time.
+      const sleepSucceeded = sleepRoll! < BARD_SLEEP_SUCCESS_CHANCE && !isSleepImmune(target);
+      const sleepMessage = sleepSucceeded
+        ? `${target.name} falls asleep for 2 enemy responses.`
+        : `${target.name} resists Sleep.`;
+      if (sleepSucceeded) target.sleepTurns = 2;
+      r.bardSpellFeedback = sleepMessage;
+      logMessage(r, sleepMessage);
+      setCombatFeedback(r, {
+        amount: 0,
+        afterDefense: 0,
+        kind: sleepSucceeded ? "normal" : "resisted",
+        damageType: "psychic",
+      }, target.name);
+      if (r.combatFeedback) r.combatFeedback.message = sleepMessage;
+    } else {
+      for (let punch = 0; punch < (pending.kind === "hold_my_beer" ? 2 : 1) && target.hp > 0; punch++) {
+        applyPlayerAttackHit(
+          r,
+          target,
+          style,
+          pc.heroAttackSequence ?? 0,
+          pending.kind === "takedown" ? r.attack * 2 : r.attack,
+        );
+      }
     }
   }
 
@@ -1528,10 +1677,16 @@ function resolveEnemyTurn(s: GameStateV4) {
   // damage. A selected Unc move must remain stable for the entire enemy turn,
   // even if a caller presents a stale or partially migrated save.
   const committedStyle = r.playerCombat.attackDamageType;
-  const style = committedStyle && isAttackStyle(committedStyle)
-    && isAttackStyleLearned(r, committedStyle)
-    ? getAttackStyle(committedStyle)!
-    : resolveAttackStyle(r);
+  const committedKind = r.playerCombat.lastAttackKind;
+  const style = isBardAttackKind(committedKind)
+    && r.characterId === "alan-a-dale"
+    && committedStyle
+    && isBardDamageTypeForKind(committedKind, committedStyle)
+    ? bardAttackStyle(committedKind)
+    : committedStyle && isAttackStyle(committedStyle)
+      && isAttackStyleLearned(r, committedStyle)
+      ? getAttackStyle(committedStyle)!
+      : resolveAttackStyle(r);
   let playerDefense = r.defense;
   if (r.skills.some(skill => skill.type === "defense_boost")) playerDefense *= 1.2;
   const guardMultiplier = r.guardActive ? 0.5 : 1;
@@ -1540,6 +1695,18 @@ function resolveEnemyTurn(s: GameStateV4) {
   // which case that enemy is no longer living and does not retaliate.
   for (const enemy of r.enemies) {
     if (enemy.hp <= 0) continue;
+    if (enemy.sleepTurns && enemy.sleepTurns > 0) {
+      // Sleep is consumed by responses, not renders or reducer reads. The
+      // second skipped response clears the marker, while this response still
+      // remains skipped; the next response is the first one that can attack.
+      enemy.sleepTurns = Math.min(2, Math.max(0, Math.floor(enemy.sleepTurns))) - 1;
+      if (enemy.sleepTurns > 0) {
+        logMessage(r, `${enemy.name} is asleep and skips this response (${enemy.sleepTurns} remaining).`);
+      } else {
+        logMessage(r, `${enemy.name} wakes after skipping this response.`);
+      }
+      continue;
+    }
     if (enemy.boss) {
       enemy.lastBossAttack = enemy.lastBossAttack === "sword" ? "fireball" : "sword";
       enemy.damageType = enemy.lastBossAttack === "fireball" ? "fire" : "slashing";
@@ -1869,6 +2036,10 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     resolvePlayerAttack(s, action.targetId);
   }
 
+  if (action.type === "BARD_ATTACK") {
+    resolveBardAttack(s, action.move, action.targetId);
+  }
+
   if (action.type === "UNC_HOLD_MY_BEER") {
     resolveHoldMyBeer(s, action.targetId);
   }
@@ -1916,6 +2087,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       r.combatTurn = "player";
       r.guardActive = false;
       r.combatFeedback = null;
+      r.bardSpellFeedback = undefined;
       r.phase = "combat";
       logMessage(r, "You accepted the test! Elite enemies appear.");
     }
@@ -2046,6 +2218,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       s.run.combatTurn = "player";
       s.run.guardActive = false;
       s.run.combatFeedback = null;
+      s.run.bardSpellFeedback = undefined;
       s.run.stepsRemaining = 0;
       s.run.rollAnimating = false;
       s.run.trailCinematic = null;

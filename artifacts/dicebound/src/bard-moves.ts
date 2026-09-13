@@ -14,3 +14,35 @@ export const BARD_DURATIONS = {
   death: 5000,
   walk: 4200,
 } as const;
+
+export type BardMove = "sleep" | "cutting_words" | "electric";
+export type BardAttackKind = `bard_${BardMove}`;
+
+/**
+ * Bard actions are deliberate abilities rather than attack-style unlocks.
+ * Keeping their damage metadata here lets timing and combat use the same
+ * authored move contract without adding the abilities to the normal menu.
+ */
+export const BARD_MOVES = {
+  sleep: {
+    damageType: "psychic",
+    durationMs: BARD_DURATIONS.magic,
+    magical: true,
+    zeroDamage: true,
+  },
+  cutting_words: {
+    damageType: "psychic",
+    durationMs: BARD_DURATIONS.magic,
+    magical: true,
+    zeroDamage: false,
+  },
+  electric: {
+    damageType: "lightning",
+    durationMs: BARD_DURATIONS.electric,
+    magical: true,
+    zeroDamage: false,
+  },
+} as const;
+
+/** Alias retained for callers that describe these as attacks. */
+export const BARD_ATTACKS = BARD_MOVES;

@@ -1230,6 +1230,122 @@ function runAssertions() {
   combo = commitHeroAttack(combo, { type: "PLAYER_ATTACK" });
   assert.equal(combo.run!.playerCombat!.heroAttackSequence, 3);
   assert.equal(combo.run!.enemies[0].hp, afterTwoAttacks - 15);
+
+  // Bard abilities are inherent, target-locked actions. Their effects wait
+  // for the authored impact, and Sleep rolls only once at that impact.
+  const bardEnemy: EnemyState = {
+    ...pacedEnemy,
+    id: "bard-sleep-target",
+    hp: 100,
+    maxHp: 100,
+    attack: 10,
+    defense: 0,
+  };
+  const originalBardRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    let bard = combatState(bardEnemy);
+    bard.run!.characterId = "alan-a-dale";
+    bard.run!.skills = [];
+    bard.run!.attack = 10;
+    bard = act(bard, { type: "BARD_ATTACK", move: "sleep", targetId: bardEnemy.id });
+    assert.equal(bard.run!.enemies[0].hp, 100);
+    assert.equal(bard.run!.enemies[0].sleepTurns, undefined);
+    assert.equal(bard.run!.playerCombat!.pendingHeroAttack!.kind, "bard_sleep");
+    assert.equal(bard.run!.playerCombat!.pendingHeroAttack!.damageType, "psychic");
+    assert.equal(getPendingHeroAttackDurationMs(bard.run!), BARD_DURATIONS.magic);
+    bard = act(bard, { type: "FINISH_HERO_ATTACK" });
+    assert.equal(bard.run!.enemies[0].hp, 100);
+    assert.equal(bard.run!.enemies[0].sleepTurns, 2);
+    assert.match(bard.run!.bardSpellFeedback!, /falls asleep/);
+    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 0);
+
+    // One response is skipped, then the committed sleep state survives a
+    // reload for the second skip. The third response is an actual attack.
+    bard = act(bard, { type: "RESOLVE_ENEMY_TURN" });
+    assert.equal(bard.run!.enemies[0].sleepTurns, 1);
+    assert.equal(bard.run!.hp, 50);
+    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 0);
+    bard = validateState(JSON.parse(JSON.stringify(bard)));
+    bard = commitHeroAttack(bard, { type: "PLAYER_ATTACK", targetId: bardEnemy.id });
+    bard = act(bard, { type: "RESOLVE_ENEMY_TURN" });
+    assert.equal(bard.run!.enemies[0].sleepTurns, 0);
+    assert.equal(bard.run!.hp, 50);
+    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 0);
+    bard = commitHeroAttack(bard, { type: "PLAYER_ATTACK", targetId: bardEnemy.id });
+    bard = act(bard, { type: "RESOLVE_ENEMY_TURN" });
+    assert.equal(bard.run!.enemies[0].sleepTurns, 0);
+    assert.equal(bard.run!.hp, 42, "third response deals 10 attack minus 2 defense");
+    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 1);
+    assert.ok(bard.run!.log.some(entry => entry.msg.includes("wakes")));
+
+    // Sleep refreshes an existing countdown, while a failed save never adds
+    // status or HP changes.
+    let refreshed = combatState({ ...bardEnemy, id: "bard-refresh" });
+    refreshed.run!.characterId = "alan-a-dale";
+    refreshed.run!.enemies[0].sleepTurns = 1;
+    refreshed = act(refreshed, { type: "BARD_ATTACK", move: "sleep", targetId: "bard-refresh" });
+    refreshed = act(refreshed, { type: "FINISH_HERO_ATTACK" });
+    assert.equal(refreshed.run!.enemies[0].sleepTurns, 2);
+
+    Math.random = () => 0.99;
+    let resisted = combatState({ ...bardEnemy, id: "bard-resisted" });
+    resisted.run!.characterId = "alan-a-dale";
+    resisted = act(resisted, { type: "BARD_ATTACK", move: "sleep", targetId: "bard-resisted" });
+    resisted = act(resisted, { type: "FINISH_HERO_ATTACK" });
+    assert.equal(resisted.run!.enemies[0].sleepTurns, undefined);
+    assert.equal(resisted.run!.enemies[0].hp, 100);
+    assert.match(resisted.run!.bardSpellFeedback!, /resists/);
+
+    // Cutting Words is neutral psychic damage; Electric uses lightning and
+    // the long guitar sheet. Neither action needs an unlocked skill.
+    let bardSpells = combatState({ ...bardEnemy, id: "bard-spells" });
+    bardSpells.run!.characterId = "alan-a-dale";
+    bardSpells.run!.skills = [];
+    bardSpells = act(bardSpells, { type: "BARD_ATTACK", move: "cutting_words", targetId: "bard-spells" });
+    assert.equal(bardSpells.run!.playerCombat!.pendingHeroAttack!.damageType, "psychic");
+    assert.equal(getPendingHeroAttackDurationMs(bardSpells.run!), BARD_DURATIONS.magic);
+    bardSpells = act(bardSpells, { type: "FINISH_HERO_ATTACK" });
+    assert.equal(bardSpells.run!.enemies[0].hp, 90);
+    bardSpells = act(bardSpells, { type: "RESOLVE_ENEMY_TURN" });
+    bardSpells = act(bardSpells, { type: "BARD_ATTACK", move: "electric", targetId: "bard-spells" });
+    assert.equal(bardSpells.run!.playerCombat!.pendingHeroAttack!.damageType, "lightning");
+    assert.equal(getPendingHeroAttackDurationMs(bardSpells.run!), BARD_DURATIONS.electric);
+
+    Math.random = () => 0;
+    const stableFirst = { ...bardEnemy, id: "stable-first" };
+    const stableSecond = { ...bardEnemy, id: "stable-second" };
+    let stableTarget = combatState(stableFirst);
+    stableTarget.run!.characterId = "alan-a-dale";
+    stableTarget.run!.enemies = [stableFirst, stableSecond];
+    stableTarget = act(stableTarget, {
+      type: "BARD_ATTACK",
+      move: "sleep",
+      targetId: stableSecond.id,
+    });
+    assert.equal(stableTarget.run!.playerCombat!.pendingHeroAttack!.targetId, stableSecond.id);
+    stableTarget = act(stableTarget, { type: "FINISH_HERO_ATTACK" });
+    assert.equal(stableTarget.run!.enemies.find(enemy => enemy.id === stableFirst.id)!.sleepTurns, undefined);
+    assert.equal(stableTarget.run!.enemies.find(enemy => enemy.id === stableSecond.id)!.sleepTurns, 2);
+
+    const legacyBard = JSON.parse(JSON.stringify(stableTarget));
+    legacyBard.run.characterId = "john";
+    legacyBard.run.playerCombat.pendingHeroAttack = {
+      kind: "bard_sleep", damageType: "psychic", targetId: stableSecond.id,
+    };
+    legacyBard.run.playerCombat.lastAttackKind = "bard_sleep";
+    assert.equal(validateState(legacyBard).run!.playerCombat!.pendingHeroAttack, undefined);
+    assert.equal(validateState(legacyBard).run!.playerCombat!.lastAttackKind, undefined);
+
+    // A non-Bard cannot commit an authored Bard ability.
+    const unsupported = combatState({ ...bardEnemy, id: "unsupported-bard" });
+    assert.deepEqual(
+      act(unsupported, { type: "BARD_ATTACK", move: "sleep", targetId: "unsupported-bard" }).run,
+      unsupported.run,
+    );
+  } finally {
+    Math.random = originalBardRandom;
+  }
 }
 
 runAssertions();

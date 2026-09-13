@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { DamageType } from '../bestiary';
 import { BARD_DURATIONS } from '../bard-moves';
 import { SpriteAnimator, type SpriteAnimatorProps, type SpriteName } from './SpriteAnimator';
+import './unc-speech.css';
 
 const fallbacks = import.meta.glob('../assets/characters/bard-*.png', {
   eager: true, query: '?url', import: 'default',
@@ -12,8 +13,9 @@ export function BardSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAn
   playbackSpeed?: number;
 }) {
   const walking = props.sprite.startsWith('custom-walk-') && props.active;
-  const attacking = props.sprite === 'custom-hero-sword';
-  const attack = damageType === 'lightning' ? 'electric'
+  const spell = props.sprite === 'bard-sleep' || props.sprite === 'bard-cutting-words';
+  const attacking = props.sprite === 'custom-hero-sword' || spell || props.sprite === 'bard-electric';
+  const attack = spell ? 'magic' : props.sprite === 'bard-electric' || damageType === 'lightning' ? 'electric'
     : !damageType || ['slashing', 'piercing', 'bludgeoning'].includes(damageType) ? 'bludgeoning' : 'magic';
   const action = attacking ? attack : props.sprite === 'custom-hero-hit' ? 'hurt'
     : props.sprite === 'bard-death' ? 'death' : 'idle';
@@ -22,6 +24,8 @@ export function BardSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAn
     : `bard-${action}`;
   const duration = BARD_DURATIONS[walking ? 'walk' : action];
   const idle = !walking && action === 'idle';
+  const speech = props.sprite === 'bard-cutting-words' ? 'COCK'
+    : props.sprite === 'custom-hero-sword' && damageType === 'bludgeoning' ? 'KABOOOONG!' : null;
   const callback = useRef(props.onAnimationEnd);
   callback.current = props.onAnimationEnd;
   // No potion/throw clips were supplied: keep the real idle artwork while
@@ -46,6 +50,9 @@ export function BardSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAn
         className="absolute"
         style={{ position: 'absolute', width: '145%', height: '145%', left: '-22.5%', bottom: '-22%' }}
       />
+      {props.active && speech && (
+        <div key={props.trigger} className="bard-speech" role="status" aria-live="polite">{speech}</div>
+      )}
     </div>
   );
 }
