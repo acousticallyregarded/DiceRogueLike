@@ -60,6 +60,7 @@ let combatTurns = 0;
 while (state.run.phase === 'combat' && combatTurns++ < 100) {
   if (state.run.combatTurn === 'player') {
     state = act(state, { type: 'PLAYER_ATTACK' });
+    state = act(state, { type: 'FINISH_HERO_ATTACK' });
   } else {
     state = act(state, { type: 'RESOLVE_ENEMY_TURN' });
   }

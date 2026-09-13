@@ -7,9 +7,10 @@ import {
   createInitialState,
   DICE_ROLL_ANIMATION_DURATION_MS,
   getEnemyResponseDelayMs,
+  getPendingHeroAttackDurationMs,
+  getHeroDeathDurationMs,
 } from '../engine';
 import { toast } from 'sonner';
-import { UNC_ACTION_DURATIONS } from '../unc-moves';
 
 const KEY_V4 = "dicebound-save-v4";
 
@@ -44,7 +45,7 @@ export function useGame() {
   
   useEffect(() => {
     const loaded = loadGame();
-    if (loaded.run?.characterId === 'unc') {
+    if (loaded.run) {
       const savedSpeed = loaded.run.combatSpeed;
       const restoredSpeed = Number.isFinite(savedSpeed) ? Math.max(1, savedSpeed!) : 1;
       speedRef.current = restoredSpeed;
@@ -57,9 +58,9 @@ export function useGame() {
     setState(prev => {
       if (!prev) return prev;
       try {
-        // Store the playback pace with Unc's committed action so response,
+        // Store the playback pace with the committed action so response,
         // victory, and reload presentation agree on the same duration.
-        const actionState = prev.run?.characterId === 'unc'
+        const actionState = prev.run
           ? { ...prev, run: { ...prev.run, combatSpeed: speedRef.current } }
           : prev;
         const next = act(actionState, action);
@@ -79,22 +80,27 @@ export function useGame() {
   // realtime loop. Enemy turns are scheduled once after a committed player
   // action, including after reloading an enemy-turn save.
   const moveTick = useRef<number>(performance.now());
-  const responseSpeed = state?.run?.characterId === 'unc' ? speed : 1;
+  const responseSpeed = state?.run?.combatSpeed ?? 1;
+  const pendingAttack = state?.run?.playerCombat?.pendingHeroAttack;
+  const pendingAttackKey = pendingAttack
+    ? `${state?.run?.playerCombat?.heroAttackSequence}:${pendingAttack.kind}:${pendingAttack.targetId}`
+    : null;
 
   useEffect(() => {
     if (!state?.run?.heroDeathPending) return;
     const timer = window.setTimeout(() => dispatch({ type: 'FINISH_HERO_DEATH' }),
-      UNC_ACTION_DURATIONS.death / Math.max(1, speed));
+      getHeroDeathDurationMs(state.run) / Math.max(1, speed));
     return () => window.clearTimeout(timer);
   }, [state?.run?.heroDeathPending, dispatch, speed]);
 
   useEffect(() => {
     if (state?.run?.phase !== 'combat' || state.run.combatTurn !== 'enemy') return;
+    const pending = Boolean(state.run.playerCombat?.pendingHeroAttack);
     const timer = window.setTimeout(() => {
-      dispatch({ type: 'RESOLVE_ENEMY_TURN' });
-    }, getEnemyResponseDelayMs(state.run));
+      dispatch({ type: pending ? 'FINISH_HERO_ATTACK' : 'RESOLVE_ENEMY_TURN' });
+    }, pending ? getPendingHeroAttackDurationMs(state.run) : getEnemyResponseDelayMs(state.run));
     return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.combatTurn, state?.run?.phase, responseSpeed]);
+  }, [dispatch, state?.run?.combatTurn, state?.run?.phase, responseSpeed, pendingAttackKey]);
 
   // The reducer commits the actual dice result before the presentation starts.
   // Holding movement here keeps the displayed pair stable and means a save

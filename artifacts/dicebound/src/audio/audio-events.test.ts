@@ -60,15 +60,27 @@ function runAssertions() {
   let slashState = combatState();
   const selected = act(slashState, { type: "SELECT_ATTACK", damageType: "piercing" });
   assert.deepEqual(getAudioTransitionEvents(slashState, selected), []);
-  const slashAttack = act(selected, { type: "PLAYER_ATTACK" });
-  assert.deepEqual(getAudioTransitionEvents(selected, slashAttack), [{ type: "weapon-hit", damageType: "piercing" }]);
-  assert.deepEqual(getAudioTransitionEvents(selected, slashAttack), [{ type: "weapon-hit", damageType: "piercing" }]);
+  const slashWindup = act(selected, { type: "PLAYER_ATTACK" });
+  assert.deepEqual(getAudioTransitionEvents(selected, slashWindup), [], "no hit sound during wind-up");
+  const slashAttack = act(slashWindup, { type: "FINISH_HERO_ATTACK" });
+  assert.deepEqual(getAudioTransitionEvents(slashWindup, slashAttack), [{ type: "weapon-hit", damageType: "piercing" }]);
+  assert.deepEqual(getAudioTransitionEvents(slashAttack, act(slashAttack, { type: "FINISH_HERO_ATTACK" })), [], "impact sound only once");
   assert.deepEqual(getAudioTransitionEvents(slashAttack, act(slashAttack, { type: "PLAYER_ATTACK" })), []);
 
   const bluntBefore = combatState();
   bluntBefore.run!.selectedDamageType = "bludgeoning";
-  const bluntAfter = act(bluntBefore, { type: "PLAYER_ATTACK" });
-  assert.deepEqual(getAudioTransitionEvents(bluntBefore, bluntAfter), [{ type: "weapon-hit", damageType: "bludgeoning" }]);
+  const bluntWindup = act(bluntBefore, { type: "PLAYER_ATTACK" });
+  assert.deepEqual(getAudioTransitionEvents(bluntBefore, bluntWindup), []);
+  const bluntAfter = act(bluntWindup, { type: "FINISH_HERO_ATTACK" });
+  assert.deepEqual(getAudioTransitionEvents(bluntWindup, bluntAfter), [{ type: "weapon-hit", damageType: "bludgeoning" }]);
+
+  const specialBefore = combatState();
+  specialBefore.run!.characterId = "unc";
+  specialBefore.run!.selectedDamageType = "fire";
+  const specialWindup = act(specialBefore, { type: "UNC_HOLD_MY_BEER" });
+  assert.deepEqual(getAudioTransitionEvents(specialBefore, specialWindup), []);
+  const specialImpact = act(specialWindup, { type: "FINISH_HERO_ATTACK" });
+  assert.deepEqual(getAudioTransitionEvents(specialWindup, specialImpact), [{ type: "weapon-hit", damageType: "bludgeoning" }]);
 
   const potionBefore = combatState();
   potionBefore.run!.hp = 10;
@@ -89,8 +101,9 @@ function runAssertions() {
   // sound for that committed response.
   const packBefore = combatState([enemy("wolf-1"), enemy("wolf-2")]);
   const packAttack = act(packBefore, { type: "PLAYER_ATTACK" });
-  const packResponse = act(packAttack, { type: "RESOLVE_ENEMY_TURN" });
-  assert.deepEqual(getAudioTransitionEvents(packAttack, packResponse), [{ type: "hero-hit" }]);
+  const packImpact = act(packAttack, { type: "FINISH_HERO_ATTACK" });
+  const packResponse = act(packImpact, { type: "RESOLVE_ENEMY_TURN" });
+  assert.deepEqual(getAudioTransitionEvents(packImpact, packResponse), [{ type: "hero-hit" }]);
 }
 
 runAssertions();

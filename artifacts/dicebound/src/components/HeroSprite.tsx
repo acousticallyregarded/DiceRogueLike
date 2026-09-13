@@ -3,6 +3,7 @@ import { SpriteAnimator, SpriteAnimatorProps, usePrefersReducedMotion } from './
 import './hero-animations.css';
 import type { DamageType } from '../bestiary';
 import { UncSprite } from './UncSprite';
+import { BardSprite } from './BardSprite';
 
 import alanSvg from '../assets/characters/alan.svg';
 
@@ -24,7 +25,7 @@ export function HeroSprite({ characterId = 'john', damageType, playbackSpeed, cl
   }, [onAnimationEnd]);
 
   useEffect(() => {
-    if (characterId === 'john' || characterId === 'unc') return;
+    if (characterId === 'john' || characterId === 'unc' || characterId === 'alan-a-dale') return;
     if (!active && (!trigger || trigger <= 0)) return;
     
     if (trigger && trigger > 0 && durationMs) {
@@ -41,6 +42,9 @@ export function HeroSprite({ characterId = 'john', damageType, playbackSpeed, cl
   }
   if (characterId === 'unc') {
     return <UncSprite {...props} damageType={damageType} playbackSpeed={playbackSpeed} className={className} style={style} />;
+  }
+  if (characterId === 'alan-a-dale') {
+    return <BardSprite {...props} damageType={damageType} playbackSpeed={playbackSpeed} className={className} style={style} />;
   }
 
   let animClass = '';

@@ -66,14 +66,17 @@ export function getAudioTransitionEvents(
 
   // Only a real HP delta from a committed player attack produces a weapon
   // sound. Ember/fire and other magical stances do not borrow a sword sample.
+  const pendingImpact = previousRun.playerCombat?.pendingHeroAttack;
+  const impactLanded = Boolean(pendingImpact && !currentRun.playerCombat?.pendingHeroAttack);
+  const committedDamageType = pendingImpact?.damageType ?? currentRun.selectedDamageType;
   if (
     previousRun.phase === "combat"
-    && attackSequenceAdvanced(previousRun, currentRun)
+    && (impactLanded || attackSequenceAdvanced(previousRun, currentRun))
     && enemyDamageCommitted(previousRun, currentRun)
     && currentRun.combatFeedback?.amount
-    && currentRun.combatFeedback.damageType === currentRun.selectedDamageType
+    && currentRun.combatFeedback.damageType === committedDamageType
   ) {
-    const damageType = currentRun.selectedDamageType as DamageType;
+    const damageType = committedDamageType as DamageType;
     if (damageType === "slashing" || damageType === "piercing" || damageType === "bludgeoning") {
       events.push({ type: "weapon-hit", damageType });
     }

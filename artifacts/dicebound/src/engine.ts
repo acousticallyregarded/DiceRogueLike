@@ -14,6 +14,7 @@ import {
 } from "./bestiary";
 import { CHARACTERS, getCharacter } from "./characters";
 import type { CharacterId } from "./characters";
+import { BARD_DURATIONS } from "./bard-moves";
 import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
 
 export { CHARACTERS, getCharacter };
@@ -110,6 +111,14 @@ export interface PlayerCombatState {
   holdMyBeerUsed?: boolean;
   /** The animation/action committed by the most recent player attack. */
   lastAttackKind?: "normal" | "hold_my_beer";
+  /** A committed hero attack whose hit is waiting for its animation impact. */
+  pendingHeroAttack?: {
+    targetId: string;
+    damageType: DamageType;
+    kind: "normal" | "hold_my_beer";
+  };
+  /** The committed hero impact has landed and is waiting for enemy response. */
+  heroImpactResolved?: boolean;
 }
 
 export interface Skill {
@@ -254,9 +263,15 @@ function resolveAttackStyle(run: AttackStyleRun) {
   return getAttackStyle(selected) ?? getAttackStyle(DEFAULT_DAMAGE_TYPE)!;
 }
 
+function getBardAttackDurationMs(style: AttackStyle): number {
+  if (style.damageType === "lightning") return BARD_DURATIONS.electric;
+  if (style.magical) return BARD_DURATIONS.magic;
+  return BARD_DURATIONS.bludgeoning;
+}
+
 /**
  * Return the authored attack duration before the presentation's playback
- * speed multiplier is applied. John and Alan-a-Dale retain the sword timing.
+ * speed multiplier is applied. John retains the sword timing.
  */
 export function getPlayerAttackDurationMs(run: AttackStyleRun): number {
   const lastAttackKind = run.playerCombat?.lastAttackKind ?? run.lastAttackKind;
@@ -267,10 +282,39 @@ export function getPlayerAttackDurationMs(run: AttackStyleRun): number {
     return UNC_ACTION_DURATIONS.special;
   }
   const style = resolveAttackStyle(run);
+  if (run.characterId === "alan-a-dale") {
+    return getBardAttackDurationMs(style);
+  }
   const move = UNC_MOVES[style.damageType as keyof typeof UNC_MOVES];
   return (!run.characterId || run.characterId === "unc") && move
     ? move.durationMs
     : HERO_SWORD_ANIMATION_DURATION_MS;
+}
+
+/**
+ * Return the authored duration for the hero impact currently waiting on the
+ * enemy turn.  This intentionally reads the durable pending snapshot rather
+ * than the current stance selection, which may have changed in a stale
+ * presenter or a reloaded save.
+ */
+export function getPendingHeroAttackDurationMs(run: AttackTimingRun): number {
+  const pending = run.playerCombat?.pendingHeroAttack;
+  if (!pending) return HERO_SWORD_ANIMATION_DURATION_MS;
+  if (pending.kind === "hold_my_beer" && run.characterId === "unc") {
+    return UNC_ACTION_DURATIONS.special / combatPlaybackSpeed(run);
+  }
+  const move = UNC_MOVES[pending.damageType as keyof typeof UNC_MOVES];
+  const pendingStyle = getAttackStyle(pending.damageType);
+  const authoredDuration = run.characterId === "alan-a-dale" && pendingStyle
+    ? getBardAttackDurationMs(pendingStyle)
+    : run.characterId === "unc" && move
+      ? move.durationMs
+      : HERO_SWORD_ANIMATION_DURATION_MS;
+  return authoredDuration / combatPlaybackSpeed(run);
+}
+
+function combatPlaybackSpeed(run: { combatSpeed?: number }): number {
+  return Number.isFinite(run.combatSpeed) ? Math.max(1, run.combatSpeed!) : 1;
 }
 
 /**
@@ -283,32 +327,53 @@ export function getEnemyResponseDelayMs(run: AttackTimingRun): number {
   if (run.phase !== "combat" || run.combatTurn !== "enemy") {
     return DEFAULT_ENEMY_RESPONSE_DELAY_MS;
   }
+  if (run.playerCombat?.pendingHeroAttack) {
+    return getPendingHeroAttackDurationMs(run);
+  }
+  if (run.playerCombat?.heroImpactResolved) {
+    return 500 / combatPlaybackSpeed(run);
+  }
   if (run.playerCombat?.pendingFireBomb) return FIRE_BOMB_ANIMATION_DURATION_MS;
   if (run.playerCombat?.lastConsumable === "health_potion") {
     return run.characterId === "unc"
-      ? UNC_ACTION_DURATIONS.health
+      ? UNC_ACTION_DURATIONS.health / combatPlaybackSpeed(run)
       : POTION_ANIMATION_DURATION_MS;
   }
   if (run.playerCombat?.lastConsumable === "guard_tonic") {
     return run.characterId === "unc"
-      ? UNC_ACTION_DURATIONS.guard
+      ? UNC_ACTION_DURATIONS.guard / combatPlaybackSpeed(run)
       : GUARD_TONIC_ANIMATION_DURATION_MS;
   }
   const committedDamageType = run.playerCombat?.attackDamageType ?? run.selectedDamageType;
-  if (run.characterId === "unc" && run.skills && committedDamageType) {
-    const speed = Number.isFinite(run.combatSpeed) ? Math.max(1, run.combatSpeed!) : 1;
+  if (
+    (run.characterId === "unc" || run.characterId === "alan-a-dale")
+    && run.skills
+    && committedDamageType
+  ) {
     return getPlayerAttackDurationMs({
       selectedDamageType: committedDamageType,
       skills: run.skills,
       characterId: run.characterId,
       playerCombat: run.playerCombat,
-    }) / speed;
+    }) / combatPlaybackSpeed(run);
   }
   return DEFAULT_ENEMY_RESPONSE_DELAY_MS;
 }
 
 /** Backwards-compatible name for callers that describe this as a turn delay. */
 export const getEnemyTurnDelay = getEnemyResponseDelayMs;
+
+/**
+ * Return the authored hero death presentation duration. John has no authored
+ * death sheet and therefore leaves the standard presenter timing unchanged.
+ */
+export function getHeroDeathDurationMs(
+  run: Pick<RunState, "characterId">,
+): number {
+  if (run.characterId === "alan-a-dale") return BARD_DURATIONS.death;
+  if (run.characterId === "unc") return UNC_ACTION_DURATIONS.death;
+  return 0;
+}
 
 export type GameAction =
   | { type: "DISMISS_VICTORY_REPORT" }
@@ -324,6 +389,7 @@ export type GameAction =
   | { type: "UNC_HOLD_MY_BEER"; targetId?: string }
   | { type: "USE_CONSUMABLE"; consumable: ConsumableType }
   | { type: "RESOLVE_ENEMY_TURN" }
+  | { type: "FINISH_HERO_ATTACK" }
   | { type: "FINISH_HERO_DEATH" }
   | { type: "CHOOSE_SKILL"; skillId: string }
   | { type: "BUY_SHOP"; itemId: string }
@@ -574,6 +640,7 @@ function initializeBossCombat(r: RunState) {
     enemyAttackSequence: 0,
     firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
     holdMyBeerUsed: false,
+    heroImpactResolved: false,
   };
   r.combatTurn = "player";
   r.guardActive = false;
@@ -647,6 +714,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
       enemyAttackSequence: 0,
       firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
       holdMyBeerUsed: false,
+      heroImpactResolved: false,
     };
     r.combatTurn = "player";
     r.guardActive = false;
@@ -710,6 +778,10 @@ function migrateEnemy(enemy: any): EnemyState {
 
 function isConsumableType(value: unknown): value is ConsumableType {
   return value === "health_potion" || value === "fire_bomb" || value === "guard_tonic";
+}
+
+function isHeroAttackKind(value: unknown): value is "normal" | "hold_my_beer" {
+  return value === "normal" || value === "hold_my_beer";
 }
 
 function isTileType(value: unknown): value is TileType {
@@ -843,6 +915,7 @@ export function validateState(input: any): GameStateV4 {
     s.run.enemies = Array.isArray(s.run.enemies)
       ? s.run.enemies.map(migrateEnemy)
       : [];
+    const savedCombatTurn = run.combatTurn === "enemy" ? "enemy" : "player";
     s.run.playerCombat = s.run.playerCombat
       ? {
         attackTimer: typeof s.run.playerCombat.attackTimer === "number" ? s.run.playerCombat.attackTimer : 0,
@@ -867,9 +940,38 @@ export function validateState(input: any): GameStateV4 {
         ...(isAttackStyle(s.run.playerCombat.attackDamageType)
           ? { attackDamageType: s.run.playerCombat.attackDamageType }
           : {}),
+        ...(() => {
+          const pending = s.run!.playerCombat!.pendingHeroAttack;
+          const target = pending && typeof pending.targetId === "string"
+            ? s.run!.enemies.find(enemy => enemy.id === pending.targetId && enemy.hp > 0)
+            : undefined;
+          const valid = s.run!.phase === "combat"
+            && savedCombatTurn === "enemy"
+            && pending
+            && typeof pending.targetId === "string"
+            && pending.targetId.length > 0
+            && isAttackStyle(pending.damageType)
+            && isAttackStyleLearned(s.run!, pending.damageType)
+            && isHeroAttackKind(pending.kind)
+            && (pending.kind === "normal" || s.run!.characterId === "unc")
+            && (pending.kind === "normal" || pending.damageType === "bludgeoning")
+            && Boolean(target);
+          return valid
+            ? {
+              pendingHeroAttack: {
+                targetId: pending.targetId,
+                damageType: pending.damageType,
+                kind: pending.kind,
+              },
+            }
+            : {};
+        })(),
+        heroImpactResolved: s.run.playerCombat.heroImpactResolved === true
+          && savedCombatTurn === "enemy"
+          && !s.run.playerCombat.pendingHeroAttack,
       }
       : null;
-    s.run.combatTurn = run.combatTurn === "enemy" ? "enemy" : "player";
+    s.run.combatTurn = savedCombatTurn;
     s.run.guardActive = Boolean(run.guardActive);
     s.run.consumables = {
       health_potion: Math.max(0, Math.floor(Number(run.consumables?.health_potion ?? 3))),
@@ -893,6 +995,7 @@ export function validateState(input: any): GameStateV4 {
         pendingFireBomb: false,
         enemyAttackSequence: 0,
         holdMyBeerUsed: false,
+        heroImpactResolved: false,
       };
       if (run.combatTurn !== "enemy") s.run.combatTurn = "player";
     }
@@ -1000,7 +1103,9 @@ function gainXp(r: RunState, amount: number) {
 function settleDefeat(s: GameStateV4, r: RunState) {
   r.phase = "defeat";
   r.combatTurn = "player";
-  if (r.characterId === "unc") r.heroDeathPending = true;
+  if (r.characterId === "unc" || r.characterId === "alan-a-dale") {
+    r.heroDeathPending = true;
+  }
   if (!r.settled) {
     s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
     r.settled = true;
@@ -1008,10 +1113,14 @@ function settleDefeat(s: GameStateV4, r: RunState) {
   logMessage(r, "You have been defeated...");
 }
 
-function finishVictory(r: RunState, attackDurationMs = getPlayerAttackDurationMs(r)) {
-  const authoredPresentationDuration = r.isBossCombat
+function finishVictory(
+  r: RunState,
+  attackDurationMs = getPlayerAttackDurationMs(r),
+  presentationDurationMs?: number,
+) {
+  const authoredPresentationDuration = presentationDurationMs ?? (r.isBossCombat
     ? Math.max(5200, attackDurationMs)
-    : attackDurationMs;
+    : attackDurationMs);
   const playbackSpeed = r.characterId === "unc" && Number.isFinite(r.combatSpeed)
     ? Math.max(1, r.combatSpeed!)
     : 1;
@@ -1134,24 +1243,23 @@ function resolvePlayerAttack(s: GameStateV4, targetId?: string) {
 
   const pc = r.playerCombat;
   const style = activeStyle(r);
+  const target = (targetId ? r.enemies.find(enemy => enemy.id === targetId && enemy.hp > 0) : undefined)
+    ?? r.enemies.find(enemy => enemy.hp > 0);
+  if (!target) return;
+
+  // Commit the action before its presentation starts. Damage, poison ticks,
+  // leech healing, and feedback all belong to FINISH_HERO_ATTACK.
   pc.attackDamageType = style.damageType;
   pc.lastAttackKind = "normal";
   pc.roundCounter++;
-  applyPoisonTicks(r);
-  const target = (targetId ? r.enemies.find(enemy => enemy.id === targetId && enemy.hp > 0) : undefined)
-    ?? r.enemies.find(enemy => enemy.hp > 0);
-
-  if (target) {
-    pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
-    applyPlayerAttackHit(r, target, style, pc.heroAttackSequence);
-  }
-
-  r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
-  if (r.enemies.length === 0) {
-    finishVictory(r);
-  } else {
-    beginEnemyTurn(r);
-  }
+  pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
+  pc.pendingHeroAttack = {
+    targetId: target.id,
+    damageType: style.damageType,
+    kind: "normal",
+  };
+  pc.heroImpactResolved = false;
+  beginEnemyTurn(r);
 }
 
 function resolveHoldMyBeer(s: GameStateV4, targetId?: string) {
@@ -1176,20 +1284,74 @@ function resolveHoldMyBeer(s: GameStateV4, targetId?: string) {
   pc.lastAttackKind = "hold_my_beer";
   pc.attackDamageType = style.damageType;
   pc.roundCounter++;
-  applyPoisonTicks(r);
   pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
+  pc.pendingHeroAttack = {
+    targetId: target.id,
+    damageType: style.damageType,
+    kind: "hold_my_beer",
+  };
+  pc.heroImpactResolved = false;
+  beginEnemyTurn(r);
+}
 
-  // Keep the selected target stable across both punches. If the first punch
-  // kills it, the second punch is intentionally skipped rather than spilling
-  // over into another enemy.
-  for (let punch = 0; punch < 2 && target.hp > 0; punch++) {
-    applyPlayerAttackHit(r, target, style, pc.heroAttackSequence);
+function finishHeroAttack(s: GameStateV4) {
+  const r = s.run;
+  if (!r || r.phase !== "combat" || r.combatTurn !== "enemy" || !r.playerCombat) return;
+  const pc = r.playerCombat;
+  const pending = pc.pendingHeroAttack;
+  if (!pending) return;
+
+  const style = isAttackStyle(pending.damageType)
+    && isAttackStyleLearned(r, pending.damageType)
+    ? getAttackStyle(pending.damageType)
+    : undefined;
+  const validSnapshot = typeof pending.targetId === "string"
+    && pending.targetId.length > 0
+    && isHeroAttackKind(pending.kind)
+    && (pending.kind === "normal" || r.characterId === "unc")
+    && (pending.kind === "normal" || pending.damageType === "bludgeoning")
+    && Boolean(style);
+  if (!validSnapshot) {
+    delete pc.pendingHeroAttack;
+    pc.heroImpactResolved = true;
+    beginEnemyTurn(r);
+    return;
+  }
+
+  // Clear the durable commit before doing any outcome work. This makes the
+  // action idempotent even if a presenter dispatches the finish twice.
+  delete pc.pendingHeroAttack;
+  applyPoisonTicks(r);
+
+  const target = r.enemies.find(enemy => enemy.id === pending.targetId && enemy.hp > 0);
+
+  // Poison can kill the committed target before impact. In that case the
+  // attack never retargets, including for Hold My Beer.
+  if (style && target) {
+    for (let punch = 0; punch < (pending.kind === "hold_my_beer" ? 2 : 1) && target.hp > 0; punch++) {
+      applyPlayerAttackHit(r, target, style, pc.heroAttackSequence ?? 0);
+    }
   }
 
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
   if (r.enemies.length === 0) {
-    finishVictory(r, UNC_ACTION_DURATIONS.special);
+    // The hit has already landed. A final kill needs only the corpse window,
+    // not the full authored special sheet a second time.
+    finishVictory(
+      r,
+      getPlayerAttackDurationMs({
+        selectedDamageType: pending.damageType,
+        skills: r.skills,
+        characterId: r.characterId,
+        playerCombat: {
+          lastAttackKind: pending.kind,
+        },
+      }),
+      r.isBossCombat ? 5200 : HERO_SWORD_ANIMATION_DURATION_MS,
+    );
+    pc.heroImpactResolved = false;
   } else {
+    pc.heroImpactResolved = true;
     beginEnemyTurn(r);
   }
 }
@@ -1204,6 +1366,7 @@ function resolveConsumable(s: GameStateV4, consumable: ConsumableType) {
   r.consumables[consumable]--;
   r.playerCombat.roundCounter++;
   r.playerCombat.lastConsumable = consumable;
+  r.playerCombat.heroImpactResolved = false;
   delete r.playerCombat.attackDamageType;
   r.playerCombat.heroConsumableSequence = (r.playerCombat.heroConsumableSequence ?? 0) + 1;
   applyPoisonTicks(r);
@@ -1249,6 +1412,10 @@ function resolveFireBomb(r: RunState) {
 function resolveEnemyTurn(s: GameStateV4) {
   const r = s.run;
   if (!r || r.phase !== "combat" || r.combatTurn !== "enemy" || !r.playerCombat) return;
+  // The enemy cannot respond until the hero animation has committed its
+  // impact. This is also the reload-safe guard against applying a response to
+  // a still-pending attack.
+  if (r.playerCombat.pendingHeroAttack) return;
 
   // Fire Bomb impact is committed to this one resolution. Legacy saves may
   // retain lastConsumable === "fire_bomb" without this marker because those
@@ -1260,6 +1427,7 @@ function resolveEnemyTurn(s: GameStateV4) {
     if (r.enemies.length === 0) {
       finishVictory(r, Math.max(FIRE_BOMB_ANIMATION_DURATION_MS, getPlayerAttackDurationMs(r)));
       r.playerCombat.lastConsumable = null;
+      r.playerCombat.heroImpactResolved = false;
       return;
     }
   }
@@ -1322,6 +1490,7 @@ function resolveEnemyTurn(s: GameStateV4) {
   // A consumable marker is pending only for this response.  Clearing it after
   // resolution prevents a later attack from inheriting the potion delay.
   r.playerCombat.lastConsumable = null;
+  r.playerCombat.heroImpactResolved = false;
 }
 
 export function act(state: GameStateV4, action: GameAction): GameStateV4 {
@@ -1612,6 +1781,10 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     resolveHoldMyBeer(s, action.targetId);
   }
 
+  if (action.type === "FINISH_HERO_ATTACK") {
+    finishHeroAttack(s);
+  }
+
   if (action.type === "USE_CONSUMABLE") {
     resolveConsumable(s, action.consumable);
   }
@@ -1641,6 +1814,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
         enemyAttackSequence: 0,
         firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
         holdMyBeerUsed: false,
+        heroImpactResolved: false,
       };
       r.combatTurn = "player";
       r.guardActive = false;

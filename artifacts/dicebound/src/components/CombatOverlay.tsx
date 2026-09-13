@@ -1,4 +1,4 @@
-import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs } from '../engine';
+import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getHeroDeathDurationMs } from '../engine';
 import {
   formatDamageType,
   getBestiaryEntry,
@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Backpack, Flame, Heart, Shield, Sword } from 'lucide-react';
 import { EnemyHealthBar } from './EnemyHealthBar';
-import { UNC_ACTION_DURATIONS } from '../unc-moves';
 
 import wolfUrl from '../assets/wolf-pixel.png';
 import { WolfPixelSprite } from './WolfPixelSprite';
@@ -277,9 +276,7 @@ export function CombatOverlay({
         activeEnemyIds.has(enemy.id)
           ? duration
           : Math.max(duration, deathExitDurationMs(enemy, speed))
-      ), (latestCombatRun.current.characterId === 'unc'
-        ? Math.max(EXIT_DURATION_MS, run.heroDeathPending ? UNC_ACTION_DURATIONS.death : getPlayerAttackDurationMs(run))
-        : EXIT_DURATION_MS) / Math.max(MIN_COMBAT_SPEED, speed));
+      ), Math.max(EXIT_DURATION_MS, run.heroDeathPending ? getHeroDeathDurationMs(run) : 0) / Math.max(MIN_COMBAT_SPEED, speed));
       setVisible(true);
       const timer = window.setTimeout(() => {
         setVisible(false);
@@ -299,23 +296,26 @@ export function CombatOverlay({
 
     if (!previous || (run.phase === 'combat' && previous.phase !== 'combat')) {
       if (run.phase === 'combat') {
-        // Saved enemy-turn consumables have already been consumed by the
-        // engine, but still need their visual replay after the overlay mounts.
-        const restoredPotion = current.lastConsumable === 'health_potion'
+        // A saved wind-up replays before its still-pending impact. Legacy
+        // enemy turns have no pending marker and must not replay a hero hit.
+        const restoredAttack = Boolean(run.playerCombat?.pendingHeroAttack);
+        // Saved enemy-turn consumables still need their visual replay.
+        const restoredPotion = !restoredAttack && current.lastConsumable === 'health_potion'
           && run.combatTurn === 'enemy'
           && current.heroConsumableSequence > 0;
-        const restoredFireBomb = current.lastConsumable === 'fire_bomb'
+        const restoredFireBomb = !restoredAttack && current.lastConsumable === 'fire_bomb'
           && current.pendingFireBomb
           && run.combatTurn === 'enemy'
           && current.heroConsumableSequence > 0;
-        const restoredGuard = current.lastConsumable === 'guard_tonic'
+        const restoredGuard = !restoredAttack && current.lastConsumable === 'guard_tonic'
           && current.guardActive
           && run.combatTurn === 'enemy'
           && current.heroConsumableSequence > 0;
         setVisualEvents(
-          restoredPotion || restoredFireBomb || restoredGuard
+          restoredAttack || restoredPotion || restoredFireBomb || restoredGuard
             ? {
                 ...EMPTY_EVENTS,
+                heroAttack: restoredAttack ? ++eventId.current : 0,
                 heroDrink: restoredPotion ? ++eventId.current : 0,
                 heroFireBomb: restoredFireBomb ? ++eventId.current : 0,
                 heroGuard: restoredGuard ? ++eventId.current : 0,
@@ -523,9 +523,10 @@ export function CombatOverlay({
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
-  const uncRecovering = run.characterId === 'unc' && reactingToHit;
-  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !leaving && !bossAnimating && !uncRecovering;
+  const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit;
+  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack && !leaving && !bossAnimating && !uncRecovering;
   const statusLabel = run.heroDeathPending ? 'Defeated'
+    : run.playerCombat?.pendingHeroAttack ? 'Attacking'
     : uncRecovering ? 'Recovering'
     : run.combatTurn === 'enemy' || bossAnimating ? 'Enemies turn' : 'Your turn';
 
@@ -621,7 +622,7 @@ export function CombatOverlay({
                 characterId={run.characterId}
                 damageType={renderedRun.selectedDamageType}
                 playbackSpeed={speed}
-                sprite={run.heroDeathPending ? 'unc-death' : swingingSword
+                sprite={run.heroDeathPending ? run.characterId === 'alan-a-dale' ? 'bard-death' : 'unc-death' : swingingSword
                   ? run.characterId === 'unc' && run.playerCombat?.lastAttackKind === 'hold_my_beer' ? 'unc-special' : 'custom-hero-sword'
                   : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'

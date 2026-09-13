@@ -7,16 +7,21 @@ import {
   ELITE_ROSTER,
   getCombatSpeedBonus,
   getPlayerAttackDurationMs,
+  getPendingHeroAttackDurationMs,
   getEnemyResponseDelayMs,
+  getHeroDeathDurationMs,
   POTION_ANIMATION_DURATION_MS,
   FIRE_BOMB_ANIMATION_DURATION_MS,
   GUARD_TONIC_ANIMATION_DURATION_MS,
   DEFAULT_ENEMY_RESPONSE_DELAY_MS,
+  HERO_SWORD_ANIMATION_DURATION_MS,
   BOSS_AWAKENING_DURATION_MS,
   TRAIL_TILE_COUNT,
   getWalkDirection,
   validateState,
   type EnemyState,
+  type GameAction,
+  type GameStateV4,
   type Skill,
 } from "./engine.js";
 import {
@@ -26,6 +31,7 @@ import {
   speciesKeyForName,
 } from "./bestiary.js";
 import { CHARACTERS, getCharacter } from "./characters.js";
+import { BARD_DURATIONS } from "./bard-moves.js";
 import { UNC_ACTION_DURATIONS } from "./unc-moves.js";
 
 function combatState(enemy: EnemyState, skills: Skill[] = []) {
@@ -56,6 +62,13 @@ function startedRun() {
   let state = act(createInitialState(), { type: "START_RUN" });
   state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
   return state;
+}
+
+function commitHeroAttack(state: GameStateV4, action: GameAction): GameStateV4 {
+  const committed = act(state, action);
+  return committed.run?.playerCombat?.pendingHeroAttack
+    ? act(committed, { type: "FINISH_HERO_ATTACK" })
+    : committed;
 }
 
 function runAssertions() {
@@ -307,7 +320,7 @@ function runAssertions() {
   kingTurns.run.maxHp = 1000;
   kingTurns.run.attack = 0;
   for (const expected of ["sword", "fireball", "sword"]) {
-    kingTurns = act(kingTurns, { type: "PLAYER_ATTACK" });
+    kingTurns = commitHeroAttack(kingTurns, { type: "PLAYER_ATTACK" });
     kingTurns = act(kingTurns, { type: "RESOLVE_ENEMY_TURN" });
     assert.equal(kingTurns.run.enemies[0].lastBossAttack, expected);
     assert.equal(kingTurns.run.enemies[0].damageType, expected === "fireball" ? "fire" : "slashing");
@@ -379,7 +392,7 @@ function runAssertions() {
     enemyAttackSequence: 0,
     firstAttackPending: false,
   };
-  bossVictory = act(bossVictory, { type: "PLAYER_ATTACK" });
+  bossVictory = commitHeroAttack(bossVictory, { type: "PLAYER_ATTACK" });
   assert.equal(bossVictory.run!.phase, "victory");
   assert.equal(bossVictory.run!.victoryReport!.gold, 120);
   assert.equal(bossVictory.run!.victoryReport!.gems, 50);
@@ -469,10 +482,10 @@ function runAssertions() {
   }]);
   poisoned.run!.attack = 0;
   poisoned.run!.selectedDamageType = "fire";
-  poisoned = act(poisoned, { type: "PLAYER_ATTACK" });
+  poisoned = commitHeroAttack(poisoned, { type: "PLAYER_ATTACK" });
   poisoned = act(poisoned, { type: "RESOLVE_ENEMY_TURN" });
   const hpAfterHit = poisoned.run!.enemies[0].hp;
-  poisoned = act(poisoned, { type: "PLAYER_ATTACK" });
+  poisoned = commitHeroAttack(poisoned, { type: "PLAYER_ATTACK" });
   assert.equal(poisoned.run!.enemies[0].hp, hpAfterHit);
 
   // Leech uses actual damage, so an immune hit cannot heal.
@@ -497,7 +510,7 @@ function runAssertions() {
   leeched.run!.selectedDamageType = "lightning";
   leeched.run!.skills.push({ id: "learn-spark", name: "Spark", description: "", type: "lightning" });
   leeched.run!.attack = 10;
-  leeched = act(leeched, { type: "PLAYER_ATTACK" });
+  leeched = commitHeroAttack(leeched, { type: "PLAYER_ATTACK" });
   assert.equal(leeched.run!.hp, 20);
   assert.equal(leeched.run!.enemies[0].hp, 100);
 
@@ -511,7 +524,7 @@ function runAssertions() {
   }]);
   countered.run!.selectedDamageType = "slashing";
   countered.run!.attack = 0;
-  countered = act(countered, { type: "PLAYER_ATTACK" });
+  countered = commitHeroAttack(countered, { type: "PLAYER_ATTACK" });
   countered = act(countered, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(countered.run!.enemies[0].hp, 100);
 
@@ -528,6 +541,60 @@ function runAssertions() {
   const locked = act(waiting, { type: "RESOLVE_ENEMY_TURN" });
   const lockedAgain = act(locked, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(JSON.stringify(lockedAgain.run), JSON.stringify(locked.run));
+
+  // A committed hero attack leaves all impact state untouched until the
+  // animation finish action. The durable snapshot survives reload and is
+  // consumed exactly once.
+  const pendingWolf: EnemyState = {
+    ...skeleton,
+    id: "pending-hero-wolf",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 100,
+    maxHp: 100,
+    attack: 0,
+    defense: 0,
+    poisoned: true,
+    poisonTimerMs: 9000,
+  };
+  let pendingHero = combatState(pendingWolf, [
+    {
+      id: "pending-poison",
+      name: "Poison Strike",
+      description: "",
+      type: "poison",
+    },
+    {
+      id: "pending-leech",
+      name: "Life Leech",
+      description: "",
+      type: "vampire",
+    },
+  ]);
+  pendingHero.run!.attack = 10;
+  pendingHero.run!.hp = 10;
+  const pendingFeedback = pendingHero.run!.combatFeedback;
+  pendingHero = act(pendingHero, { type: "PLAYER_ATTACK", targetId: pendingWolf.id });
+  assert.equal(pendingHero.run!.enemies[0].hp, 100);
+  assert.equal(pendingHero.run!.enemies[0].poisonTimerMs, 9000);
+  assert.equal(pendingHero.run!.hp, 10);
+  assert.equal(pendingHero.run!.combatFeedback, pendingFeedback);
+  assert.equal(pendingHero.run!.playerCombat!.heroAttackSequence, 1);
+  assert.equal(pendingHero.run!.playerCombat!.roundCounter, 1);
+  assert.equal(pendingHero.run!.playerCombat!.pendingHeroAttack!.targetId, pendingWolf.id);
+  assert.equal(getEnemyResponseDelayMs(pendingHero.run!), DEFAULT_ENEMY_RESPONSE_DELAY_MS);
+  const restoredPendingHero = validateState(JSON.parse(JSON.stringify(pendingHero)));
+  assert.ok(restoredPendingHero.run!.playerCombat!.pendingHeroAttack);
+  const pendingAfterFinish = act(restoredPendingHero, { type: "FINISH_HERO_ATTACK" });
+  assert.equal(pendingAfterFinish.run!.enemies[0].hp, 89);
+  assert.equal(pendingAfterFinish.run!.hp, 11);
+  assert.equal(pendingAfterFinish.run!.playerCombat!.pendingHeroAttack, undefined);
+  assert.equal(pendingAfterFinish.run!.playerCombat!.heroImpactResolved, true);
+  assert.equal(getEnemyResponseDelayMs(pendingAfterFinish.run!), 500);
+  const pendingAfterDuplicateFinish = act(pendingAfterFinish, { type: "FINISH_HERO_ATTACK" });
+  assert.equal(JSON.stringify(pendingAfterDuplicateFinish.run), JSON.stringify(pendingAfterFinish.run));
+  const pendingAfterResponse = act(pendingAfterFinish, { type: "RESOLVE_ENEMY_TURN" });
+  assert.equal(pendingAfterResponse.run!.playerCombat!.heroImpactResolved, false);
 
   // Health potions reject full health and empty inventory without consuming a turn.
   let items = combatState({ ...skeleton, id: "items", hp: 100 });
@@ -685,7 +752,7 @@ function runAssertions() {
   // Deliberate combat has no exhaustion timeout; defeat settlement is idempotent.
   let defeated = combatState({ ...skeleton, id: "defeated", attack: 100, hp: 1000, maxHp: 1000 });
   defeated.run!.hp = 1;
-  defeated = act(defeated, { type: "PLAYER_ATTACK" });
+  defeated = commitHeroAttack(defeated, { type: "PLAYER_ATTACK" });
   defeated = act(defeated, { type: "RESOLVE_ENEMY_TURN" });
   const gemsAfterDefeat = defeated.meta.gems;
   defeated = act(defeated, { type: "RESOLVE_ENEMY_TURN" });
@@ -710,9 +777,61 @@ function runAssertions() {
   uncTiming.run!.combatTurn = "enemy";
   assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.special / 2);
   uncTiming.run!.playerCombat!.lastConsumable = "health_potion";
-  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.health);
+  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.health / 2);
+  assert.equal(getEnemyResponseDelayMs(validateState(JSON.parse(JSON.stringify(uncTiming))).run!), UNC_ACTION_DURATIONS.health / 2);
   uncTiming.run!.playerCombat!.lastConsumable = "guard_tonic";
-  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.guard);
+  assert.equal(getEnemyResponseDelayMs(uncTiming.run!), UNC_ACTION_DURATIONS.guard / 2);
+  assert.equal(getEnemyResponseDelayMs(validateState(JSON.parse(JSON.stringify(uncTiming))).run!), UNC_ACTION_DURATIONS.guard / 2);
+
+  // Alan-a-Dale's authored attack sheets map all physical styles to the lute
+  // bludgeon clip, lightning to the electric clip, and every other magical
+  // style to the magic clip. Pending impact timing uses the committed style
+  // and playback pace rather than the current stance.
+  assert.deepEqual(BARD_DURATIONS, {
+    electric: 8200,
+    bludgeoning: 4200,
+    magic: 5800,
+    idle: 4200,
+    hurt: 5000,
+    death: 5000,
+    walk: 4200,
+  });
+  const bardStyles: Skill[] = [
+    "fire", "cold", "acid", "lightning",
+  ].map((type, index) => ({
+    id: `bard-style-${index}`,
+    name: type,
+    description: "",
+    type: type as Skill["type"],
+  }));
+  const bardTiming = combatState({ ...skeleton, id: "bard-timing", hp: 1000 }, bardStyles);
+  bardTiming.run!.characterId = "alan-a-dale";
+  bardTiming.run!.combatSpeed = 2;
+  for (const damageType of ["slashing", "piercing", "bludgeoning"] as const) {
+    bardTiming.run!.selectedDamageType = damageType;
+    assert.equal(getPlayerAttackDurationMs(bardTiming.run!), BARD_DURATIONS.bludgeoning);
+  }
+  for (const damageType of ["fire", "cold", "acid"] as const) {
+    bardTiming.run!.selectedDamageType = damageType;
+    assert.equal(getPlayerAttackDurationMs(bardTiming.run!), BARD_DURATIONS.magic);
+  }
+  bardTiming.run!.selectedDamageType = "lightning";
+  assert.equal(getPlayerAttackDurationMs(bardTiming.run!), BARD_DURATIONS.electric);
+  bardTiming.run!.combatTurn = "player";
+  const bardTargetHp = bardTiming.run!.enemies[0].hp;
+  const committedBard = act(bardTiming, {
+    type: "PLAYER_ATTACK",
+    targetId: bardTiming.run!.enemies[0].id,
+  });
+  assert.equal(committedBard.run!.enemies[0].hp, bardTargetHp);
+  assert.equal(
+    getPendingHeroAttackDurationMs(committedBard.run!),
+    BARD_DURATIONS.electric / 2,
+  );
+  assert.equal(getEnemyResponseDelayMs(committedBard.run!), BARD_DURATIONS.electric / 2);
+  const landedBard = act(committedBard, { type: "FINISH_HERO_ATTACK" });
+  assert.ok(landedBard.run!.enemies[0].hp < bardTargetHp);
+  assert.equal(getEnemyResponseDelayMs(landedBard.run!), 500 / 2);
 
   // Level-up and shop skill candidates use the active character's attack
   // menu. Wind is not a John/Bard stance, lightning is not an Unc stance,
@@ -784,17 +903,22 @@ function runAssertions() {
   assert.equal(uncSpecial.run!.playerCombat!.lastAttackKind, "hold_my_beer");
   assert.equal(uncSpecial.run!.playerCombat!.heroAttackSequence, 1);
   assert.equal(uncSpecial.run!.playerCombat!.roundCounter, 1);
-  assert.equal(uncSpecial.run!.enemies[0].hp, 980);
+  assert.equal(uncSpecial.run!.enemies[0].hp, 1000);
   assert.equal(uncSpecial.run!.enemies[1].hp, 100);
   assert.equal(uncSpecial.run!.combatTurn, "enemy");
   assert.equal(getEnemyResponseDelayMs(uncSpecial.run!), UNC_ACTION_DURATIONS.special);
+  assert.equal(getPendingHeroAttackDurationMs(uncSpecial.run!), UNC_ACTION_DURATIONS.special);
+  assert.equal(uncSpecial.run!.playerCombat!.pendingHeroAttack!.targetId, "unc-special-target");
+  uncSpecial = act(uncSpecial, { type: "FINISH_HERO_ATTACK" });
+  assert.equal(uncSpecial.run!.enemies[0].hp, 980);
+  assert.equal(getEnemyResponseDelayMs(uncSpecial.run!), 500);
   const usedSpecial = JSON.stringify(uncSpecial.run);
   assert.equal(JSON.stringify(act(uncSpecial, {
     type: "UNC_HOLD_MY_BEER",
     targetId: "unc-special-other",
   }).run), usedSpecial);
   uncSpecial = act(uncSpecial, { type: "RESOLVE_ENEMY_TURN" });
-  uncSpecial = act(uncSpecial, { type: "PLAYER_ATTACK", targetId: "unc-special-other" });
+  uncSpecial = commitHeroAttack(uncSpecial, { type: "PLAYER_ATTACK", targetId: "unc-special-other" });
   assert.equal(uncSpecial.run!.playerCombat!.lastAttackKind, "normal");
 
   // A first punch that kills cannot spill its second punch to another target.
@@ -805,13 +929,13 @@ function runAssertions() {
     { ...uncEnemy, id: "unc-special-kill", hp: 5, maxHp: 5 },
     { ...uncEnemy, id: "unc-special-spill", hp: 100, maxHp: 100 },
   ];
-  noSpill = act(noSpill, { type: "UNC_HOLD_MY_BEER", targetId: "unc-special-kill" });
+  noSpill = commitHeroAttack(noSpill, { type: "UNC_HOLD_MY_BEER", targetId: "unc-special-kill" });
   assert.equal(noSpill.run!.enemies[0].hp, 100);
   assert.equal(noSpill.run!.playerCombat!.heroAttackSequence, 1);
   assert.equal(noSpill.run!.combatTurn, "enemy");
 
-  // A speed-2 Unc special uses half the authored duration for its victory
-  // report; report timing for other heroes remains unaffected elsewhere.
+  // A final special kill uses only the regular corpse window, scaled by the
+  // current Unc playback speed rather than replaying the special sheet.
   let speedSpecial = combatState({ ...uncEnemy, id: "unc-speed-special", hp: 5, maxHp: 5 });
   speedSpecial.run!.characterId = "unc";
   speedSpecial.run!.combatSpeed = 2;
@@ -820,10 +944,10 @@ function runAssertions() {
   const originalNow = Date.now;
   try {
     Date.now = () => 123456;
-    speedSpecial = act(speedSpecial, { type: "UNC_HOLD_MY_BEER", targetId: "unc-speed-special" });
+    speedSpecial = commitHeroAttack(speedSpecial, { type: "UNC_HOLD_MY_BEER", targetId: "unc-speed-special" });
     assert.equal(
       speedSpecial.run!.victoryReport!.showAt,
-      123456 + UNC_ACTION_DURATIONS.special / 2,
+      123456 + HERO_SWORD_ANIMATION_DURATION_MS / 2,
     );
   } finally {
     Date.now = originalNow;
@@ -847,7 +971,7 @@ function runAssertions() {
   let uncDefeat = combatState({ ...skeleton, id: "unc-death", attack: 1 });
   uncDefeat.run!.characterId = "unc";
   uncDefeat.run!.hp = 1;
-  uncDefeat = act(uncDefeat, { type: "PLAYER_ATTACK" });
+  uncDefeat = commitHeroAttack(uncDefeat, { type: "PLAYER_ATTACK" });
   uncDefeat = act(uncDefeat, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(uncDefeat.run!.phase, "defeat");
   assert.equal(uncDefeat.run!.heroDeathPending, true);
@@ -861,6 +985,24 @@ function runAssertions() {
   const oldDefeat = JSON.parse(JSON.stringify(finishedDeath));
   delete oldDefeat.run.heroDeathPending;
   assert.equal(validateState(oldDefeat).run!.heroDeathPending, false);
+
+  // Bard defeat owns its authored death presentation too. The marker and
+  // completion action are reload-safe, while John's default has no authored
+  // hero death duration.
+  let bardDefeat = combatState({ ...skeleton, id: "bard-death", attack: 1 });
+  bardDefeat.run!.characterId = "alan-a-dale";
+  bardDefeat.run!.hp = 1;
+  bardDefeat = commitHeroAttack(bardDefeat, { type: "PLAYER_ATTACK" });
+  bardDefeat = act(bardDefeat, { type: "RESOLVE_ENEMY_TURN" });
+  assert.equal(bardDefeat.run!.phase, "defeat");
+  assert.equal(bardDefeat.run!.heroDeathPending, true);
+  assert.equal(getHeroDeathDurationMs(bardDefeat.run!), BARD_DURATIONS.death);
+  const restoredBardDeath = validateState(JSON.parse(JSON.stringify(bardDefeat)));
+  assert.equal(restoredBardDeath.run!.heroDeathPending, true);
+  const finishedBardDeath = act(restoredBardDeath, { type: "FINISH_HERO_DEATH" });
+  assert.equal(finishedBardDeath.run!.heroDeathPending, false);
+  assert.equal(getHeroDeathDurationMs({ characterId: "john" }), 0);
+  assert.equal(getHeroDeathDurationMs({ characterId: undefined }), 0);
 
   // Shop listings expose stock, sell consumables, and disappear after a buy.
   let shop = startedRun();
@@ -903,7 +1045,7 @@ function runAssertions() {
   };
   let paced = combatState(pacedEnemy);
   paced.run!.speed = 100;
-  paced = act(paced, { type: "PLAYER_ATTACK" });
+  paced = commitHeroAttack(paced, { type: "PLAYER_ATTACK" });
   assert.equal(paced.run!.enemies[0].hp, 87);
 
   // Consumables advance rounds but not the attack sequence: the third actual
@@ -926,12 +1068,12 @@ function runAssertions() {
   combo = act(combo, { type: "USE_CONSUMABLE", consumable: "health_potion" });
   combo = act(combo, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(combo.run!.playerCombat!.heroAttackSequence, 0);
-  combo = act(combo, { type: "PLAYER_ATTACK" });
+  combo = commitHeroAttack(combo, { type: "PLAYER_ATTACK" });
   combo = act(combo, { type: "RESOLVE_ENEMY_TURN" });
-  combo = act(combo, { type: "PLAYER_ATTACK" });
+  combo = commitHeroAttack(combo, { type: "PLAYER_ATTACK" });
   combo = act(combo, { type: "RESOLVE_ENEMY_TURN" });
   const afterTwoAttacks = combo.run!.enemies[0].hp;
-  combo = act(combo, { type: "PLAYER_ATTACK" });
+  combo = commitHeroAttack(combo, { type: "PLAYER_ATTACK" });
   assert.equal(combo.run!.playerCombat!.heroAttackSequence, 3);
   assert.equal(combo.run!.enemies[0].hp, afterTwoAttacks - 15);
 }

@@ -135,8 +135,8 @@ export default function Game() {
           <div className="absolute bottom-6 left-6 z-30 pointer-events-auto">
              <button 
                 onClick={() => setSpeed(s => s === 1 ? 2 : 1)}
-                disabled={r.characterId === 'unc' && (r.phase === 'combat' || Boolean(r.heroDeathPending) || Boolean(r.victoryReport))}
-                title={r.characterId === 'unc' && r.phase === 'combat' ? 'Choose pace between fights so full animations stay synchronized.' : 'Change playback pace'}
+                disabled={Boolean(r.playerCombat?.pendingHeroAttack) || ((r.characterId === 'unc' || r.characterId === 'alan-a-dale') && (r.phase === 'combat' || Boolean(r.heroDeathPending) || Boolean(r.victoryReport)))}
+                title={r.phase === 'combat' ? 'Choose pace between fights so full animations stay synchronized.' : 'Change playback pace'}
                 aria-label="Toggle speed"
                 className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >

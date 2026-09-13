@@ -382,7 +382,9 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
           <HeroSprite
             characterId={run.characterId}
             playbackSpeed={speed}
-            sprite={run.heroDeathPending && !run.playerCombat ? 'unc-death' : activeWalkSprite.sprite}
+            sprite={run.heroDeathPending && !run.playerCombat
+              ? run.characterId === 'alan-a-dale' ? 'bard-death' : 'unc-death'
+              : activeWalkSprite.sprite}
             fallbackUrl={activeWalkSprite.fallbackUrl}
             active={walking}
             loop
