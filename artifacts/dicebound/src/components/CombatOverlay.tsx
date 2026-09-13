@@ -38,6 +38,7 @@ import { AttackStyleSelector } from './AttackStyleSelector';
 import { SkeletonKingSprite } from './SkeletonKingSprite';
 import kingUrl from '../assets/skeleton-king.png';
 import { BattleBackdrop } from './BattleBackdrop';
+import { getCombatActorSize } from './combat-actor-size';
 
 interface EnemySnapshot {
   id: string;
@@ -584,7 +585,7 @@ export function CombatOverlay({
         </div>
       )}
 
-      <div className="flex-1 relative flex items-end justify-between px-6 pb-12">
+      <div className="flex-1 relative flex items-end justify-between px-3 pb-12">
         <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} />
         <div className="relative flex flex-col items-center">
           <div
@@ -626,12 +627,13 @@ export function CombatOverlay({
           </div>
         </div>
 
-        <div className="relative flex items-end gap-2">
+        <div className="relative flex items-end gap-0">
           {renderedEnemies.map(enemy => {
             const enemyEvent = visualEvents.enemies[enemy.id] ?? { attackTrigger: 0, hitTrigger: 0, deathTrigger: 0 };
             const isDying = enemyEvent.deathTrigger > 0;
             const customWolf = isCustomWolfEnemy(enemy);
             const enemySprite = getAttackSprite(enemy);
+            const actorSize = getCombatActorSize(enemy);
             return (
               <div
                 key={`${enemy.id}-${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`}
@@ -650,8 +652,16 @@ export function CombatOverlay({
                   }
                 }}
               >
-                <div className={`combat-actor combat-actor--enemy ${enemy.boss ? 'w-40 h-40' : 'w-20 h-20'} ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}>
-                  <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
+                <div className={`combat-actor combat-actor--enemy ${actorSize ? '' : 'w-20 h-20'} ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
+                  style={actorSize ? { width: actorSize.slotWidth, height: actorSize.bodyHeight, flexShrink: 0 } : undefined}>
+                  <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{
+                    '--combat-hit-duration': `${hitDuration}ms`,
+                    ...(actorSize ? {
+                      position: 'absolute', width: actorSize.frameSize, height: actorSize.frameSize,
+                      left: (actorSize.slotWidth - actorSize.frameSize) / 2,
+                      bottom: actorSize.bottomOffset, pointerEvents: 'none',
+                    } : {}),
+                  } as CSSProperties}>
                     {enemy.boss ? (
                       <SkeletonKingSprite attackTrigger={enemyEvent.attackTrigger}
                         hitTrigger={enemyEvent.hitTrigger} dying={isDying}
