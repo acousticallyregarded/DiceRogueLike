@@ -623,7 +623,8 @@ export function CombatOverlay({
                 damageType={renderedRun.selectedDamageType}
                 playbackSpeed={speed}
                 sprite={run.heroDeathPending ? run.characterId === 'alan-a-dale' ? 'bard-death' : 'unc-death' : swingingSword
-                  ? run.characterId === 'unc' && run.playerCombat?.lastAttackKind === 'hold_my_beer' ? 'unc-special' : 'custom-hero-sword'
+                  ? run.characterId === 'unc' && run.playerCombat?.lastAttackKind === 'hold_my_beer' ? 'unc-special'
+                    : (!run.characterId || run.characterId === 'john') && run.playerCombat?.lastAttackKind === 'takedown' ? 'john-takedown' : 'custom-hero-sword'
                   : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'
                   : (drinkingPotion ? 'custom-drink-potion' : (guardingHero ? 'custom-guard-tonic' : 'custom-hero-idle'))}
@@ -853,6 +854,19 @@ export function CombatOverlay({
         </div>
       )}
 
+      {run.phase === 'combat' && (!run.characterId || run.characterId === 'john') && (
+        <div className="relative z-40 px-3 pt-2">
+          <button type="button"
+            disabled={!canInput || !selectedEnemy || Boolean(run.playerCombat?.takedownUsed)}
+            onClick={() => selectedEnemy && dispatch({ type: 'JOHN_TAKEDOWN', targetId: selectedEnemy.id })}
+            className="w-full rounded-xl border-2 border-amber-700 bg-amber-100 px-3 py-2 text-sm font-black text-amber-950 disabled:opacity-45 disabled:cursor-not-allowed">
+            Takedown
+            <span className="ml-2 text-[10px] font-semibold">
+              {run.playerCombat?.takedownUsed ? 'Used this fight' : 'Heavy hit · once per fight'}
+            </span>
+          </button>
+        </div>
+      )}
       {run.phase === 'combat' && run.characterId === 'unc' && (
         <div className="relative z-40 px-3 pt-2">
           <button type="button"

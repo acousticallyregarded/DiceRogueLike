@@ -4,6 +4,7 @@ import './hero-animations.css';
 import type { DamageType } from '../bestiary';
 import { UncSprite } from './UncSprite';
 import { BardSprite } from './BardSprite';
+import { JohnSprite } from './JohnSprite';
 
 import alanSvg from '../assets/characters/alan.svg';
 
@@ -38,7 +39,7 @@ export function HeroSprite({ characterId = 'john', damageType, playbackSpeed, cl
   }, [trigger, durationMs, active, characterId, sprite]);
 
   if (characterId === 'john') {
-    return <SpriteAnimator className={className} style={style} {...props} trigger={trigger} durationMs={durationMs} active={active} loop={loop} sprite={sprite} alt={alt} onAnimationEnd={onAnimationEnd} />;
+    return <JohnSprite damageType={damageType} className={className} style={style} {...props} trigger={trigger} durationMs={durationMs} active={active} loop={loop} sprite={sprite} alt={alt} onAnimationEnd={onAnimationEnd} />;
   }
   if (characterId === 'unc') {
     return <UncSprite {...props} damageType={damageType} playbackSpeed={playbackSpeed} className={className} style={style} />;

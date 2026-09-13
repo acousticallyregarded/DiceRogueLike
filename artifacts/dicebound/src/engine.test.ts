@@ -29,9 +29,11 @@ import {
   BESTIARY,
   DEFAULT_DAMAGE_TYPE,
   speciesKeyForName,
+  type DamageType,
 } from "./bestiary.js";
 import { CHARACTERS, getCharacter } from "./characters.js";
 import { BARD_DURATIONS } from "./bard-moves.js";
+import { JOHN_ATTACK_DURATIONS } from "./john-moves.js";
 import { UNC_ACTION_DURATIONS } from "./unc-moves.js";
 
 function combatState(enemy: EnemyState, skills: Skill[] = []) {
@@ -54,6 +56,7 @@ function combatState(enemy: EnemyState, skills: Skill[] = []) {
     heroConsumableSequence: 0,
     pendingFireBomb: false,
     enemyAttackSequence: 0,
+    takedownUsed: false,
   };
   return state;
 }
@@ -951,6 +954,157 @@ function runAssertions() {
     );
   } finally {
     Date.now = originalNow;
+  }
+
+  // John's authored attacks use exact timings; Slash keeps its original clip.
+  assert.deepEqual(JOHN_ATTACK_DURATIONS, {
+    lightning: 3400,
+    cold: 1800,
+    acid: 5000,
+    piercing: 4200,
+    fire: 5000,
+    bludgeoning: 5000,
+    takedown: 5800,
+  });
+  const johnTiming = combatState({ ...skeleton, id: "john-timing", hp: 1000 });
+  johnTiming.run!.combatSpeed = 2;
+  const johnTimingSkills: Skill[] = ["cold", "acid", "fire", "lightning"].map((type, index) => ({
+    id: `john-timing-${index}`,
+    name: type,
+    description: "",
+    type: type as Skill["type"],
+  }));
+  johnTiming.run!.skills = johnTimingSkills;
+  for (const [damageType, duration] of Object.entries({
+    cold: JOHN_ATTACK_DURATIONS.cold,
+    acid: JOHN_ATTACK_DURATIONS.acid,
+    fire: JOHN_ATTACK_DURATIONS.fire,
+    piercing: JOHN_ATTACK_DURATIONS.piercing,
+    bludgeoning: JOHN_ATTACK_DURATIONS.bludgeoning,
+    lightning: JOHN_ATTACK_DURATIONS.lightning,
+  }) as [Skill["type"], number][]) {
+    johnTiming.run!.selectedDamageType = damageType as DamageType;
+    assert.equal(getPlayerAttackDurationMs(johnTiming.run!), duration);
+    const pending = {
+      ...johnTiming.run!,
+      combatTurn: "enemy" as const,
+      playerCombat: {
+        ...johnTiming.run!.playerCombat!,
+        pendingHeroAttack: {
+          targetId: "john-timing",
+          damageType: damageType as DamageType,
+          kind: "normal" as const,
+        },
+      },
+    };
+    assert.equal(getPendingHeroAttackDurationMs(pending), duration / 2);
+  }
+  johnTiming.run!.selectedDamageType = "slashing";
+  assert.equal(getPlayerAttackDurationMs(johnTiming.run!), HERO_SWORD_ANIMATION_DURATION_MS);
+  johnTiming.run!.selectedDamageType = "lightning";
+  johnTiming.run!.skills.push({
+    id: "john-lightning",
+    name: "Spark",
+    description: "",
+    type: "lightning",
+  });
+  assert.equal(getPlayerAttackDurationMs(johnTiming.run!), JOHN_ATTACK_DURATIONS.lightning);
+  const sparkCommitted = act(johnTiming, { type: "PLAYER_ATTACK", targetId: "john-timing" });
+  assert.equal(sparkCommitted.run!.enemies[0].hp, johnTiming.run!.enemies[0].hp);
+  assert.equal(getPendingHeroAttackDurationMs(sparkCommitted.run!), 1700);
+  const sparkLanded = act(sparkCommitted, { type: "FINISH_HERO_ATTACK" });
+  assert.ok(sparkLanded.run!.enemies[0].hp < sparkCommitted.run!.enemies[0].hp);
+  const legacyJohnTiming = JSON.parse(JSON.stringify(johnTiming)) as GameStateV4;
+  delete legacyJohnTiming.run!.characterId;
+  legacyJohnTiming.run!.selectedDamageType = "acid";
+  assert.equal(getPlayerAttackDurationMs(legacyJohnTiming.run!), JOHN_ATTACK_DURATIONS.acid);
+
+  // Takedown commits one locked, delayed, physical hit. It doubles the base
+  // attack before the normal defense/trait/skill pipeline, and never spills
+  // to another enemy if its target dies.
+  const johnTarget: EnemyState = {
+    ...skeleton,
+    id: "john-takedown-target",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 15,
+    maxHp: 15,
+    defense: 0,
+    attack: 0,
+  };
+  const johnOther = { ...johnTarget, id: "john-takedown-other", hp: 100, maxHp: 100 };
+  let takedown = combatState(johnTarget);
+  takedown.run!.attack = 10;
+  takedown.run!.enemies = [johnTarget, johnOther];
+  takedown.run!.combatSpeed = 2;
+  takedown = act(takedown, {
+    type: "JOHN_TAKEDOWN",
+    targetId: johnTarget.id,
+  });
+  assert.equal(takedown.run!.combatTurn, "enemy");
+  assert.equal(takedown.run!.playerCombat!.takedownUsed, true);
+  assert.equal(takedown.run!.playerCombat!.lastAttackKind, "takedown");
+  assert.equal(takedown.run!.playerCombat!.heroAttackSequence, 1);
+  assert.equal(takedown.run!.playerCombat!.roundCounter, 1);
+  assert.equal(takedown.run!.enemies[0].hp, johnTarget.hp, "takedown leaves HP unchanged until impact");
+  assert.equal(takedown.run!.enemies[1].hp, 100);
+  assert.equal(getPlayerAttackDurationMs(takedown.run!), JOHN_ATTACK_DURATIONS.takedown);
+  assert.equal(getPendingHeroAttackDurationMs(takedown.run!), JOHN_ATTACK_DURATIONS.takedown / 2);
+  assert.equal(getEnemyResponseDelayMs(takedown.run!), JOHN_ATTACK_DURATIONS.takedown / 2);
+  const earlyTakedown = JSON.stringify(takedown.run);
+  takedown = act(takedown, { type: "JOHN_TAKEDOWN", targetId: johnOther.id });
+  assert.equal(JSON.stringify(takedown.run), earlyTakedown);
+  const reloadedTakedown = validateState(JSON.parse(JSON.stringify(takedown)));
+  assert.equal(reloadedTakedown.run!.playerCombat!.pendingHeroAttack!.kind, "takedown");
+  takedown = act(reloadedTakedown, { type: "FINISH_HERO_ATTACK" });
+  assert.equal(takedown.run!.enemies[0].id, johnOther.id);
+  assert.equal(takedown.run!.enemies[0].hp, 100);
+  assert.equal(takedown.run!.playerCombat!.pendingHeroAttack, undefined);
+  assert.equal(takedown.run!.playerCombat!.heroImpactResolved, true);
+  const landedTakedown = JSON.stringify(takedown.run);
+  takedown = act(takedown, { type: "FINISH_HERO_ATTACK" });
+  assert.equal(JSON.stringify(takedown.run), landedTakedown);
+  takedown = act(takedown, { type: "RESOLVE_ENEMY_TURN" });
+  takedown = act(takedown, {
+    type: "PLAYER_ATTACK",
+    targetId: johnOther.id,
+  });
+  assert.equal(takedown.run!.playerCombat!.lastAttackKind, "normal");
+  assert.equal(getPlayerAttackDurationMs(takedown.run!), HERO_SWORD_ANIMATION_DURATION_MS);
+
+  // A malformed save cannot turn Unc's punch into John's special or give a
+  // takedown a magical style. New combat constructors start unspent.
+  const invalidTakedownSave = JSON.parse(JSON.stringify(reloadedTakedown));
+  invalidTakedownSave.run.characterId = "unc";
+  assert.equal(validateState(invalidTakedownSave).run!.playerCombat!.pendingHeroAttack, undefined);
+  let freshTakedown = startedRun();
+  freshTakedown.run!.phase = "event_test_of_might";
+  freshTakedown.run!.trailCinematic = null;
+  freshTakedown = act(freshTakedown, { type: "TEST_OF_MIGHT_ENTER" });
+  assert.equal(freshTakedown.run!.playerCombat!.takedownUsed, false);
+
+  // A final Takedown kill uses only the ordinary corpse window, not a second
+  // 5800ms special presentation.
+  let finalTakedown = combatState({
+    ...johnTarget,
+    id: "john-final-takedown",
+    hp: 5,
+    maxHp: 5,
+  });
+  finalTakedown.run!.attack = 10;
+  const finalNow = Date.now;
+  try {
+    Date.now = () => 234567;
+    finalTakedown = commitHeroAttack(finalTakedown, {
+      type: "JOHN_TAKEDOWN",
+      targetId: "john-final-takedown",
+    });
+    assert.equal(
+      finalTakedown.run!.victoryReport!.showAt,
+      234567 + HERO_SWORD_ANIMATION_DURATION_MS,
+    );
+  } finally {
+    Date.now = finalNow;
   }
 
   // Combat initialization starts a fresh special charge, but save migration

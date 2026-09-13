@@ -35,6 +35,9 @@ const HALF_TILE_WIDTH = TILE_WIDTH / 2;
 const HALF_TILE_HEIGHT = TILE_HEIGHT / 2;
 const TILE_IMAGE_HEIGHT = 38 * WORLD_SCALE;
 const STATUE_RISE_DISTANCE = 50;
+const PLATFORM_BOARDING_MS = 1000;
+const PLATFORM_HERO_X = -52;
+const PLATFORM_HERO_Y = -68;
 export const BOSS_AWAKENING_DURATION_MS = 2200;
 
 export interface TileMotion {
@@ -181,8 +184,10 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
   const cinematicType = run.trailCinematic;
   const [cinematicPhase, setCinematicPhase] = useState<'statue' | 'hero' | null>(null);
   const [statueRisen, setStatueRisen] = useState(false);
+  const [platformStage, setPlatformStage] = useState<'approach' | 'boarding' | 'rising'>('approach');
   useEffect(() => {
     setStatueRisen(false);
+    setPlatformStage('approach');
     if (!cinematicType) {
       setCinematicPhase(null);
       return;
@@ -190,10 +195,13 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
     setCinematicPhase('statue');
     const timers: number[] = [];
     const duration = reducedMotion ? 1500
-      : cinematicType === 'awakening' ? 5600
+      : cinematicType === 'awakening' ? PLATFORM_BOARDING_MS + 5600
       : cinematicType === 'alert' ? 2600 : 2000;
     if (cinematicType === 'awakening') {
-      timers.push(window.setTimeout(() => setStatueRisen(true), reducedMotion ? 0 : 2200));
+      // Give the arrival pose a painted frame before walking onto the deck.
+      timers.push(window.setTimeout(() => setPlatformStage('boarding'), reducedMotion ? 0 : 40));
+      timers.push(window.setTimeout(() => setPlatformStage('rising'), reducedMotion ? 0 : PLATFORM_BOARDING_MS));
+      timers.push(window.setTimeout(() => setStatueRisen(true), reducedMotion ? 0 : PLATFORM_BOARDING_MS + BOSS_AWAKENING_DURATION_MS));
     }
     timers.push(window.setTimeout(() => setCinematicPhase('hero'), duration));
     timers.push(window.setTimeout(() => onCinematicFinish?.(), duration + 800));
@@ -205,6 +213,17 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
 
   // Statue is at the end of the trail
   const statuePos = getTilePosition(trailLength - 1, trailLength);
+  const atPlatform = visualPosition >= trailLength - 1
+    && (isAwakening || run.phase === 'boss_ready' || run.isBossCombat || run.phase === 'victory');
+  const platformRaised = (isAwakening && platformStage === 'rising') || run.phase === 'boss_ready' || run.isBossCombat;
+  const platformLift = platformRaised ? 0 : STATUE_RISE_DISTANCE;
+  const boardingPlatform = atPlatform && isAwakening && platformStage === 'boarding';
+  const heroOnDeck = atPlatform && (!isAwakening || platformStage !== 'approach');
+  const renderedHeroPos = heroOnDeck
+    ? { x: statuePos.x + PLATFORM_HERO_X, y: statuePos.y + PLATFORM_HERO_Y + platformLift }
+    : { x: heroPos.x, y: heroSurfaceY };
+  const heroWalking = walking || boardingPlatform;
+  const platformWalkSprite = boardingPlatform ? walkSprites['north-west'] : activeWalkSprite;
 
   let cameraTarget = heroPos;
   let cameraScale = 1;
@@ -216,7 +235,7 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
      cameraScale = 1.2; // slight zoom
      cameraTransitionDur = 0; // Cut directly to statue
   } else if (cinematicPhase === 'hero') {
-     cameraTarget = heroPos;
+     cameraTarget = heroOnDeck ? { ...heroPos, ...renderedHeroPos } : heroPos;
      cameraScale = 1;
      cameraTransitionDur = 0; // Cut back directly
   } else if (isBossActive && run.isBossCombat) {
@@ -282,7 +301,7 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
           <div 
             className="absolute z-[1] transition-all ease-in-out w-[200px] h-[250px] left-1/2 bottom-0 -translate-x-1/2"
             style={{
-              transform: isAwakening || run.phase === 'boss_ready' || run.isBossCombat ? `translateY(0px)` : `translateY(${STATUE_RISE_DISTANCE}px)`,
+              transform: `translateY(${platformLift}px)`,
               transitionDuration: reducedMotion ? '0ms' : `${BOSS_AWAKENING_DURATION_MS}ms`,
               filter: (isBossActive && !isAwakening) ? `drop-shadow(0 0 15px rgba(234, 179, 8, 0.6)) drop-shadow(0 0 30px rgba(34, 197, 94, 0.4))` : 'none'
             }}
@@ -294,7 +313,7 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
                   alert={cinematicType === 'alert' || (run.bossCountdown !== undefined && run.bossCountdown <= 15)} 
               />
             </div>
-            {isAwakening && !reducedMotion && (
+            {isAwakening && platformStage === 'rising' && !reducedMotion && (
                <div className="absolute inset-0 bg-stone-900 rounded-full animate-ping opacity-20 filter blur-xl" style={{ animationDuration: '1s' }} />
             )}
           </div>
@@ -371,10 +390,14 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
 
         {/* Hero */}
         <div 
-          className={`absolute w-[64px] h-[72px] -ml-[32px] -mt-[56px] hero-world-actor ${walking ? 'hero-world-actor--walking' : ''}`}
+          className={`absolute w-[64px] h-[72px] -ml-[32px] -mt-[56px] hero-world-actor ${heroWalking ? 'hero-world-actor--walking' : ''}`}
+          data-platform-stage={atPlatform ? platformStage : undefined}
           style={{ 
-            transform: `translate(${heroPos.x}px, ${heroSurfaceY}px)`,
-            zIndex: heroPos.zIndex + 1 
+            transform: `translate(${renderedHeroPos.x}px, ${renderedHeroPos.y}px)`,
+            transition: atPlatform && !reducedMotion
+              ? `transform ${boardingPlatform ? PLATFORM_BOARDING_MS - 40 : BOSS_AWAKENING_DURATION_MS}ms ease-in-out`
+              : 'none',
+            zIndex: heroOnDeck ? statuePos.zIndex + 3 : heroPos.zIndex + 1
           }}
         >
           <div className="hero-world-shadow" aria-hidden="true" />
@@ -384,11 +407,11 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
             playbackSpeed={speed}
             sprite={run.heroDeathPending && !run.playerCombat
               ? run.characterId === 'alan-a-dale' ? 'bard-death' : 'unc-death'
-              : activeWalkSprite.sprite}
-            fallbackUrl={activeWalkSprite.fallbackUrl}
-            active={walking}
+              : platformWalkSprite.sprite}
+            fallbackUrl={platformWalkSprite.fallbackUrl}
+            active={heroWalking}
             loop
-            trigger={walking ? 1 : 0}
+            trigger={heroWalking ? 1 : 0}
             fps={12}
             frameCount={9}
             durationMs={1800}

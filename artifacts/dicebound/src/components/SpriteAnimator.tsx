@@ -34,6 +34,8 @@ export type SpriteName =
   | 'unc-poison' | 'unc-punch' | 'unc-wind' | 'unc-acid' | 'unc-cold' | 'unc-fire'
   | 'unc-walk-south-west' | 'unc-walk-north-west' | 'unc-walk-north-east' | 'unc-walk-south-east'
   | 'bard-selection'
+  | 'john-cold' | 'john-acid' | 'john-piercing' | 'john-fire' | 'john-bludgeoning' | 'john-takedown'
+  | 'john-lightning'
   | 'bard-electric' | 'bard-bludgeoning' | 'bard-magic' | 'bard-idle' | 'bard-hurt' | 'bard-death'
   | 'bard-walk-south-west' | 'bard-walk-north-east' | 'bard-walk-north-west' | 'bard-walk-south-east'
   | 'custom-hero-hit'

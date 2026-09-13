@@ -15,9 +15,11 @@ import {
 import { CHARACTERS, getCharacter } from "./characters";
 import type { CharacterId } from "./characters";
 import { BARD_DURATIONS } from "./bard-moves";
+import { JOHN_ATTACK_DURATIONS } from "./john-moves";
 import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
 
 export { CHARACTERS, getCharacter };
+export { JOHN_ATTACK_DURATIONS };
 export type { CharacterId } from "./characters";
 
 function uuid() {
@@ -110,12 +112,14 @@ export interface PlayerCombatState {
   /** Unc's one-use special is durable for the current fight. */
   holdMyBeerUsed?: boolean;
   /** The animation/action committed by the most recent player attack. */
-  lastAttackKind?: "normal" | "hold_my_beer";
+  lastAttackKind?: "normal" | "hold_my_beer" | "takedown";
+  /** John's one-use Takedown is durable for the current fight. */
+  takedownUsed?: boolean;
   /** A committed hero attack whose hit is waiting for its animation impact. */
   pendingHeroAttack?: {
     targetId: string;
     damageType: DamageType;
-    kind: "normal" | "hold_my_beer";
+    kind: "normal" | "hold_my_beer" | "takedown";
   };
   /** The committed hero impact has landed and is waiting for enemy response. */
   heroImpactResolved?: boolean;
@@ -248,6 +252,12 @@ type AttackStyleRun = Pick<RunState, "selectedDamageType" | "skills">
     lastAttackKind?: PlayerCombatState["lastAttackKind"] | "special";
   };
 
+function isJohnCharacter(characterId?: CharacterId): boolean {
+  // Saves and timing callers from before character selection have no identity;
+  // those runs are the original John fighter.
+  return !characterId || characterId === "john";
+}
+
 function fallbackDamageType(run: Pick<RunState, "skills"> & { characterId?: CharacterId }): DamageType {
   if (run.characterId === "unc") {
     return isAttackStyleLearned(run, "fire") ? "fire" : "bludgeoning";
@@ -269,6 +279,11 @@ function getBardAttackDurationMs(style: AttackStyle): number {
   return BARD_DURATIONS.bludgeoning;
 }
 
+function getJohnAttackDurationMs(damageType: DamageType | "takedown"): number {
+  return JOHN_ATTACK_DURATIONS[damageType as keyof typeof JOHN_ATTACK_DURATIONS]
+    ?? HERO_SWORD_ANIMATION_DURATION_MS;
+}
+
 /**
  * Return the authored attack duration before the presentation's playback
  * speed multiplier is applied. John retains the sword timing.
@@ -281,9 +296,15 @@ export function getPlayerAttackDurationMs(run: AttackStyleRun): number {
   ) {
     return UNC_ACTION_DURATIONS.special;
   }
+  if (isJohnCharacter(run.characterId) && lastAttackKind === "takedown") {
+    return JOHN_ATTACK_DURATIONS.takedown;
+  }
   const style = resolveAttackStyle(run);
   if (run.characterId === "alan-a-dale") {
     return getBardAttackDurationMs(style);
+  }
+  if (isJohnCharacter(run.characterId)) {
+    return getJohnAttackDurationMs(style.damageType);
   }
   const move = UNC_MOVES[style.damageType as keyof typeof UNC_MOVES];
   return (!run.characterId || run.characterId === "unc") && move
@@ -303,9 +324,14 @@ export function getPendingHeroAttackDurationMs(run: AttackTimingRun): number {
   if (pending.kind === "hold_my_beer" && run.characterId === "unc") {
     return UNC_ACTION_DURATIONS.special / combatPlaybackSpeed(run);
   }
+  if (pending.kind === "takedown" && isJohnCharacter(run.characterId)) {
+    return JOHN_ATTACK_DURATIONS.takedown / combatPlaybackSpeed(run);
+  }
   const move = UNC_MOVES[pending.damageType as keyof typeof UNC_MOVES];
   const pendingStyle = getAttackStyle(pending.damageType);
-  const authoredDuration = run.characterId === "alan-a-dale" && pendingStyle
+  const authoredDuration = isJohnCharacter(run.characterId)
+    ? getJohnAttackDurationMs(pending.damageType)
+    : run.characterId === "alan-a-dale" && pendingStyle
     ? getBardAttackDurationMs(pendingStyle)
     : run.characterId === "unc" && move
       ? move.durationMs
@@ -387,6 +413,7 @@ export type GameAction =
   | { type: "SELECT_ATTACK"; damageType: DamageType }
   | { type: "PLAYER_ATTACK"; targetId?: string }
   | { type: "UNC_HOLD_MY_BEER"; targetId?: string }
+  | { type: "JOHN_TAKEDOWN"; targetId?: string }
   | { type: "USE_CONSUMABLE"; consumable: ConsumableType }
   | { type: "RESOLVE_ENEMY_TURN" }
   | { type: "FINISH_HERO_ATTACK" }
@@ -640,6 +667,7 @@ function initializeBossCombat(r: RunState) {
     enemyAttackSequence: 0,
     firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
     holdMyBeerUsed: false,
+    takedownUsed: false,
     heroImpactResolved: false,
   };
   r.combatTurn = "player";
@@ -714,6 +742,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
       enemyAttackSequence: 0,
       firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
       holdMyBeerUsed: false,
+      takedownUsed: false,
       heroImpactResolved: false,
     };
     r.combatTurn = "player";
@@ -780,8 +809,8 @@ function isConsumableType(value: unknown): value is ConsumableType {
   return value === "health_potion" || value === "fire_bomb" || value === "guard_tonic";
 }
 
-function isHeroAttackKind(value: unknown): value is "normal" | "hold_my_beer" {
-  return value === "normal" || value === "hold_my_beer";
+function isHeroAttackKind(value: unknown): value is "normal" | "hold_my_beer" | "takedown" {
+  return value === "normal" || value === "hold_my_beer" || value === "takedown";
 }
 
 function isTileType(value: unknown): value is TileType {
@@ -932,9 +961,21 @@ export function validateState(input: any): GameStateV4 {
         firstAttackPending: typeof s.run.playerCombat.firstAttackPending === "boolean"
           ? s.run.playerCombat.firstAttackPending
           : s.run.skills.some(skill => skill.type === "first_strike"),
-        holdMyBeerUsed: Boolean(s.run.playerCombat.holdMyBeerUsed),
+        holdMyBeerUsed: s.run.characterId === "unc"
+          ? Boolean(s.run.playerCombat.holdMyBeerUsed)
+          : false,
+        takedownUsed: isJohnCharacter(s.run.characterId)
+          ? Boolean(
+            s.run.playerCombat.takedownUsed
+            || s.run.playerCombat.lastAttackKind === "takedown"
+            || s.run.playerCombat.pendingHeroAttack?.kind === "takedown",
+          )
+          : false,
         ...(s.run.playerCombat.lastAttackKind === "normal"
-          || s.run.playerCombat.lastAttackKind === "hold_my_beer"
+          || (s.run.playerCombat.lastAttackKind === "hold_my_beer"
+            && s.run.characterId === "unc")
+          || (s.run.playerCombat.lastAttackKind === "takedown"
+            && isJohnCharacter(s.run.characterId))
           ? { lastAttackKind: s.run.playerCombat.lastAttackKind }
           : {}),
         ...(isAttackStyle(s.run.playerCombat.attackDamageType)
@@ -953,8 +994,15 @@ export function validateState(input: any): GameStateV4 {
             && isAttackStyle(pending.damageType)
             && isAttackStyleLearned(s.run!, pending.damageType)
             && isHeroAttackKind(pending.kind)
-            && (pending.kind === "normal" || s.run!.characterId === "unc")
-            && (pending.kind === "normal" || pending.damageType === "bludgeoning")
+            && (
+              pending.kind === "normal"
+              || (pending.kind === "hold_my_beer" && s.run!.characterId === "unc")
+              || (pending.kind === "takedown" && isJohnCharacter(s.run!.characterId))
+            )
+            && (
+              pending.kind === "normal"
+              || pending.damageType === "bludgeoning"
+            )
             && Boolean(target);
           return valid
             ? {
@@ -995,6 +1043,7 @@ export function validateState(input: any): GameStateV4 {
         pendingFireBomb: false,
         enemyAttackSequence: 0,
         holdMyBeerUsed: false,
+        takedownUsed: false,
         heroImpactResolved: false,
       };
       if (run.combatTurn !== "enemy") s.run.combatTurn = "player";
@@ -1198,10 +1247,11 @@ function applyPlayerAttackHit(
   target: EnemyState,
   style: AttackStyle,
   attackSequence: number,
+  baseDamage = r.attack,
 ) {
   const pc = r.playerCombat!;
   const resolution = calculateDamage(
-    r.attack,
+    baseDamage,
     target.defense,
     enemySpecies(target),
     style.damageType,
@@ -1294,6 +1344,38 @@ function resolveHoldMyBeer(s: GameStateV4, targetId?: string) {
   beginEnemyTurn(r);
 }
 
+function resolveJohnTakedown(s: GameStateV4, targetId?: string) {
+  const r = s.run;
+  if (
+    !r
+    || !isJohnCharacter(r.characterId)
+    || r.phase !== "combat"
+    || r.combatTurn === "enemy"
+    || !r.playerCombat
+    || r.playerCombat.takedownUsed
+    || r.enemies.length === 0
+  ) return;
+
+  const pc = r.playerCombat;
+  const target = (targetId ? r.enemies.find(enemy => enemy.id === targetId && enemy.hp > 0) : undefined)
+    ?? r.enemies.find(enemy => enemy.hp > 0);
+  if (!target) return;
+
+  const style = getAttackStyle("bludgeoning")!;
+  pc.takedownUsed = true;
+  pc.lastAttackKind = "takedown";
+  pc.attackDamageType = style.damageType;
+  pc.roundCounter++;
+  pc.heroAttackSequence = (pc.heroAttackSequence ?? 0) + 1;
+  pc.pendingHeroAttack = {
+    targetId: target.id,
+    damageType: style.damageType,
+    kind: "takedown",
+  };
+  pc.heroImpactResolved = false;
+  beginEnemyTurn(r);
+}
+
 function finishHeroAttack(s: GameStateV4) {
   const r = s.run;
   if (!r || r.phase !== "combat" || r.combatTurn !== "enemy" || !r.playerCombat) return;
@@ -1308,7 +1390,11 @@ function finishHeroAttack(s: GameStateV4) {
   const validSnapshot = typeof pending.targetId === "string"
     && pending.targetId.length > 0
     && isHeroAttackKind(pending.kind)
-    && (pending.kind === "normal" || r.characterId === "unc")
+    && (
+      pending.kind === "normal"
+      || (pending.kind === "hold_my_beer" && r.characterId === "unc")
+      || (pending.kind === "takedown" && isJohnCharacter(r.characterId))
+    )
     && (pending.kind === "normal" || pending.damageType === "bludgeoning")
     && Boolean(style);
   if (!validSnapshot) {
@@ -1329,7 +1415,13 @@ function finishHeroAttack(s: GameStateV4) {
   // attack never retargets, including for Hold My Beer.
   if (style && target) {
     for (let punch = 0; punch < (pending.kind === "hold_my_beer" ? 2 : 1) && target.hp > 0; punch++) {
-      applyPlayerAttackHit(r, target, style, pc.heroAttackSequence ?? 0);
+      applyPlayerAttackHit(
+        r,
+        target,
+        style,
+        pc.heroAttackSequence ?? 0,
+        pending.kind === "takedown" ? r.attack * 2 : r.attack,
+      );
     }
   }
 
@@ -1781,6 +1873,10 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     resolveHoldMyBeer(s, action.targetId);
   }
 
+  if (action.type === "JOHN_TAKEDOWN") {
+    resolveJohnTakedown(s, action.targetId);
+  }
+
   if (action.type === "FINISH_HERO_ATTACK") {
     finishHeroAttack(s);
   }
@@ -1814,6 +1910,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
         enemyAttackSequence: 0,
         firstAttackPending: r.skills.some(sk => sk.type === "first_strike"),
         holdMyBeerUsed: false,
+        takedownUsed: false,
         heroImpactResolved: false,
       };
       r.combatTurn = "player";
