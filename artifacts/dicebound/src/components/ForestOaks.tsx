@@ -1,4 +1,5 @@
 import treeUrl from '../assets/tree.png';
+import { riverX } from './ForestRiver';
 
 const propUrls = Object.entries(import.meta.glob('../assets/forest/*.webp', {
   eager: true, query: '?url', import: 'default',
@@ -10,7 +11,8 @@ function clearsWalls(item: SceneryBounds) {
   // Entire image bounds must clear the diamond and its downward wall extrusion.
   const nearestX = Math.max(0, Math.abs(item.x) - item.width / 2);
   const nearestY = Math.max(0, item.y - item.height - 120, -item.y);
-  return nearestX + nearestY * 2 > 320;
+  const clearsRiver = Math.abs(item.x - riverX(item.y)) > item.width / 2 + 44;
+  return nearestX + nearestY * 2 > 320 && clearsRiver;
 }
 
 // Stable placements: never reshuffle the forest when the hero takes a step.
