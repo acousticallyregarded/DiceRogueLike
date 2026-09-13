@@ -1,4 +1,4 @@
-import { ConsumableType, GameAction, RunState } from '../engine';
+import { ConsumableType, GameAction, RunState, HERO_SWORD_ANIMATION_DURATION_MS } from '../engine';
 import {
   formatDamageType,
   getBestiaryEntry,
@@ -211,6 +211,7 @@ export function CombatOverlay({
   const [completedHeroFireBomb, setCompletedHeroFireBomb] = useState(0);
   const [completedHeroGuard, setCompletedHeroGuard] = useState(0);
   const [completedHeroHit, setCompletedHeroHit] = useState(0);
+  const [completedHeroAttack, setCompletedHeroAttack] = useState(0);
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [inspectedEnemyId, setInspectedEnemyId] = useState<string | null>(null);
@@ -470,6 +471,9 @@ export function CombatOverlay({
   const finishHeroGuard = useCallback(() => {
     setCompletedHeroGuard(playerGuardTrigger);
   }, [playerGuardTrigger]);
+  const finishHeroAttack = useCallback(() => {
+    setCompletedHeroAttack(visualEvents.heroAttack);
+  }, [visualEvents.heroAttack]);
   const renderedRun = run.phase === 'combat' ? run : displayRun;
   if (!visible || !renderedRun || !renderedRun.playerCombat) return null;
   const activeEnemyIds = new Set(renderedRun.enemies.map(enemy => enemy.id));
@@ -484,6 +488,9 @@ export function CombatOverlay({
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
+  const swingingSword = playerAttackTrigger > completedHeroAttack
+    && playerAttackTrigger > Math.max(playerHitTrigger, playerDrinkTrigger, playerFireBombTrigger, playerGuardTrigger)
+    && !reducedMotion;
   const reactingToHit = playerHitTrigger > completedHeroHit
     && playerHitTrigger > Math.max(playerAttackTrigger, playerDrinkTrigger, playerFireBombTrigger, playerGuardTrigger)
     && !reducedMotion;
@@ -594,27 +601,26 @@ export function CombatOverlay({
           >
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
               <SpriteAnimator
-                sprite={reactingToHit ? 'custom-hero-hit' : throwingFireBomb
+                sprite={swingingSword ? 'custom-hero-sword' : reactingToHit ? 'custom-hero-hit' : throwingFireBomb
                   ? 'custom-throw-firebomb'
                   : (drinkingPotion ? 'custom-drink-potion' : (guardingHero ? 'custom-guard-tonic' : 'custom-hero-idle'))}
                 fallbackUrl={reactingToHit ? heroHitUrl : throwingFireBomb
                   ? throwFireBombUrl
                   : (drinkingPotion ? drinkPotionUrl : (guardingHero ? guardTonicUrl : heroUrl))}
                 active
-                loop={!reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
-                frameCount={reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
-                durationMs={reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 1800)))}
-                trigger={reactingToHit ? playerHitTrigger : throwingFireBomb
+                loop={!swingingSword && !reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
+                frameCount={swingingSword ? 13 : reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
+                durationMs={swingingSword ? HERO_SWORD_ANIMATION_DURATION_MS / Math.max(1, speed) : reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 1800)))}
+                trigger={swingingSword ? playerAttackTrigger : reactingToHit ? playerHitTrigger : throwingFireBomb
                   ? playerFireBombTrigger
                   : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}
                 alt="Hero"
                 className="combat-actor__sprite drop-shadow-xl"
-                onAnimationEnd={reactingToHit ? finishHeroHit : throwingFireBomb
+                onAnimationEnd={swingingSword ? finishHeroAttack : reactingToHit ? finishHeroHit : throwingFireBomb
                   ? finishHeroFireBomb
                   : (drinkingPotion ? finishHeroDrink : (guardingHero ? finishHeroGuard : undefined))}
               />
             </div>
-            {playerAttackTrigger > 0 && <span className="sword-arc" key={`arc-${playerAttackTrigger}`} aria-hidden="true" />}
             {damagePopups.filter(popup => popup.target === 'hero').map(popup => (
               <span className="damage-popup damage-popup--hero" key={popup.id}>-{popup.amount}</span>
             ))}
