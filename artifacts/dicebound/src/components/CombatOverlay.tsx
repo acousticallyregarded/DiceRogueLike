@@ -1,4 +1,5 @@
-import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getHeroDeathDurationMs, BARD_SLEEP_SUCCESS_CHANCE } from '../engine';
+import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
+import { BardSpellHelp } from './BardSpellHelp';
 import {
   formatDamageType,
   getBestiaryEntry,
@@ -559,7 +560,7 @@ export function CombatOverlay({
         <AttackStyleSelector run={run} dispatch={dispatch} compact disabled={!canInput} />
 
         {!run.playerCombat?.pendingHeroAttack && run.bardSpellFeedback && (
-          <div role="status" className="rounded-xl border-2 border-indigo-300 bg-indigo-950 px-3 py-1 text-center text-[11px] font-bold text-white">
+          <div role="status" className="whitespace-pre-line rounded-xl border-2 border-indigo-300 bg-indigo-950 px-3 py-1 text-center text-[10px] font-bold text-white">
             {run.bardSpellFeedback}
           </div>
         )}
@@ -598,6 +599,17 @@ export function CombatOverlay({
             >
               Close
             </button>
+          </div>
+          <div className="mt-2 rounded-lg bg-indigo-50 p-2 text-[10px] font-bold text-indigo-950">
+            Wisdom save: {getEnemyWisdomSaveBonus(inspectedEnemy) >= 0 ? '+' : ''}{getEnemyWisdomSaveBonus(inspectedEnemy)}
+            <p className="font-medium">
+              {getEnemyWisdomSaveBonus(inspectedEnemy) < 0
+                ? 'Weak mental defenses: a good target for Sleep or Cutting Words.'
+                : getEnemyWisdomSaveBonus(inspectedEnemy) >= 2
+                  ? 'Strong mental defenses: more likely to resist Sleep and Cutting Words.'
+                  : 'Moderate mental defenses. Saving throws can resist control spells.'}
+            </p>
+            {inspectedEntry?.conditionImmunities?.includes('sleep') && <p>Immune to Sleep.</p>}
           </div>
           {inspectedEntry ? (
             <>
@@ -802,6 +814,11 @@ export function CombatOverlay({
                     Asleep · {enemy.sleepTurns} {enemy.sleepTurns === 1 ? 'turn' : 'turns'} left
                   </div>
                 )}
+                {!isDying && enemy.attackDisadvantage && (
+                  <div role="status" className="mt-1 rounded-full border border-fuchsia-200 bg-fuchsia-950 px-2 py-0.5 text-[9px] font-bold text-white">
+                    Next attack: disadvantage
+                  </div>
+                )}
               </div>
             );
           })}
@@ -877,12 +894,15 @@ export function CombatOverlay({
 
       {run.phase === 'combat' && run.characterId === 'alan-a-dale' && (
         <div className="relative z-40 px-3 pt-2">
-          <div className="mb-1 text-center text-[10px] font-bold text-white">Bard spells · cast on selected target</div>
+          <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold text-white">
+            <span>Bard spells · DC {getBardSpellDC(run)}</span>
+            <BardSpellHelp dc={getBardSpellDC(run)} armorClass={getPlayerArmorClass(run)} />
+          </div>
           <div className="grid grid-cols-3 gap-1.5">
             {([
-              { move: 'sleep', label: 'Sleep', hint: `${BARD_SLEEP_SUCCESS_CHANCE * 100}% chance · 2 turns`, title: `${BARD_SLEEP_SUCCESS_CHANCE * 100}% chance to make the target miss its next two turns.` },
-              { move: 'cutting_words', label: 'Cutting Words', hint: 'Psychic damage', title: 'Deal psychic damage with a cutting remark.' },
-              { move: 'electric', label: 'Electric', hint: 'Lightning damage', title: 'Strike with an electric guitar attack.' },
+              { move: 'sleep', label: 'Sleep', hint: 'Wis save · 2 turns', title: 'Failed Wisdom save: asleep for two turns. Any damage wakes the target.' },
+              { move: 'cutting_words', label: 'Cutting Words', hint: 'Wis save · weaken', title: 'Failed Wisdom save: lighter psychic damage and disadvantage on the next attack.' },
+              { move: 'electric', label: 'Electric', hint: 'Reliable lightning', title: 'Full-strength lightning damage with no saving throw. Damage traits still apply.' },
             ] as const).map(spell => (
               <button key={spell.move} type="button"
                 disabled={!canInput || !selectedEnemy}
@@ -925,6 +945,11 @@ export function CombatOverlay({
       {run.phase === 'combat' && selectedEnemy && (
         <div className="relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white">
           Target: <span className="text-amber-300">{selectedEnemy.name}</span>
+          {run.characterId === 'alan-a-dale' && (
+            <span className="ml-1 text-indigo-100">
+              · Wis {getEnemyWisdomSaveBonus(selectedEnemy) >= 0 ? '+' : ''}{getEnemyWisdomSaveBonus(selectedEnemy)}
+            </span>
+          )}
           {livingEnemies.length > 1 && <span className="ml-1 text-white/80">— tap an enemy to change</span>}
         </div>
       )}

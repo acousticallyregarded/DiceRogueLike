@@ -6,6 +6,8 @@ import {
   getAttackStylesForCharacter,
   getBestiaryEntry,
   getDamageModifier,
+  getEnemyAttackBonus,
+  getEnemyWisdomSaveBonus,
   isAttackStyle,
   isDamageType,
   speciesKeyForName,
@@ -20,6 +22,7 @@ import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
 
 export { CHARACTERS, getCharacter };
 export { JOHN_ATTACK_DURATIONS };
+export { getEnemyAttackBonus, getEnemyWisdomSaveBonus };
 export type { CharacterId } from "./characters";
 
 function uuid() {
@@ -72,6 +75,10 @@ export interface EnemyState {
   damageType?: DamageType;
   /** Number of enemy responses this target still sleeps through (0..2). */
   sleepTurns?: number;
+  /** Reserved for any authored stun effect; stunned responses are skipped. */
+  stunned?: boolean;
+  /** Cutting Words is consumed by the next actual response attempt. */
+  attackDisadvantage?: boolean;
   boss?: boolean;
   lastBossAttack?: "sword" | "fireball";
 }
@@ -243,7 +250,25 @@ export const HERO_SWORD_ANIMATION_DURATION_MS = 2600;
 export const DEFAULT_ENEMY_RESPONSE_DELAY_MS = HERO_SWORD_ANIMATION_DURATION_MS;
 export const DICE_ROLL_ANIMATION_DURATION_MS = 800;
 export const BOSS_AWAKENING_DURATION_MS = 2200;
-export const BARD_SLEEP_SUCCESS_CHANCE = 0.7;
+/**
+ * Alan-a-Dale's spell DC is intentionally a lightweight surrogate for the
+ * missing six-stat character sheet: 8 + level-based proficiency (2..6) + a
+ * fixed +3 Charisma surrogate. Level 1 therefore starts at DC 13.
+ */
+export function getBardSpellDC(run: Pick<RunState, "level">): number {
+  const level = Number.isFinite(run.level) ? Math.max(1, Math.floor(run.level)) : 1;
+  const proficiency = Math.min(6, 2 + Math.floor((level - 1) / 4));
+  return 8 + proficiency + 3;
+}
+
+/**
+ * Player AC is the compact 5e-inspired portion of the combat hybrid:
+ * unarmored 10 plus the run's defense. Guard still reduces damage separately;
+ * it does not change this accuracy check.
+ */
+export function getPlayerArmorClass(run: Pick<RunState, "defense">): number {
+  return 10 + (Number.isFinite(run.defense) ? run.defense : 0);
+}
 
 type AttackTimingRun = Pick<RunState, "combatTurn" | "phase" | "playerCombat">
   & Partial<Pick<RunState, "selectedDamageType" | "skills" | "characterId">>
@@ -834,6 +859,8 @@ function migrateEnemy(enemy: any): EnemyState {
     attackTimer: typeof enemy?.attackTimer === "number" ? enemy.attackTimer : 0,
     damageType: isDamageType(enemy?.damageType) ? enemy.damageType : DEFAULT_DAMAGE_TYPE,
     poisonTimerMs: typeof enemy?.poisonTimerMs === "number" ? enemy.poisonTimerMs : 0,
+    stunned: enemy?.stunned === true,
+    attackDisadvantage: enemy?.attackDisadvantage === true,
   };
   if (hasSleepTurns) migrated.sleepTurns = sleepTurns;
   else delete migrated.sleepTurns;
@@ -1187,6 +1214,24 @@ function setCombatFeedback(
   };
 }
 
+/**
+ * Damage is the wake trigger for Sleep. This is deliberately called only
+ * after a positive post-defense/trait amount is known, so immunity (0 damage)
+ * cannot wake a sleeper. The combat model is otherwise intentionally a
+ * lightweight 5e-inspired hybrid rather than a full condition system.
+ */
+function wakeSleepingEnemyAfterDamage(
+  r: RunState,
+  enemy: EnemyState,
+  amount: number,
+) {
+  if (amount <= 0 || enemy.hp <= 0 || !(enemy.sleepTurns && enemy.sleepTurns > 0)) {
+    return;
+  }
+  enemy.sleepTurns = 0;
+  logMessage(r, `${enemy.name} wakes after taking damage.`);
+}
+
 function getEquippedStats(meta: MetaState) {
   let attack = 0, defense = 0, speed = 0, maxHp = 0;
   Object.values(meta.equipped).forEach(id => {
@@ -1269,9 +1314,11 @@ function finishVictory(
   r.victoryReport = report;
 }
 
-function applyPoisonTicks(r: RunState) {
+function applyPoisonTicks(r: RunState): Set<string> {
+  const damagedSleepingEnemies = new Set<string>();
   for (const enemy of r.enemies) {
     if (enemy.hp <= 0 || !enemy.poisoned) continue;
+    const wasSleeping = Boolean(enemy.sleepTurns && enemy.sleepTurns > 0);
     // Poison is deliberately turn based. Legacy elapsed-time poison fields
     // are ignored and reset so loading an old battle cannot deal catch-up
     // damage.
@@ -1281,11 +1328,14 @@ function applyPoisonTicks(r: RunState) {
     setCombatFeedback(r, poison, enemy.name);
     if (poison.amount > 0) {
       logMessage(r, `Poison deals ${poison.amount} damage to ${enemy.name}.`);
+      wakeSleepingEnemyAfterDamage(r, enemy, poison.amount);
+      if (wasSleeping && enemy.hp > 0) damagedSleepingEnemies.add(enemy.id);
     } else if (poison.kind === "immune") {
       logMessage(r, `${enemy.name} is immune to poison.`);
     }
   }
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
+  return damagedSleepingEnemies;
 }
 
 function activeStyle(r: RunState) {
@@ -1308,6 +1358,24 @@ function bardAttackStyle(kind: BardAttackKind): AttackStyle {
 function isSleepImmune(enemy: EnemyState): boolean {
   const entry = getBestiaryEntry(enemySpecies(enemy));
   return Boolean(entry?.conditionImmunities?.includes("sleep"));
+}
+
+function rollD20(): number {
+  return Math.floor(Math.random() * 20) + 1;
+}
+
+function signedBonus(value: number): string {
+  return value >= 0 ? `+${value}` : `${value}`;
+}
+
+function wisdomSaveFeedback(
+  roll: number,
+  bonus: number,
+  total: number,
+  dc: number,
+  succeeds: boolean,
+): string {
+  return `Wisdom save: d20 ${roll} + (${signedBonus(bonus)}) = ${total} vs DC ${dc} — ${succeeds ? "succeeds" : "fails"}.`;
 }
 
 function beginEnemyTurn(r: RunState) {
@@ -1355,6 +1423,7 @@ function applyPlayerAttackHit(
   const finalResolution = { ...resolution, amount: Math.floor(damage) };
   setCombatFeedback(r, finalResolution, target.name);
   logMessage(r, feedbackMessage(finalResolution, target.name));
+  wakeSleepingEnemyAfterDamage(r, target, finalResolution.amount);
 
   if (r.skills.some(skill => skill.type === "poison") && target.hp > 0) {
     target.poisoned = true;
@@ -1533,11 +1602,13 @@ function finishHeroAttack(s: GameStateV4) {
   // Clear the durable commit before doing any outcome work. This makes the
   // action idempotent even if a presenter dispatches the finish twice.
   delete pc.pendingHeroAttack;
-  // Sleep's save is rolled exactly once when the authored impact finishes.
-  // Keep this before poison feedback IDs so a pre-existing poison cannot
-  // consume or reorder the spell's outcome roll.
-  const sleepRoll = pending.kind === "bard_sleep" ? Math.random() : undefined;
-  applyPoisonTicks(r);
+  // Bard saving throws are rolled exactly once when the authored impact
+  // finishes. Keep this before poison feedback IDs so a pre-existing poison
+  // cannot consume or reorder the spell's outcome roll.
+  const bardSaveRoll = pending.kind === "bard_sleep" || pending.kind === "bard_cutting_words"
+    ? rollD20()
+    : undefined;
+  const damagedSleepingEnemies = applyPoisonTicks(r);
 
   const target = r.enemies.find(enemy => enemy.id === pending.targetId && enemy.hp > 0);
 
@@ -1545,22 +1616,66 @@ function finishHeroAttack(s: GameStateV4) {
   // attack never retargets, including for Hold My Beer.
   if (style && target) {
     if (pending.kind === "bard_sleep") {
-      // Sleep has no HP impact and never consumes vampire healing. Its one
-      // random outcome is intentionally decided at impact, not at cast time.
-      const sleepSucceeded = sleepRoll! < BARD_SLEEP_SUCCESS_CHANCE && !isSleepImmune(target);
-      const sleepMessage = sleepSucceeded
+      // Sleep has no HP impact and never consumes vampire healing. Its
+      // Wisdom save is intentionally decided at impact, not at cast time.
+      const dc = getBardSpellDC(r);
+      const bonus = getEnemyWisdomSaveBonus(target);
+      const total = bardSaveRoll! + bonus;
+      const saved = total >= dc;
+      const sleepSucceeded = !saved && !isSleepImmune(target);
+      const poisonWokeTarget = damagedSleepingEnemies.has(target.id);
+      const sleepApplied = sleepSucceeded && !poisonWokeTarget;
+      const saveMessage = wisdomSaveFeedback(bardSaveRoll!, bonus, total, dc, saved);
+      const sleepMessage = sleepApplied
         ? `${target.name} falls asleep for 2 enemy responses.`
-        : `${target.name} resists Sleep.`;
-      if (sleepSucceeded) target.sleepTurns = 2;
-      r.bardSpellFeedback = sleepMessage;
-      logMessage(r, sleepMessage);
+        : poisonWokeTarget
+          ? `${target.name} wakes after poison damage and remains awake.`
+          : `${target.name} resists Sleep.`;
+      if (sleepApplied) target.sleepTurns = 2;
+      r.bardSpellFeedback = `${saveMessage} ${sleepMessage}`;
+      logMessage(r, r.bardSpellFeedback);
       setCombatFeedback(r, {
         amount: 0,
         afterDefense: 0,
-        kind: sleepSucceeded ? "normal" : "resisted",
+        kind: sleepApplied ? "normal" : "resisted",
         damageType: "psychic",
       }, target.name);
-      if (r.combatFeedback) r.combatFeedback.message = sleepMessage;
+      if (r.combatFeedback) r.combatFeedback.message = r.bardSpellFeedback;
+    } else if (pending.kind === "bard_cutting_words") {
+      const dc = getBardSpellDC(r);
+      const bonus = getEnemyWisdomSaveBonus(target);
+      const total = bardSaveRoll! + bonus;
+      const saved = total >= dc;
+      const saveMessage = wisdomSaveFeedback(bardSaveRoll!, bonus, total, dc, saved);
+      let cuttingWordsMessage = `${saveMessage} ${target.name} resists Cutting Words.`;
+      if (!saved) {
+        target.attackDisadvantage = true;
+        // Cutting Words deliberately uses only half the normal base attack
+        // (rounded up, minimum one) before the ordinary defense/trait
+        // pipeline. It does not inherit outgoing-damage skill multipliers.
+        const baseDamage = Math.max(1, Math.ceil(r.attack / 2));
+        const resolution = calculateDamage(
+          baseDamage,
+          target.defense,
+          enemySpecies(target),
+          "psychic",
+          true,
+        );
+        target.hp = Math.max(0, target.hp - resolution.amount);
+        wakeSleepingEnemyAfterDamage(r, target, resolution.amount);
+        setCombatFeedback(r, resolution, target.name);
+        cuttingWordsMessage = `${saveMessage} Cutting Words hits ${target.name} for ${resolution.amount} psychic damage; its next attack has disadvantage.`;
+      } else {
+        setCombatFeedback(r, {
+          amount: 0,
+          afterDefense: 0,
+          kind: "normal",
+          damageType: "psychic",
+        }, target.name);
+      }
+      r.bardSpellFeedback = cuttingWordsMessage;
+      logMessage(r, cuttingWordsMessage);
+      if (r.combatFeedback) r.combatFeedback.message = cuttingWordsMessage;
     } else {
       for (let punch = 0; punch < (pending.kind === "hold_my_beer" ? 2 : 1) && target.hp > 0; punch++) {
         applyPlayerAttackHit(
@@ -1645,6 +1760,7 @@ function resolveFireBomb(r: RunState) {
     );
     enemy.hp = Math.max(0, enemy.hp - resolution.amount);
     setCombatFeedback(r, resolution, enemy.name);
+    wakeSleepingEnemyAfterDamage(r, enemy, resolution.amount);
     logMessage(r, `Fire Bomb: ${feedbackMessage(resolution, enemy.name)}`);
   }
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
@@ -1690,6 +1806,7 @@ function resolveEnemyTurn(s: GameStateV4) {
   let playerDefense = r.defense;
   if (r.skills.some(skill => skill.type === "defense_boost")) playerDefense *= 1.2;
   const guardMultiplier = r.guardActive ? 0.5 : 1;
+  const playerArmorClass = getPlayerArmorClass(r);
 
   // Iterate the living roster once. A counter can kill a later enemy, in
   // which case that enemy is no longer living and does not retaliate.
@@ -1707,15 +1824,46 @@ function resolveEnemyTurn(s: GameStateV4) {
       }
       continue;
     }
+    if (enemy.stunned) {
+      logMessage(r, `${enemy.name} is stunned and skips this response.`);
+      continue;
+    }
     if (enemy.boss) {
       enemy.lastBossAttack = enemy.lastBossAttack === "sword" ? "fireball" : "sword";
       enemy.damageType = enemy.lastBossAttack === "fireball" ? "fire" : "slashing";
     }
-    let damage = Math.max(1, Math.floor(enemy.attack - playerDefense));
-    damage = Math.floor(damage * guardMultiplier);
-    r.hp = Math.max(0, r.hp - damage);
     r.playerCombat.enemyAttackSequence = (r.playerCombat.enemyAttackSequence ?? 0) + 1;
-    logMessage(r, `${enemy.name}${enemy.boss ? enemy.lastBossAttack === "fireball" ? " casts a fireball" : " strikes with his sword" : " hits you"} for ${damage} ${enemy.damageType ?? "slashing"} damage.`);
+    const disadvantaged = enemy.attackDisadvantage === true;
+    let attackHit = true;
+    let disadvantageMessage: string | undefined;
+    if (disadvantaged) {
+      const firstDie = rollD20();
+      const secondDie = rollD20();
+      const keptDie = Math.min(firstDie, secondDie);
+      const attackBonus = getEnemyAttackBonus(enemy);
+      const attackTotal = keptDie + attackBonus;
+      // A natural 1 always misses and a natural 20 always hits for this
+      // accuracy check. Normal enemy responses remain reliable by design.
+      attackHit = keptDie !== 1 && (keptDie === 20 || attackTotal >= playerArmorClass);
+      disadvantageMessage = `${enemy.name} attacks with disadvantage: d20s ${firstDie}, ${secondDie} (keep ${keptDie}) + ${attackBonus} = ${attackTotal} vs AC ${playerArmorClass} — ${attackHit ? "hit" : "miss"}.`;
+      // Consume only an actual attempt. Sleeping/skipped responses return
+      // above before this marker is read, so they do not spend disadvantage.
+      enemy.attackDisadvantage = false;
+      r.bardSpellFeedback = r.bardSpellFeedback
+        ? `${r.bardSpellFeedback}\n${disadvantageMessage}`
+        : disadvantageMessage;
+      logMessage(r, disadvantageMessage);
+    }
+    let damage = 0;
+    if (attackHit) {
+      damage = Math.max(1, Math.floor(enemy.attack - playerDefense));
+      damage = Math.floor(damage * guardMultiplier);
+      r.hp = Math.max(0, r.hp - damage);
+      logMessage(r, `${enemy.name}${enemy.boss ? enemy.lastBossAttack === "fireball" ? " casts a fireball" : " strikes with his sword" : " hits you"} for ${damage} ${enemy.damageType ?? "slashing"} damage.`);
+    } else if (!disadvantaged) {
+      // This branch is defensive only; ordinary responses are always hits.
+      logMessage(r, `${enemy.name} misses.`);
+    }
 
     if (r.hp <= 0) break;
 
@@ -1731,6 +1879,7 @@ function resolveEnemyTurn(s: GameStateV4) {
         ? { ...counter, amount: counter.amount + getCombatSpeedBonus(r.speed) }
         : counter;
       enemy.hp = Math.max(0, enemy.hp - counterResolution.amount);
+      wakeSleepingEnemyAfterDamage(r, enemy, counterResolution.amount);
       setCombatFeedback(r, counterResolution, enemy.name);
       logMessage(r, `You counter ${enemy.name}: ${feedbackMessage(counterResolution, enemy.name)}`);
     }

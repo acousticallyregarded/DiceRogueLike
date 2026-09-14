@@ -34,6 +34,18 @@ export type MonsterSpeciesKey =
 export type MonsterArtKey = "wolf" | "goblin" | "skeleton" | "slime" | "boss";
 export type ConditionType = "sleep";
 
+/**
+ * The combat engine only needs a compact enemy reference for the few
+ * 5e-inspired checks it performs. Keeping this shape independent from
+ * EnemyState avoids a circular engine/bestiary dependency and lets helpers
+ * remain useful to presenters and save-migration code.
+ */
+export interface EnemyReference {
+  speciesKey?: unknown;
+  name?: unknown;
+  boss?: unknown;
+}
+
 export interface DamageTrait {
   damageType: DamageType;
   /**
@@ -244,6 +256,56 @@ export function speciesKeyForName(name: unknown): MonsterSpeciesKey | undefined 
   if (normalized.includes("ogre") || normalized.includes("orc warlord")) return "ogre";
   if (normalized.includes("mummy")) return "mummy";
   return undefined;
+}
+
+const WISDOM_SAVE_BONUSES: Record<MonsterSpeciesKey, number> = {
+  wolf: 1,
+  goblin: -1,
+  skeleton: -1,
+  ochre_jelly: -2,
+  ogre: -2,
+  winter_wolf: 1,
+  mummy: 2,
+};
+
+/**
+ * Return the stable, deliberately small Wisdom-save bonus used by Bard
+ * abilities. This is a lightweight 5e-inspired hybrid rather than a full
+ * creature-stat-block implementation. Unknown non-boss creatures are neutral;
+ * an unidentified explicit boss gets the compact +2 fallback.
+ */
+export function getEnemyWisdomSaveBonus(enemy: EnemyReference): number {
+  const directKey = typeof enemy?.speciesKey === "string"
+    && Object.prototype.hasOwnProperty.call(BESTIARY, enemy.speciesKey)
+    ? enemy.speciesKey as MonsterSpeciesKey
+    : undefined;
+  const key = directKey ?? speciesKeyForName(enemy?.name ?? enemy?.speciesKey);
+  if (key) return WISDOM_SAVE_BONUSES[key];
+  return enemy?.boss === true ? 2 : 0;
+}
+
+const ENEMY_ATTACK_BONUSES: Record<MonsterSpeciesKey, number> = {
+  wolf: 5,
+  goblin: 4,
+  skeleton: 4,
+  ochre_jelly: 2,
+  ogre: 6,
+  winter_wolf: 5,
+  mummy: 5,
+};
+
+/**
+ * Return the compact attack bonus used only when Cutting Words imposes
+ * disadvantage. Ordinary enemy responses intentionally retain Dicebound's
+ * reliable damage model and do not use attack rolls.
+ */
+export function getEnemyAttackBonus(enemy: EnemyReference): number {
+  const directKey = typeof enemy?.speciesKey === "string"
+    && Object.prototype.hasOwnProperty.call(BESTIARY, enemy.speciesKey)
+    ? enemy.speciesKey as MonsterSpeciesKey
+    : undefined;
+  const key = directKey ?? speciesKeyForName(enemy?.name ?? enemy?.speciesKey);
+  return key ? ENEMY_ATTACK_BONUSES[key] : 3;
 }
 
 export function getBestiaryEntry(speciesKey: unknown): BestiaryEntry | undefined {

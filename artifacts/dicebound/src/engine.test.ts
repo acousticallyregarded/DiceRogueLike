@@ -6,6 +6,10 @@ import {
   NORMAL_ROSTER,
   ELITE_ROSTER,
   getCombatSpeedBonus,
+  getBardSpellDC,
+  getEnemyAttackBonus,
+  getEnemyWisdomSaveBonus,
+  getPlayerArmorClass,
   getPlayerAttackDurationMs,
   getPendingHeroAttackDurationMs,
   getEnemyResponseDelayMs,
@@ -36,29 +40,38 @@ import { BARD_DURATIONS } from "./bard-moves.js";
 import { JOHN_ATTACK_DURATIONS } from "./john-moves.js";
 import { UNC_ACTION_DURATIONS } from "./unc-moves.js";
 
+const authenticRandom = Math.random;
+
 function combatState(enemy: EnemyState, skills: Skill[] = []) {
-  let state = createInitialState();
-  state = act(state, { type: "START_RUN" });
-  state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
-  const run = state.run!;
-  run.attack = 10;
-  run.speed = 0;
-  run.hp = 50;
-  run.skills = skills;
-  run.enemies = [enemy];
-  run.phase = "combat";
-  run.isBossCombat = false;
-  run.combatTurn = "player";
-  run.playerCombat = {
-    attackTimer: 0,
-    roundCounter: 0,
-    heroAttackSequence: 0,
-    heroConsumableSequence: 0,
-    pendingFireBomb: false,
-    enemyAttackSequence: 0,
-    takedownUsed: false,
-  };
-  return state;
+  // Setup UUIDs should not consume a deterministic combat-roll sequence.
+  const selectedRandom = Math.random;
+  Math.random = authenticRandom;
+  try {
+    let state = createInitialState();
+    state = act(state, { type: "START_RUN" });
+    state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
+    const run = state.run!;
+    run.attack = 10;
+    run.speed = 0;
+    run.hp = 50;
+    run.skills = skills;
+    run.enemies = [enemy];
+    run.phase = "combat";
+    run.isBossCombat = false;
+    run.combatTurn = "player";
+    run.playerCombat = {
+      attackTimer: 0,
+      roundCounter: 0,
+      heroAttackSequence: 0,
+      heroConsumableSequence: 0,
+      pendingFireBomb: false,
+      enemyAttackSequence: 0,
+      takedownUsed: false,
+    };
+    return state;
+  } finally {
+    Math.random = selectedRandom;
+  }
 }
 
 function startedRun() {
@@ -426,6 +439,26 @@ function runAssertions() {
   assert.equal(calculateDamage(13, 1, "ochre_jelly", "lightning").amount, 0);
   assert.equal(calculateDamage(10, 0, "mummy", "slashing").amount, 5);
   assert.equal(calculateDamage(10, 0, "mummy", "fire").amount, 20);
+  // Bard's first-pass spell math is intentionally compact: no six-stat sheet,
+  // a fixed +3 Charisma surrogate, and standard level bands for proficiency.
+  assert.equal(getBardSpellDC({ level: 1 }), 13);
+  assert.equal(getBardSpellDC({ level: 5 }), 14);
+  assert.equal(getBardSpellDC({ level: 9 }), 15);
+  assert.equal(getBardSpellDC({ level: 13 }), 16);
+  assert.equal(getBardSpellDC({ level: 17 }), 17);
+  assert.equal(getBardSpellDC({ level: 99 }), 17);
+  assert.equal(getPlayerArmorClass({ defense: 4 }), 14);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "wolf" }), 1);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "goblin" }), -1);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "skeleton" }), -1);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "ochre_jelly" }), -2);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "ogre" }), -2);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "winter_wolf" }), 1);
+  assert.equal(getEnemyWisdomSaveBonus({ speciesKey: "mummy" }), 2);
+  assert.equal(getEnemyWisdomSaveBonus({ name: "Unknown Monster" }), 0);
+  assert.equal(getEnemyWisdomSaveBonus({ name: "The Unknown King", boss: true }), 2);
+  assert.equal(getEnemyAttackBonus({ speciesKey: "wolf" }), 5);
+  assert.equal(getEnemyAttackBonus({ name: "Unknown Monster" }), 3);
 
   // Save migration defaults the selected stance and only infers known names.
   let saved = startedRun();
@@ -1243,6 +1276,7 @@ function runAssertions() {
   };
   const originalBardRandom = Math.random;
   try {
+    // Wolf +1 Wisdom save: d20 1 fails DC 13, so Sleep takes effect.
     Math.random = () => 0;
     let bard = combatState(bardEnemy);
     bard.run!.characterId = "alan-a-dale";
@@ -1260,8 +1294,8 @@ function runAssertions() {
     assert.match(bard.run!.bardSpellFeedback!, /falls asleep/);
     assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 0);
 
-    // One response is skipped, then the committed sleep state survives a
-    // reload for the second skip. The third response is an actual attack.
+    // One response is skipped. A positive player hit wakes the sleeper before
+    // the next response, so that response can attack immediately.
     bard = act(bard, { type: "RESOLVE_ENEMY_TURN" });
     assert.equal(bard.run!.enemies[0].sleepTurns, 1);
     assert.equal(bard.run!.hp, 50);
@@ -1270,16 +1304,16 @@ function runAssertions() {
     bard = commitHeroAttack(bard, { type: "PLAYER_ATTACK", targetId: bardEnemy.id });
     bard = act(bard, { type: "RESOLVE_ENEMY_TURN" });
     assert.equal(bard.run!.enemies[0].sleepTurns, 0);
-    assert.equal(bard.run!.hp, 50);
-    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 0);
+    assert.equal(bard.run!.hp, 42);
+    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 1);
     bard = commitHeroAttack(bard, { type: "PLAYER_ATTACK", targetId: bardEnemy.id });
     bard = act(bard, { type: "RESOLVE_ENEMY_TURN" });
     assert.equal(bard.run!.enemies[0].sleepTurns, 0);
-    assert.equal(bard.run!.hp, 42, "third response deals 10 attack minus 2 defense");
-    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 1);
+    assert.equal(bard.run!.hp, 34, "woken response deals 10 attack minus 2 defense");
+    assert.equal(bard.run!.playerCombat!.enemyAttackSequence, 2);
     assert.ok(bard.run!.log.some(entry => entry.msg.includes("wakes")));
 
-    // Sleep refreshes an existing countdown, while a failed save never adds
+    // Sleep refreshes an existing countdown, while a successful save never adds
     // status or HP changes.
     let refreshed = combatState({ ...bardEnemy, id: "bard-refresh" });
     refreshed.run!.characterId = "alan-a-dale";
@@ -1288,6 +1322,7 @@ function runAssertions() {
     refreshed = act(refreshed, { type: "FINISH_HERO_ATTACK" });
     assert.equal(refreshed.run!.enemies[0].sleepTurns, 2);
 
+    // d20 20 + Wolf's +1 = 21 succeeds: the enemy resists Sleep.
     Math.random = () => 0.99;
     let resisted = combatState({ ...bardEnemy, id: "bard-resisted" });
     resisted.run!.characterId = "alan-a-dale";
@@ -1297,8 +1332,9 @@ function runAssertions() {
     assert.equal(resisted.run!.enemies[0].hp, 100);
     assert.match(resisted.run!.bardSpellFeedback!, /resists/);
 
-    // Cutting Words is neutral psychic damage; Electric uses lightning and
-    // the long guitar sheet. Neither action needs an unlocked skill.
+    // Cutting Words now uses a Wisdom save and, on a failed save, deals half
+    // base attack psychic damage while marking the next enemy attack.
+    Math.random = () => 0;
     let bardSpells = combatState({ ...bardEnemy, id: "bard-spells" });
     bardSpells.run!.characterId = "alan-a-dale";
     bardSpells.run!.skills = [];
@@ -1306,8 +1342,15 @@ function runAssertions() {
     assert.equal(bardSpells.run!.playerCombat!.pendingHeroAttack!.damageType, "psychic");
     assert.equal(getPendingHeroAttackDurationMs(bardSpells.run!), BARD_DURATIONS.magic);
     bardSpells = act(bardSpells, { type: "FINISH_HERO_ATTACK" });
-    assert.equal(bardSpells.run!.enemies[0].hp, 90);
+    assert.equal(bardSpells.run!.enemies[0].hp, 95);
+    assert.equal(bardSpells.run!.enemies[0].attackDisadvantage, true);
+    assert.match(bardSpells.run!.bardSpellFeedback!, /Wisdom save:/);
+    assert.match(bardSpells.run!.bardSpellFeedback!, /disadvantage/);
     bardSpells = act(bardSpells, { type: "RESOLVE_ENEMY_TURN" });
+    assert.equal(bardSpells.run!.enemies[0].attackDisadvantage, false);
+    assert.match(bardSpells.run!.bardSpellFeedback!, /d20s .* AC .* — miss/);
+    assert.equal(bardSpells.run!.hp, 50);
+    // Electric remains a reliable full-base lightning hit.
     bardSpells = act(bardSpells, { type: "BARD_ATTACK", move: "electric", targetId: "bard-spells" });
     assert.equal(bardSpells.run!.playerCombat!.pendingHeroAttack!.damageType, "lightning");
     assert.equal(getPendingHeroAttackDurationMs(bardSpells.run!), BARD_DURATIONS.electric);
@@ -1348,5 +1391,318 @@ function runAssertions() {
   }
 }
 
+function withRandomSequence<T>(values: number[], callback: () => T): T {
+  const original = Math.random;
+  let index = 0;
+  Math.random = () => values[index++] ?? values[values.length - 1] ?? 0;
+  try {
+    return callback();
+  } finally {
+    Math.random = original;
+  }
+}
+
+function bardCombatState(enemy: EnemyState): GameStateV4 {
+  const state = combatState(enemy);
+  state.run!.characterId = "alan-a-dale";
+  state.run!.skills = [];
+  return state;
+}
+
+function runFocusedCombatAssertions() {
+  // Save equality is a success, including for a negative species bonus.
+  const equalWolfSave = withRandomSequence([0.55], () => {
+    let state = bardCombatState({
+      id: "equal-wolf",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 0,
+      defense: 0,
+      speed: 0,
+    });
+    state = act(state, { type: "BARD_ATTACK", move: "sleep", targetId: "equal-wolf" });
+    return act(state, { type: "FINISH_HERO_ATTACK" });
+  });
+  assert.equal(equalWolfSave.run!.enemies[0].sleepTurns, undefined);
+  assert.match(equalWolfSave.run!.bardSpellFeedback!, /resists Sleep/);
+  assert.match(equalWolfSave.run!.bardSpellFeedback!, /d20 12 \+ \(\+1\) = 13 vs DC 13 — succeeds/);
+
+  const equalGoblinSave = withRandomSequence([0.65], () => {
+    let state = bardCombatState({
+      id: "equal-goblin",
+      name: "Goblin",
+      speciesKey: "goblin",
+      hp: 100,
+      maxHp: 100,
+      attack: 0,
+      defense: 0,
+      speed: 0,
+    });
+    state = act(state, { type: "BARD_ATTACK", move: "sleep", targetId: "equal-goblin" });
+    return act(state, { type: "FINISH_HERO_ATTACK" });
+  });
+  assert.equal(equalGoblinSave.run!.enemies[0].sleepTurns, undefined);
+  assert.match(equalGoblinSave.run!.bardSpellFeedback!, /resists Sleep/);
+  assert.match(equalGoblinSave.run!.bardSpellFeedback!, /d20 14 \+ \(-1\) = 13 vs DC 13 — succeeds/);
+
+  // A save is pending with the authored impact: neither damage nor CW status
+  // appears early, and a failed save uses ceil(half base attack) before
+  // defenses.
+  const cuttingPending = withRandomSequence([0], () => {
+    let state = bardCombatState({
+      id: "cutting-pending",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 0,
+      defense: 0,
+      speed: 0,
+    });
+    state.run!.attack = 11;
+    state = act(state, { type: "BARD_ATTACK", move: "cutting_words", targetId: "cutting-pending" });
+    assert.equal(state.run!.enemies[0].hp, 100);
+    assert.equal(state.run!.enemies[0].attackDisadvantage, undefined);
+    return act(state, { type: "FINISH_HERO_ATTACK" });
+  });
+  assert.equal(cuttingPending.run!.enemies[0].hp, 94);
+  assert.equal(cuttingPending.run!.enemies[0].attackDisadvantage, true);
+
+  const cuttingWake = withRandomSequence([0], () => {
+    let state = bardCombatState({
+      id: "cutting-wake",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 0,
+      defense: 0,
+      speed: 0,
+      sleepTurns: 2,
+    });
+    state = act(state, { type: "BARD_ATTACK", move: "cutting_words", targetId: "cutting-wake" });
+    return act(state, { type: "FINISH_HERO_ATTACK" });
+  });
+  assert.equal(cuttingWake.run!.enemies[0].hp, 95);
+  assert.equal(cuttingWake.run!.enemies[0].sleepTurns, 0);
+
+  // A successful CW save is zero damage and does not add disadvantage.
+  const cuttingPassed = withRandomSequence([0.99], () => {
+    let state = bardCombatState({
+      id: "cutting-passed",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 0,
+      defense: 0,
+      speed: 0,
+    });
+    state.run!.attack = 11;
+    state = act(state, { type: "BARD_ATTACK", move: "cutting_words", targetId: "cutting-passed" });
+    return act(state, { type: "FINISH_HERO_ATTACK" });
+  });
+  assert.equal(cuttingPassed.run!.enemies[0].hp, 100);
+  assert.equal(cuttingPassed.run!.enemies[0].attackDisadvantage, undefined);
+  assert.match(cuttingPassed.run!.bardSpellFeedback!, /resists Cutting Words/);
+
+  // The next actual disadvantaged attempt consumes the marker on both hit and
+  // miss. The lower die is used, while the normal reliable response model is
+  // unchanged for enemies without the marker.
+  const disadvantagedHit = withRandomSequence([0, 0, 0, 0.7, 0.8], () => {
+    let state = bardCombatState({
+      id: "disadvantaged-hit",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 10,
+      defense: 0,
+      speed: 0,
+    });
+    state = act(state, { type: "BARD_ATTACK", move: "cutting_words", targetId: "disadvantaged-hit" });
+    state = act(state, { type: "FINISH_HERO_ATTACK" });
+    assert.equal(state.run!.enemies[0].attackDisadvantage, true);
+    return act(state, { type: "RESOLVE_ENEMY_TURN" });
+  });
+  assert.equal(disadvantagedHit.run!.hp, 42);
+  assert.equal(disadvantagedHit.run!.enemies[0].attackDisadvantage, false);
+  assert.equal(disadvantagedHit.run!.playerCombat!.enemyAttackSequence, 1);
+  assert.match(disadvantagedHit.run!.bardSpellFeedback!, /d20s 15, 17 \(keep 15\) \+ 5 = 20 vs AC 12 — hit/);
+
+  const disadvantagedMiss = withRandomSequence([0, 0, 0, 0.2, 0.9], () => {
+    let state = bardCombatState({
+      id: "disadvantaged-miss",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 10,
+      defense: 0,
+      speed: 0,
+    });
+    state = act(state, { type: "BARD_ATTACK", move: "cutting_words", targetId: "disadvantaged-miss" });
+    state = act(state, { type: "FINISH_HERO_ATTACK" });
+    return act(state, { type: "RESOLVE_ENEMY_TURN" });
+  });
+  assert.equal(disadvantagedMiss.run!.hp, 50);
+  assert.equal(disadvantagedMiss.run!.enemies[0].attackDisadvantage, false);
+  assert.equal(disadvantagedMiss.run!.playerCombat!.enemyAttackSequence, 1);
+  assert.match(disadvantagedMiss.run!.bardSpellFeedback!, /d20s 5, 19 \(keep 5\) \+ 5 = 10 vs AC 12 — miss/);
+
+  // Sleep skips do not consume a pending disadvantage marker.
+  const sleepKeepsDisadvantage = withRandomSequence([0], () => {
+    let state = bardCombatState({
+      id: "sleep-keeps-disadvantage",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 10,
+      defense: 0,
+      speed: 0,
+      attackDisadvantage: true,
+    });
+    state = act(state, { type: "BARD_ATTACK", move: "sleep", targetId: "sleep-keeps-disadvantage" });
+    state = act(state, { type: "FINISH_HERO_ATTACK" });
+    state = act(state, { type: "RESOLVE_ENEMY_TURN" });
+    return state;
+  });
+  assert.equal(sleepKeepsDisadvantage.run!.enemies[0].sleepTurns, 1);
+  assert.equal(sleepKeepsDisadvantage.run!.enemies[0].attackDisadvantage, true);
+  assert.equal(sleepKeepsDisadvantage.run!.playerCombat!.enemyAttackSequence, 0);
+
+  const stunnedKeepsDisadvantage = bardCombatState({
+    id: "stunned-keeps-disadvantage",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 100,
+    maxHp: 100,
+    attack: 10,
+    defense: 0,
+    speed: 0,
+    stunned: true,
+    attackDisadvantage: true,
+  });
+  stunnedKeepsDisadvantage.run!.combatTurn = "enemy";
+  const stunnedSkipped = act(stunnedKeepsDisadvantage, { type: "RESOLVE_ENEMY_TURN" });
+  assert.equal(stunnedSkipped.run!.enemies[0].attackDisadvantage, true);
+  assert.equal(stunnedSkipped.run!.playerCombat!.enemyAttackSequence, 0);
+
+  // Every positive player-side source wakes a surviving sleeper; immunity is
+  // exactly zero and leaves Sleep intact. Sleep itself remains HP-neutral.
+  const normalWake = bardCombatState({
+    id: "normal-wake",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 100,
+    maxHp: 100,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    sleepTurns: 2,
+  });
+  normalWake.run!.attack = 10;
+  const normalWoken = commitHeroAttack(normalWake, { type: "PLAYER_ATTACK", targetId: "normal-wake" });
+  assert.equal(normalWoken.run!.enemies[0].hp, 90);
+  assert.equal(normalWoken.run!.enemies[0].sleepTurns, 0);
+
+  const electricWake = bardCombatState({
+    id: "electric-wake",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 100,
+    maxHp: 100,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    sleepTurns: 2,
+  });
+  electricWake.run!.attack = 10;
+  const electricWoken = commitHeroAttack(electricWake, {
+    type: "BARD_ATTACK",
+    move: "electric",
+    targetId: "electric-wake",
+  });
+  assert.equal(electricWoken.run!.enemies[0].hp, 90);
+  assert.equal(electricWoken.run!.enemies[0].sleepTurns, 0);
+
+  const poisonWake = combatState({
+    id: "poison-wake",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 100,
+    maxHp: 100,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    sleepTurns: 2,
+    poisoned: true,
+  });
+  const poisonedWoken = act(poisonWake, { type: "USE_CONSUMABLE", consumable: "health_potion" });
+  assert.equal(poisonedWoken.run!.enemies[0].hp, 99);
+  assert.equal(poisonedWoken.run!.enemies[0].sleepTurns, 0);
+
+  const bombWake = combatState({
+    id: "bomb-wake",
+    name: "Wolf",
+    speciesKey: "wolf",
+    hp: 100,
+    maxHp: 100,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    sleepTurns: 2,
+  });
+  const bombPending = act(bombWake, { type: "USE_CONSUMABLE", consumable: "fire_bomb" });
+  const bombWoken = act(bombPending, { type: "RESOLVE_ENEMY_TURN" });
+  assert.equal(bombWoken.run!.enemies[0].sleepTurns, 0);
+
+  const immuneSleeper = bardCombatState({
+    id: "immune-sleeper",
+    name: "Ochre Jelly",
+    speciesKey: "ochre_jelly",
+    hp: 100,
+    maxHp: 100,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    sleepTurns: 2,
+  });
+  immuneSleeper.run!.attack = 10;
+  const immuneResult = commitHeroAttack(immuneSleeper, {
+    type: "BARD_ATTACK",
+    move: "electric",
+    targetId: "immune-sleeper",
+  });
+  assert.equal(immuneResult.run!.enemies[0].hp, 100);
+  assert.equal(immuneResult.run!.enemies[0].sleepTurns, 2);
+
+  const sleepWithPoison = withRandomSequence([0], () => {
+    let state = combatState({
+      id: "sleep-poison",
+      name: "Wolf",
+      speciesKey: "wolf",
+      hp: 100,
+      maxHp: 100,
+      attack: 0,
+      defense: 0,
+      speed: 0,
+      sleepTurns: 1,
+      poisoned: true,
+    });
+    state.run!.characterId = "alan-a-dale";
+    state.run!.skills = [];
+    state = act(state, { type: "BARD_ATTACK", move: "sleep", targetId: "sleep-poison" });
+    return act(state, { type: "FINISH_HERO_ATTACK" });
+  });
+  assert.equal(sleepWithPoison.run!.enemies[0].hp, 99);
+  assert.equal(sleepWithPoison.run!.enemies[0].sleepTurns, 0);
+  assert.ok(sleepWithPoison.run!.log.some(entry => entry.msg.includes("wakes")));
+}
+
 runAssertions();
+runFocusedCombatAssertions();
 console.log("Dicebound engine assertions passed.");
