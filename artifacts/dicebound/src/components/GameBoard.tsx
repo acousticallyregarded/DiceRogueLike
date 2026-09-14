@@ -154,7 +154,7 @@ const TILE_THEMES: Record<TileType, { image: string, color: string, icon: any }>
   boss: { image: redTileUrl, color: 'text-red-900', icon: Skull }
 };
 
-export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }: { run: RunState, visualPosition: number, speed?: number, onCinematicFinish?: () => void }) {
+export function GameBoard({ run, visualPosition, speed = 1, paused = false, onCinematicFinish }: { run: RunState, visualPosition: number, speed?: number, paused?: boolean, onCinematicFinish?: () => void }) {
   const reducedMotion = usePrefersReducedMotion();
   const trailLength = run.tiles.length || 64;
   const tileMotion = useTileMotion(visualPosition, speed, reducedMotion, trailLength);
@@ -188,7 +188,7 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
   useEffect(() => {
     setStatueRisen(false);
     setPlatformStage('approach');
-    if (!cinematicType) {
+    if (!cinematicType || paused) {
       setCinematicPhase(null);
       return;
     }
@@ -206,7 +206,7 @@ export function GameBoard({ run, visualPosition, speed = 1, onCinematicFinish }:
     timers.push(window.setTimeout(() => setCinematicPhase('hero'), duration));
     timers.push(window.setTimeout(() => onCinematicFinish?.(), duration + 800));
     return () => timers.forEach(window.clearTimeout);
-  }, [cinematicType, reducedMotion, onCinematicFinish]);
+  }, [cinematicType, reducedMotion, onCinematicFinish, paused]);
 
   const isAwakening = run.phase === 'boss_awakening' || cinematicType === 'awakening';
   const isBossActive = isAwakening || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat) || run.phase === 'victory' || cinematicType === 'alert';

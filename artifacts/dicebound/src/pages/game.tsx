@@ -1,5 +1,7 @@
 import { useGame } from '../hooks/use-game';
+import { useWalletCloud } from '../hooks/use-wallet-cloud';
 import { Lobby } from '../components/Lobby';
+import { WalletButton } from '../components/WalletButton';
 import { GameBoard } from '../components/GameBoard';
 import { TopBar } from '../components/TopBar';
 import { CombatOverlay } from '../components/CombatOverlay';
@@ -13,7 +15,22 @@ import { useAudio } from '../audio/use-audio';
 import { useAudioEvents } from '../audio/use-audio-events';
 
 export default function Game() {
-  const { state, dispatch, speed, setSpeed } = useGame();
+  const {
+    state,
+    dispatch,
+    speed,
+    setSpeed,
+    paused,
+    setPaused,
+    replaceState,
+    setGuestPersistence,
+  } = useGame();
+  const wallet = useWalletCloud({
+    state,
+    replaceState,
+    setPaused,
+    setGuestPersistence,
+  });
   const { setMusicScene, stopPlayback } = useAudio();
   const [showSkills, setShowSkills] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
@@ -51,7 +68,7 @@ export default function Game() {
   if (!state) return null;
 
   if (!state.run) {
-    return <Lobby state={state} dispatch={dispatch} />;
+    return <Lobby state={state} dispatch={dispatch} wallet={wallet} />;
   }
 
   const r = state.run;
@@ -70,6 +87,7 @@ export default function Game() {
               run={r} 
               visualPosition={r.position} 
               speed={speed}
+              paused={paused}
               onCinematicFinish={handleSkipCinematic}
            />
         </div>
@@ -82,6 +100,12 @@ export default function Game() {
         <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
            <TopBar run={r} />
         </div>
+
+         {/* A low edge slot keeps wallet access clear of TopBar stats and
+             combat/action controls. */}
+         <div className="absolute bottom-[6.5rem] left-3 z-30">
+           <WalletButton wallet={wallet} compact />
+         </div>
 
         <CombatOverlay run={r} dispatch={dispatch} speed={speed} />
 

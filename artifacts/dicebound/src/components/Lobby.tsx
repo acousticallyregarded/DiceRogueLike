@@ -9,8 +9,18 @@ import treeUrl from '../assets/tree.png';
 import heroUrl from '../assets/custom-lobby-hero.png';
 import { SpriteAnimator } from './SpriteAnimator';
 import { AudioSettingsButton } from './AudioSettings';
+import { WalletButton } from './WalletButton';
+import type { WalletCloudController } from '../hooks/use-wallet-cloud';
 
-export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: GameAction) => void }) {
+export function Lobby({
+  state,
+  dispatch,
+  wallet,
+}: {
+  state: GameStateV4;
+  dispatch: (a: GameAction) => void;
+  wallet: WalletCloudController;
+}) {
   const [tab, setTab] = useState<'play' | 'gear' | 'talents'>('play');
   const [showHelp, setShowHelp] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
@@ -57,10 +67,15 @@ export function Lobby({ state, dispatch }: { state: GameStateV4, dispatch: (a: G
             </button>
             <AudioSettingsButton />
           </div>
-          <div className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
-            <Gem className="w-4 h-4 text-cyan-300 fill-current" /> {meta.gems}
+           <div className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
+             <Gem className="w-4 h-4 text-cyan-300 fill-current" /> {meta.gems}
           </div>
         </div>
+
+         {/* Keep wallet controls out of the already dense title row. */}
+         <div className="relative z-30 flex justify-end px-4 -mt-2 mb-1">
+           <WalletButton wallet={wallet} compact />
+         </div>
 
         {/* Main Content Area */}
         <div className="flex-1 relative z-20 flex flex-col px-4 pb-28 overflow-y-auto">

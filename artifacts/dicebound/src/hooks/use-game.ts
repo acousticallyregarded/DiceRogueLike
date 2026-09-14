@@ -24,6 +24,7 @@ export function loadGame(): GameStateV4 {
     return s;
   } catch (err) {
     console.error("Save load error", err);
+    toast.error("Browser storage is unavailable; guest progress may not persist");
     return createInitialState();
   }
 }
@@ -40,8 +41,12 @@ export function saveGame(s: GameStateV4): boolean {
 export function useGame() {
   const [state, setState] = useState<GameStateV4 | null>(null);
   const [speed, setSpeed] = useState<number>(1);
+  const [paused, setPausedState] = useState(false);
   const speedRef = useRef(speed);
   speedRef.current = speed;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  const guestPersistenceRef = useRef(true);
   
   useEffect(() => {
     const loaded = loadGame();
@@ -55,6 +60,7 @@ export function useGame() {
   }, []);
 
   const dispatch = useCallback((action: GameAction) => {
+    if (pausedRef.current) return;
     setState(prev => {
       if (!prev) return prev;
       try {
@@ -64,7 +70,7 @@ export function useGame() {
           ? { ...prev, run: { ...prev.run, combatSpeed: speedRef.current } }
           : prev;
         const next = act(actionState, action);
-        if (!saveGame(next)) {
+        if (guestPersistenceRef.current && !saveGame(next)) {
           toast.error("Failed to save game progress");
         }
         return next;
@@ -74,6 +80,28 @@ export function useGame() {
         return prev;
       }
     });
+  }, []);
+
+  const setPaused = useCallback((nextPaused: boolean) => {
+    pausedRef.current = nextPaused;
+    setPausedState(nextPaused);
+  }, []);
+
+  const setGuestPersistence = useCallback((enabled: boolean) => {
+    guestPersistenceRef.current = enabled;
+  }, []);
+
+  const replaceState = useCallback((next: GameStateV4) => {
+    const validated = validateState(next);
+    const restoredSpeed = validated.run && Number.isFinite(validated.run.combatSpeed)
+      ? Math.max(1, validated.run.combatSpeed!)
+      : 1;
+    speedRef.current = restoredSpeed;
+    setSpeed(restoredSpeed);
+    setState(validated);
+    if (guestPersistenceRef.current && !saveGame(validated)) {
+      toast.error("Failed to save game progress");
+    }
   }, []);
 
   // Movement remains animated; combat is intentionally not part of this
@@ -87,37 +115,37 @@ export function useGame() {
     : null;
 
   useEffect(() => {
-    if (!state?.run?.heroDeathPending) return;
+    if (paused || !state?.run?.heroDeathPending) return;
     const timer = window.setTimeout(() => dispatch({ type: 'FINISH_HERO_DEATH' }),
       getHeroDeathDurationMs(state.run) / Math.max(1, speed));
     return () => window.clearTimeout(timer);
-  }, [state?.run?.heroDeathPending, dispatch, speed]);
+  }, [state?.run?.heroDeathPending, dispatch, speed, paused]);
 
   useEffect(() => {
-    if (state?.run?.phase !== 'combat' || state.run.combatTurn !== 'enemy') return;
+    if (paused || state?.run?.phase !== 'combat' || state.run.combatTurn !== 'enemy') return;
     const pending = Boolean(state.run.playerCombat?.pendingHeroAttack);
     const timer = window.setTimeout(() => {
       dispatch({ type: pending ? 'FINISH_HERO_ATTACK' : 'RESOLVE_ENEMY_TURN' });
     }, pending ? getPendingHeroAttackDurationMs(state.run) : getEnemyResponseDelayMs(state.run));
     return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.combatTurn, state?.run?.phase, responseSpeed, pendingAttackKey]);
+  }, [dispatch, state?.run?.combatTurn, state?.run?.phase, responseSpeed, pendingAttackKey, paused]);
 
   // The reducer commits the actual dice result before the presentation starts.
   // Holding movement here keeps the displayed pair stable and means a save
   // taken during the roll can resume the same result without rolling again.
   useEffect(() => {
-    if (state?.run?.phase !== 'moving' || !state.run.rollAnimating) return;
+    if (paused || state?.run?.phase !== 'moving' || !state.run.rollAnimating) return;
 
     const timer = window.setTimeout(() => {
       dispatch({ type: 'BEGIN_MOVEMENT' });
     }, DICE_ROLL_ANIMATION_DURATION_MS);
     return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.phase, state?.run?.rollAnimating]);
+  }, [dispatch, state?.run?.phase, state?.run?.rollAnimating, paused]);
 
   // GameBoard owns cinematic completion, including the rise and sword pose.
 
   useEffect(() => {
-    if (!state?.run) return;
+    if (paused || !state?.run) return;
     
     let frameId: number;
     if (state.run.phase !== 'moving' || state.run.rollAnimating || state.run.trailCinematic) {
@@ -149,7 +177,16 @@ export function useGame() {
     
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, state?.run?.trailCinematic, dispatch, speed]);
+  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, state?.run?.trailCinematic, dispatch, speed, paused]);
 
-  return { state, dispatch, speed, setSpeed };
+  return {
+    state,
+    dispatch,
+    speed,
+    setSpeed,
+    paused,
+    setPaused,
+    replaceState,
+    setGuestPersistence,
+  };
 }
