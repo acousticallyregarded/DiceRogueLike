@@ -1,5 +1,6 @@
 import { Volume2, VolumeX, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAudio } from "../audio/use-audio";
 
 function statusLabel(status: ReturnType<typeof useAudio>["status"]) {
@@ -12,7 +13,38 @@ function statusLabel(status: ReturnType<typeof useAudio>["status"]) {
 
 export function AudioSettingsButton({ className = "" }: { className?: string }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const { settings, status, unlock, updateSettings } = useAudio();
+
+  useEffect(() => {
+    if (!open) return;
+    dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+      if (event.key === "Tab") {
+        const controls = dialogRef.current?.querySelectorAll<HTMLElement>("button, input");
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      triggerRef.current?.focus();
+    };
+  }, [open]);
 
   const openSettings = () => {
     void unlock();
@@ -22,6 +54,7 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         aria-label="Sound settings"
         title="Sound settings"
@@ -33,17 +66,18 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
           : <Volume2 className="h-4 w-4" aria-hidden="true" />}
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-5 backdrop-blur-sm"
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-5 backdrop-blur-sm pointer-events-auto"
           role="presentation"
           onClick={() => setOpen(false)}
         >
           <section
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="sound-settings-title"
-            className="w-full max-w-sm rounded-[28px] border-4 border-[#1c1c1c] bg-white p-5 text-slate-800 shadow-2xl"
+            className="w-full max-w-sm max-h-[calc(100dvh-2.5rem)] overflow-y-auto rounded-[28px] border-4 border-[#1c1c1c] bg-white p-5 text-slate-800 shadow-2xl"
             onClick={event => event.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -122,7 +156,8 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
               Done
             </button>
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
