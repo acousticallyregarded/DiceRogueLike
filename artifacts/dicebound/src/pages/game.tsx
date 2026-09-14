@@ -107,7 +107,7 @@ export default function Game() {
            <WalletButton wallet={wallet} compact />
          </div>
 
-        <CombatOverlay run={r} dispatch={dispatch} speed={speed} />
+        <CombatOverlay run={r} dispatch={dispatch} speed={speed} paused={paused} />
 
         <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
            <button

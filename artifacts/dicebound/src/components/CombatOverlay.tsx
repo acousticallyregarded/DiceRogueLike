@@ -1,4 +1,5 @@
-import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
+import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getPendingHeroAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
+import { CombatApproach } from './CombatApproach';
 import { BardSpellHelp } from './BardSpellHelp';
 import {
   formatDamageType,
@@ -204,10 +205,12 @@ export function CombatOverlay({
   run,
   dispatch,
   speed = 1,
+  paused = false,
 }: {
   run: RunState;
   dispatch: (action: GameAction) => void;
   speed?: number;
+  paused?: boolean;
 }) {
   const [visualEvents, setVisualEvents] = useState<VisualEvents>(EMPTY_EVENTS);
   const [damagePopups, setDamagePopups] = useState<DamagePopup[]>([]);
@@ -229,6 +232,16 @@ export function CombatOverlay({
   const enemyArchive = useRef<Record<string, RunState['enemies'][number]>>({});
   const popupTimers = useRef<number[]>([]);
   const reducedMotion = usePrefersReducedMotion();
+  const heroApproach = useRef({ targetId: '', attackId: 0, durationMs: 420, enabled: false });
+  const pendingMelee = run.playerCombat?.pendingHeroAttack;
+  if (pendingMelee) {
+    heroApproach.current = {
+      targetId: pendingMelee.targetId,
+      attackId: run.playerCombat?.heroAttackSequence ?? 0,
+      durationMs: getPendingHeroAttackDurationMs(run),
+      enabled: ['slashing', 'piercing', 'bludgeoning'].includes(pendingMelee.damageType),
+    };
+  }
   const [bossAnimating, setBossAnimating] = useState(false);
   const bossSequence = run.playerCombat?.enemyAttackSequence ?? 0;
   const priorBossSequence = useRef(bossSequence);
@@ -635,11 +648,12 @@ export function CombatOverlay({
         </div>
       )}
 
-      <div className="flex-1 relative flex items-end justify-between px-3 pb-12">
+      <div data-combat-arena className="flex-1 relative flex items-end justify-between px-3 pb-12">
         <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} />
         <div className={`relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
+          <CombatApproach actorId="hero" {...heroApproach.current} paused={paused}>
           <div
-            className={`combat-actor w-28 h-28 ${playerAttackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
+            className="combat-actor w-28 h-28"
             style={eventStyle(combatDuration)}
           >
             <div className={`combat-actor__hit w-full h-full ${playerHitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{ '--combat-hit-duration': `${hitDuration}ms` } as CSSProperties}>
@@ -677,6 +691,7 @@ export function CombatOverlay({
               <span className="damage-popup damage-popup--hero" key={popup.id}>-{popup.amount}</span>
             ))}
           </div>
+          </CombatApproach>
           <div className="mt-2 w-20 h-4 bg-red-950 border-2 border-[#1c1c1c] rounded overflow-hidden relative shadow-sm">
             <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, renderedRun.hp / Math.max(1, renderedRun.maxHp))})` }} />
             <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white text-shadow-sm">
@@ -712,7 +727,10 @@ export function CombatOverlay({
                   }
                 }}
               >
-                <div key={`${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`} className={`combat-actor combat-actor--enemy ${actorSize ? '' : 'w-20 h-20'} ${enemyEvent.attackTrigger > 0 ? 'combat-actor--attacking' : ''}`}
+                <CombatApproach actorId={enemy.id} targetId="hero" attackId={enemyEvent.attackTrigger}
+                  durationMs={enemy.boss || actorSize || enemySprite === 'slime-attack' ? 1800 / Math.max(1, speed) : combatDuration}
+                  enabled={!isDying && (!enemy.boss || enemy.lastBossAttack !== 'fireball')} paused={paused}>
+                <div key={`${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`} className={`combat-actor combat-actor--enemy ${actorSize ? '' : 'w-20 h-20'}`}
                   style={actorSize ? { width: actorSize.slotWidth, height: actorSize.bodyHeight, flexShrink: 0 } : undefined}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{
                     '--combat-hit-duration': `${hitDuration}ms`,
@@ -802,6 +820,7 @@ export function CombatOverlay({
                     />}
                   </div>
                 </div>
+                </CombatApproach>
                 <div className="text-[9px] font-black text-white bg-black/60 px-1 rounded absolute -top-4">{enemy.name}</div>
                 {damagePopups.filter(popup => popup.target === 'enemy' && popup.enemyId === enemy.id).map(popup => (
                   <span className="damage-popup" key={popup.id}>-{popup.amount}</span>
