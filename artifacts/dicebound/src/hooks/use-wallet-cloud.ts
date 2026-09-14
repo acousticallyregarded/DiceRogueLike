@@ -65,6 +65,7 @@ export interface WalletConflict {
 }
 
 export interface WalletCloudController {
+  canSpendGems: boolean;
   status: CloudStatus;
   session: WalletSession | null;
   address: string | null;
@@ -389,6 +390,7 @@ export function useWalletCloud({
   const localStorageErrorRef = useRef<string | null>(null);
   const restoredSessionRef = useRef<WalletSession | null>(null);
   const autoRestoreSessionRef = useRef(false);
+  const observedSaveRef = useRef<string | null>(null);
 
   const invalidateSession = useCallback((nextStatus: "expired" | "locked", message: string) => {
     if (sessionRef.current) invalidSessionRef.current = sessionRef.current;
@@ -422,6 +424,7 @@ export function useWalletCloud({
 
   const markStateReplacement = useCallback((save: GameStateV4) => {
     skipStateRef.current = JSON.stringify(save);
+    observedSaveRef.current = skipStateRef.current;
     replaceStateRef.current(save);
   }, []);
 
@@ -1107,6 +1110,11 @@ export function useWalletCloud({
       skipStateRef.current = null;
       return;
     }
+    // A successful upload changes revision/updatedAt and therefore
+    // queueSnapshot's identity. That is not new gameplay: uploading it again
+    // would create an endless save/ack loop and keep the local cache dirty.
+    if (observedSaveRef.current === serialized) return;
+    observedSaveRef.current = serialized;
     queueSnapshot(state);
   }, [conflict, queueSnapshot, state]);
 
@@ -1164,6 +1172,8 @@ export function useWalletCloud({
   }, []);
 
   return {
+    canSpendGems: activeRef.current && Boolean(session) && !conflict
+      && (status === "saved" || status === "saving" || status === "offline"),
     status,
     session,
     address: session?.address ?? null,

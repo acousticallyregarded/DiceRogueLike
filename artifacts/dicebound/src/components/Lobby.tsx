@@ -67,7 +67,7 @@ export function Lobby({
             </button>
             <AudioSettingsButton />
           </div>
-           <div className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
+           <div aria-label={`${wallet.canSpendGems ? 'Wallet' : 'Unspendable'} gems: ${meta.gems}`} title={wallet.canSpendGems ? 'Gems saved with your wallet' : 'Connect a wallet to spend gems'} className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
              <Gem className="w-4 h-4 text-cyan-300 fill-current" /> {meta.gems}
           </div>
         </div>
@@ -79,6 +79,15 @@ export function Lobby({
 
         {/* Main Content Area */}
         <div className="flex-1 relative z-20 flex flex-col px-4 pb-28 overflow-y-auto">
+           {tab !== 'play' && (
+             <p role="status" className="mt-3 rounded-xl border-2 border-slate-800 bg-white px-3 py-2 text-xs font-bold text-slate-700">
+               {wallet.canSpendGems
+                 ? 'Gem purchases use this wallet’s balance and save with its inventory.'
+                 : wallet.session
+                   ? 'Finish connecting or resolve your wallet save before spending gems.'
+                   : 'A wallet is required to spend gems. Connect using Wallet above. Guest progress stays separate until you choose to import it.'}
+             </p>
+           )}
            
            {tab === 'play' && (
              <div className="mt-auto mb-10">
@@ -103,7 +112,7 @@ export function Lobby({
                  </div>
                  <button 
                    onClick={() => dispatch({ type: 'OPEN_CHEST' })}
-                   disabled={meta.gems < 100}
+                   disabled={!wallet.canSpendGems || meta.gems < 100}
                    className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-4 py-2 rounded-xl font-black text-sm transition-all disabled:opacity-50 disabled:active:border-b-4 disabled:active:translate-y-0"
                  >
                    Open Chest
@@ -192,7 +201,7 @@ export function Lobby({
                        </div>
                        <button 
                          onClick={() => dispatch({ type: 'BUY_TALENT', stat: t.id as any })}
-                         disabled={meta.gems < cost}
+                         disabled={!wallet.canSpendGems || meta.gems < cost}
                          className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-3 py-1.5 rounded-xl font-black text-xs transition-all disabled:opacity-50 disabled:active:border-b-4 disabled:active:translate-y-0"
                        >
                          {cost} <Gem className="inline w-3 h-3 text-fuchsia-500 fill-current" />

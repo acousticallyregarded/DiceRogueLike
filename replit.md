@@ -29,6 +29,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 - Wallet ownership means wallet-linked cloud saves, not tokenized assets. The user chose this approach to avoid transactions and gas fees for saving. Do not describe gems or equipment as tokens/NFTs.
 - Robinhood Chain is the wallet sign-in network. Inventory and game progress remain off-chain. Existing guest progress must stay separate; choosing between a device save and wallet save requires explicit confirmation, never an additive merge of gems or items.
 - The game still computes rewards in the client. Wallet authentication protects access to a save, not the legitimacy of gameplay rewards; transferable assets or a competitive economy would require a separate authoritative-gameplay design.
+- Gem purchases (chests and talents) require an authenticated, activated wallet save. Guest play and existing guest balances remain intact, but guests cannot spend gems. Wallet balances and purchased gear persist together in the wallet cloud save; gold-based run shops remain available to guests.
 
 ## Product
 

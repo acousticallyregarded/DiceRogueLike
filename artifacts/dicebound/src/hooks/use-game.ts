@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   GameStateV4,
   GameAction,
-  act,
   validateState,
   createInitialState,
   DICE_ROLL_ANIMATION_DURATION_MS,
@@ -11,6 +10,7 @@ import {
   getHeroDeathDurationMs,
 } from '../engine';
 import { toast } from 'sonner';
+import { applyGameAction, isGemPurchase } from '../gem-purchases';
 
 const KEY_V4 = "dicebound-save-v4";
 
@@ -61,6 +61,10 @@ export function useGame() {
 
   const dispatch = useCallback((action: GameAction) => {
     if (pausedRef.current) return;
+    if (isGemPurchase(action) && guestPersistenceRef.current) {
+      toast.error("Connect a wallet and choose its save before spending gems.");
+      return;
+    }
     setState(prev => {
       if (!prev) return prev;
       try {
@@ -69,7 +73,9 @@ export function useGame() {
         const actionState = prev.run
           ? { ...prev, run: { ...prev.run, combatSpeed: speedRef.current } }
           : prev;
-        const next = act(actionState, action);
+        // Wallet activation disables guest persistence; authentication, save
+        // choice, logout, and invalidation pause dispatch before changing owner.
+        const next = applyGameAction(actionState, action, !guestPersistenceRef.current && !pausedRef.current);
         if (guestPersistenceRef.current && !saveGame(next)) {
           toast.error("Failed to save game progress");
         }
