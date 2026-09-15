@@ -299,10 +299,9 @@ export async function isRewardPayoutOperational(tx?: any): Promise<boolean> {
 }
 
 export function tokenRewardsEnabled(): boolean {
-  // Browser combat is not an authority. Keep this permanently fail-closed
-  // until a future server-authoritative run implementation replaces the
-  // removed public encounter endpoints.
-  return false;
+  return process.env.TOKEN_REWARDS_ENABLED === "true"
+    && process.env.TOKEN_REWARDS_COMBAT_VERIFIED === "true"
+    && process.env.DICEBOUND_REVIEW_SETTLEMENT_ENABLED === "true";
 }
 
 function decimalFromBaseUnits(value: bigint): string {

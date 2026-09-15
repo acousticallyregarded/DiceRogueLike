@@ -32,6 +32,9 @@ function schemaUrl() {
 try {
   await admin.query(`CREATE SCHEMA "${schema}"`);
   for (const table of [
+     "wallet_challenges",
+     "wallet_sessions",
+     "wallet_saves",
     "redeemable_gem_accounts",
     "redeemable_gem_ledger",
     "token_rewards",
@@ -39,11 +42,26 @@ try {
     "token_payout_alert_states",
     "token_payout_monitor_state",
     "token_purchases",
+     "dicebound_runs",
+     "dicebound_run_starts",
+     "dicebound_action_events",
+     "dicebound_death_rolls",
+     "dicebound_death_reviews",
   ]) {
     await admin.query(
       `CREATE TABLE "${schema}"."${table}" (LIKE public."${table}" INCLUDING ALL)`,
     );
   }
+  // Keep isolated acceptance schemas forward-compatible with the checked-in
+  // Drizzle schema when the shared public test database has not been pushed.
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_runs" ADD COLUMN IF NOT EXISTS "initial_state" jsonb`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_runs" ADD COLUMN IF NOT EXISTS "engine_version" text`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_runs" ADD COLUMN IF NOT EXISTS "initial_state_hash" text`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_runs" ADD COLUMN IF NOT EXISTS "initial_state_commitment" text`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_action_events" ADD COLUMN IF NOT EXISTS "before_state_hash" text`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_action_events" ADD COLUMN IF NOT EXISTS "after_state_hash" text`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_action_events" ADD COLUMN IF NOT EXISTS "previous_event_commitment" text`);
+  await admin.query(`ALTER TABLE "${schema}"."dicebound_action_events" ADD COLUMN IF NOT EXISTS "event_commitment" text`);
   const isolatedUrl = schemaUrl();
   const testFiles = (
     await Promise.all(

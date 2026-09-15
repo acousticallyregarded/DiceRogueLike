@@ -13,6 +13,11 @@ export const MAX_SAVE_BYTES = 512 * 1024;
 const runtimeSecret =
   process.env.SESSION_SECRET ?? randomBytes(32).toString("hex");
 
+/** Internal trust-root MAC; never expose the runtime secret or this MAC key. */
+export function trustRootMac(payload: string): string {
+  return createHmac("sha256", runtimeSecret).update(payload).digest("hex");
+}
+
 export function newOpaqueToken(bytes = 32): string {
   return randomBytes(bytes).toString("base64url");
 }

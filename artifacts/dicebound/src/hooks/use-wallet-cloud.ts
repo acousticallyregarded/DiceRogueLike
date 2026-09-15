@@ -12,6 +12,7 @@ import {
 import {
   createInitialState,
   validateState,
+  type GameAction,
   type GameStateV4,
 } from "../engine";
 
@@ -150,6 +151,25 @@ export interface TokenRewardClaim {
   pending: boolean;
 }
 
+export interface AuthoritativeRun {
+  runId: string;
+  sequence: number;
+  status: "active" | "won" | "dead";
+  state: Record<string, unknown>;
+  seedCommitment: string;
+  seed?: string;
+}
+
+export interface AuthoritativeReplay {
+  runId: string;
+  sequence: number;
+  status: "active" | "won" | "dead";
+  events: unknown[];
+  state: Record<string, unknown>;
+  seedCommitment: string;
+  seed?: string;
+}
+
 export interface WalletCloudController {
   canSpendGems: boolean;
   status: CloudStatus;
@@ -189,6 +209,13 @@ export interface WalletCloudController {
   rewardClaim: TokenRewardClaim | null;
   refreshRewards: () => Promise<void>;
   claimRewards: () => Promise<TokenRewardClaim | null>;
+  serverRun: AuthoritativeRun | null;
+  serverRunLoading: boolean;
+  serverRunError: string | null;
+  reconnectAuthoritativeRun: () => Promise<AuthoritativeRun | null>;
+  replayAuthoritativeRun: () => Promise<AuthoritativeReplay | null>;
+  startAuthoritativeRun: (characterId: string) => Promise<AuthoritativeRun | null>;
+  submitAuthoritativeAction: (action: GameAction) => Promise<AuthoritativeRun | null>;
 }
 
 interface UseWalletCloudArgs {
@@ -485,6 +512,21 @@ export function useWalletCloud({
   const [rewardsLoading, setRewardsLoading] = useState(false);
   const [rewardsError, setRewardsError] = useState<string | null>(null);
   const [rewardClaim, setRewardClaim] = useState<TokenRewardClaim | null>(null);
+  const [serverRun, setServerRun] = useState<AuthoritativeRun | null>(null);
+  const [serverRunLoading, setServerRunLoading] = useState(false);
+  const [serverRunError, setServerRunError] = useState<string | null>(null);
+  const authoritativeRunRef = useRef<AuthoritativeRun | null>(null);
+  const pendingAuthoritativeActionRef = useRef<{
+    clientRequestId: string;
+    runId: string;
+    expectedSequence: number;
+    action: GameAction;
+  } | null>(null);
+  const pendingAuthoritativeStartRef = useRef<{ clientRequestId: string; character: string } | null>(null);
+  const setAuthoritativeRun = useCallback((run: AuthoritativeRun | null) => {
+    authoritativeRunRef.current = run;
+    setServerRun(run);
+  }, []);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -695,6 +737,126 @@ export function useWalletCloud({
     }
   }, [refreshRewards]);
 
+  const reconnectAuthoritativeRun = useCallback(async (): Promise<AuthoritativeRun | null> => {
+    const s = sessionRef.current;
+    if (!s) {
+      setAuthoritativeRun(null);
+      return null;
+    }
+    setServerRunLoading(true);
+    setServerRunError(null);
+    try {
+      const run = await requestJson("/wallet/runs/current", {
+        headers: { "x-wallet-address": s.address },
+      }) as AuthoritativeRun;
+      setAuthoritativeRun(run);
+      return run;
+    } catch (rawError) {
+      const requestError = rawError as HttpError;
+      if (requestError.status === 404) {
+        setAuthoritativeRun(null);
+        return null;
+      }
+      setServerRunError(requestError.body?.error || requestError.message || "Authoritative run is unavailable.");
+      throw requestError;
+    } finally {
+      setServerRunLoading(false);
+    }
+  }, [setAuthoritativeRun]);
+
+  const startAuthoritativeRun = useCallback(async (characterId: string): Promise<AuthoritativeRun | null> => {
+    const s = sessionRef.current;
+    if (!s) return null;
+    const character = characterId;
+    const pendingStart = pendingAuthoritativeStartRef.current;
+    const startRequest: { clientRequestId: string; character: string } = pendingStart?.character === character
+      ? pendingStart
+      : { clientRequestId: crypto.randomUUID(), character };
+    pendingAuthoritativeStartRef.current = startRequest;
+    setServerRunLoading(true);
+    setServerRunError(null);
+    try {
+      const run = await requestJson("/wallet/runs/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": s.address,
+          "x-csrf-token": s.csrfToken,
+        },
+        body: JSON.stringify(startRequest),
+      }) as AuthoritativeRun;
+      setAuthoritativeRun(run);
+      pendingAuthoritativeStartRef.current = null;
+      return run;
+    } catch (rawError) {
+      const requestError = rawError as HttpError;
+      if (requestError.status === 409 && requestError.body?.current) {
+        const current = requestError.body.current as AuthoritativeRun;
+        setAuthoritativeRun(current);
+        pendingAuthoritativeStartRef.current = null;
+        return current;
+      }
+      setServerRunError(requestError.body?.error || requestError.message || "Could not start the verified run.");
+      throw requestError;
+    } finally {
+      setServerRunLoading(false);
+    }
+  }, [setAuthoritativeRun]);
+
+  const replayAuthoritativeRun = useCallback(async (): Promise<AuthoritativeReplay | null> => {
+    const s = sessionRef.current;
+    const run = authoritativeRunRef.current;
+    if (!s || !run) return null;
+    return requestJson(`/wallet/runs/${run.runId}/replay`, {
+      headers: { "x-wallet-address": s.address },
+    }) as Promise<AuthoritativeReplay>;
+  }, []);
+
+  const submitAuthoritativeAction = useCallback(async (
+    action: GameAction,
+  ): Promise<AuthoritativeRun | null> => {
+    const s = sessionRef.current;
+    const run = authoritativeRunRef.current;
+    if (!s || !run) return null;
+    const pending = pendingAuthoritativeActionRef.current;
+    const request = pending && pending.runId === run.runId &&
+        pending.expectedSequence === run.sequence &&
+        JSON.stringify(pending.action) === JSON.stringify(action)
+      ? pending
+      : {
+          clientRequestId: crypto.randomUUID(),
+          runId: run.runId,
+          expectedSequence: run.sequence,
+          action,
+        };
+    pendingAuthoritativeActionRef.current = request;
+    try {
+      const next = await requestJson(`/wallet/runs/${run.runId}/action`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": s.address,
+          "x-csrf-token": s.csrfToken,
+        },
+        body: JSON.stringify({
+          clientRequestId: request.clientRequestId,
+          expectedSequence: request.expectedSequence,
+          action: request.action,
+        }),
+      }) as AuthoritativeRun;
+      setAuthoritativeRun(next);
+      pendingAuthoritativeActionRef.current = null;
+      return next;
+    } catch (rawError) {
+      const requestError = rawError as HttpError;
+      if (requestError.status === 409 && requestError.body?.current) {
+        setAuthoritativeRun(requestError.body.current as AuthoritativeRun);
+      }
+      setServerRunError(requestError.body?.error || requestError.message || "Verified combat action failed.");
+      throw requestError;
+    }
+  }, [setAuthoritativeRun]);
+
   const invalidateSession = useCallback((nextStatus: "expired" | "locked", message: string) => {
     if (sessionRef.current) invalidSessionRef.current = sessionRef.current;
     activeRef.current = false;
@@ -703,6 +865,8 @@ export function useWalletCloud({
     setRewards(null);
     setRewardsError(null);
     setRewardClaim(null);
+    setAuthoritativeRun(null);
+    setServerRunError(null);
     setSession(null);
     setProviderChoices([]);
     setConflict(null);
@@ -1598,6 +1762,13 @@ export function useWalletCloud({
     rewardClaim,
     refreshRewards,
     claimRewards,
+    serverRun,
+    serverRunLoading,
+    serverRunError,
+    reconnectAuthoritativeRun,
+    replayAuthoritativeRun,
+    startAuthoritativeRun,
+    submitAuthoritativeAction,
   };
 }
 

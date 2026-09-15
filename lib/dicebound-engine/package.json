@@ -1,0 +1,24 @@
+{
+  "name": "@workspace/dicebound-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/engine.ts",
+    "./engine": "./src/engine.ts",
+    "./bestiary": "./src/bestiary.ts",
+    "./characters": "./src/characters.ts",
+    "./bard-moves": "./src/bard-moves.ts",
+    "./john-moves": "./src/john-moves.ts",
+    "./unc-moves": "./src/unc-moves.ts",
+    "./level-content": "./src/level-content.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:"
+  }
+}

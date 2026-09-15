@@ -20,9 +20,10 @@ export class TokenRewardError extends Error {
 }
 
 /**
- * Browser combat is not a trusted authority. There is deliberately no public
- * ticket/transcript implementation until the server owns the complete run
- * progression (including character, inventory, and encounter state).
+ * Browser combat is not a trusted authority. Runs now own progression, but a
+ * death roll is still only a pending-review audit record. There is deliberately
+ * no public settlement path until an independent trust-boundary reviewer
+ * approves the complete replay.
  */
 export async function issueEncounterEligibility(): Promise<never> {
   throw new TokenRewardError(
@@ -63,6 +64,9 @@ async function processClaimPayout(id: string | null) {
 }
 
 export async function claimTokenRewards(walletAddress: string) {
+  if (!tokenRewardsEnabled() || process.env.TOKEN_PURCHASES_ENABLED !== "true") {
+    return { id: null, status: "empty", GLD: "0", SLV: "0", pending: false };
+  }
   let claim: typeof tokenRewardClaims.$inferSelect | undefined;
   let payoutIds: string[] = [];
   await db.transaction(async (tx) => {

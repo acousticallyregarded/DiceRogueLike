@@ -7,6 +7,7 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "grant-redeemable-gems": "tsx ./src/operator/grant-redeemable-gems.ts",
+    "review-dicebound-death": "tsx ./src/operator/review-dicebound-death.ts",
     "audit-token-rewards": "tsx ./src/operator/audit-token-rewards.ts",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
+    "@workspace/dicebound-engine": "workspace:*",
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

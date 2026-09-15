@@ -52,6 +52,16 @@ import {
   getTokenRewards,
   TokenRewardError,
 } from "../lib/token-rewards";
+import {
+  getCurrentRun,
+  getReplay,
+  getRun,
+  isCharacterChoice,
+  isRunAction,
+  RunError,
+  startRun,
+  submitAction,
+} from "../lib/dicebound-runs";
 
 const router: IRouter = Router();
 router.use("/wallet", (_req, res, next) => {
@@ -731,6 +741,191 @@ router.get(
     res.json(GetPendingTokenPurchasesResponse.parse({
       items: await getPendingTokenPurchases(session.address),
     }));
+  }),
+);
+
+function hasOnlyKeys(body: Record<string, unknown> | null, keys: string[]): boolean {
+  return body !== null &&
+    Object.keys(body).length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(body, key));
+}
+
+function runIdParam(req: Request): string | null {
+  const runId = Array.isArray(req.params.runId) ? req.params.runId[0] : req.params.runId;
+  return typeof runId === "string" && /^[0-9a-f-]{20,100}$/i.test(runId) ? runId : null;
+}
+
+function sendRunError(res: Response, error: unknown): void {
+  if (error instanceof RunError) {
+    res.status(error.status).json({
+      error: error.code,
+      ...(error.details ? { current: error.details } : {}),
+    });
+    return;
+  }
+  throw error;
+}
+
+router.post(
+  "/wallet/runs/start",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (
+      !requireWalletAddress(req, res, session.address) ||
+      !requireCsrf(req, res, session.csrfToken)
+    ) return;
+    const body = bodyRecord(req);
+    if (
+      !hasOnlyKeys(body, ["clientRequestId", "character"]) ||
+      typeof body?.clientRequestId !== "string" ||
+      !/^[\x21-\x7e]{1,200}$/.test(body.clientRequestId) ||
+      !isCharacterChoice(body.character)
+    ) {
+      sendJsonError(res, 400, "invalid_run_start");
+      return;
+    }
+    try {
+      res.status(201).json(await startRun(
+        session.address,
+        body.character,
+        body.clientRequestId,
+      ));
+    } catch (error) {
+      sendRunError(res, error);
+    }
+  }),
+);
+
+router.get(
+  "/wallet/runs/current",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    let run;
+    try {
+      run = await getCurrentRun(session.address);
+    } catch (error) {
+      sendRunError(res, error);
+      return;
+    }
+    if (!run) {
+      sendJsonError(res, 404, "run_not_found");
+      return;
+    }
+    res.json(run);
+  }),
+);
+
+router.get(
+  "/wallet/runs/:runId/replay",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    const runId = runIdParam(req);
+    if (!runId) {
+      sendJsonError(res, 400, "invalid_run_id");
+      return;
+    }
+    let replay;
+    try {
+      replay = await getReplay(session.address, runId);
+    } catch (error) {
+      sendRunError(res, error);
+      return;
+    }
+    if (!replay) {
+      sendJsonError(res, 404, "run_not_found");
+      return;
+    }
+    res.json(replay);
+  }),
+);
+
+router.get(
+  "/wallet/runs/:runId",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    const runId = runIdParam(req);
+    if (!runId) {
+      sendJsonError(res, 400, "invalid_run_id");
+      return;
+    }
+    let run;
+    try {
+      run = await getRun(session.address, runId);
+    } catch (error) {
+      sendRunError(res, error);
+      return;
+    }
+    if (!run) {
+      sendJsonError(res, 404, "run_not_found");
+      return;
+    }
+    res.json(run);
+  }),
+);
+
+router.post(
+  "/wallet/runs/:runId/action",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (
+      !requireWalletAddress(req, res, session.address) ||
+      !requireCsrf(req, res, session.csrfToken)
+    ) return;
+    const runId = runIdParam(req);
+    const body = bodyRecord(req);
+    if (
+      !runId ||
+      !hasOnlyKeys(body, ["clientRequestId", "expectedSequence", "action"]) ||
+      typeof body?.clientRequestId !== "string" ||
+      !/^[\x21-\x7e]{1,200}$/.test(body.clientRequestId) ||
+      typeof body.expectedSequence !== "number" ||
+      !Number.isInteger(body.expectedSequence) ||
+      body.expectedSequence < 0 ||
+      body.expectedSequence > 2_000_000_000 ||
+      !isRunAction(body.action)
+    ) {
+      sendJsonError(res, 400, "invalid_run_action");
+      return;
+    }
+    try {
+      res.json(await submitAction(
+        session.address,
+        runId,
+        body.clientRequestId,
+        body.expectedSequence,
+        body.action,
+      ));
+    } catch (error) {
+      sendRunError(res, error);
+    }
   }),
 );
 

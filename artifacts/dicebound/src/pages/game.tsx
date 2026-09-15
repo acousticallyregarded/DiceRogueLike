@@ -1,5 +1,6 @@
 import { useGame } from '../hooks/use-game';
 import { useWalletCloud } from '../hooks/use-wallet-cloud';
+import type { AuthoritativeRun } from '../hooks/use-wallet-cloud';
 import { Lobby } from '../components/Lobby';
 import { WalletButton } from '../components/WalletButton';
 import { GameBoard } from '../components/GameBoard';
@@ -14,6 +15,9 @@ import { useEffect, useRef } from 'react';
 import { useAudio } from '../audio/use-audio';
 import { useAudioEvents } from '../audio/use-audio-events';
 import { OpeningPrologue } from '../components/OpeningPrologue';
+import type { GameAction } from '../engine';
+import type { GameStateV4 } from '../engine';
+import { createSingleFlightActionDispatcher } from '../hooks/authoritative-action-dispatcher';
 
 export default function Game() {
   const {
@@ -25,6 +29,7 @@ export default function Game() {
     setPaused,
     replaceState,
     setGuestPersistence,
+    setAutomaticActionDispatcher,
   } = useGame();
   const wallet = useWalletCloud({
     state,
@@ -35,7 +40,95 @@ export default function Game() {
   const { setMusicScene, stopPlayback } = useAudio();
   const [showSkills, setShowSkills] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
+  const [authoritativeActionPending, setAuthoritativeActionPending] = useState(false);
   const previousRun = useRef(Boolean(state?.run));
+  const authoritativeSyncedSequence = useRef<number | null>(null);
+
+  // A wallet session reconnects to the server run, never to browser-authored
+  // combat state. Guest campaigns retain their existing non-value flow.
+  useEffect(() => {
+    if (!wallet.session) return;
+    void wallet.reconnectAuthoritativeRun().catch(() => undefined);
+  }, [wallet.reconnectAuthoritativeRun, wallet.session?.address]);
+
+  useEffect(() => {
+    const hasTerminalServerRun = wallet.serverRun?.status === 'won' || wallet.serverRun?.status === 'dead';
+    if (
+      !wallet.session ||
+      !state?.run ||
+      wallet.serverRunLoading ||
+      (wallet.serverRun && !hasTerminalServerRun) ||
+      (hasTerminalServerRun && state.run.phase !== 'explore')
+    ) return;
+    void wallet.startAuthoritativeRun(state.run.characterId ?? 'john').catch(() => undefined);
+  }, [
+    state?.run?.characterId,
+    wallet.serverRun,
+    wallet.serverRunLoading,
+    wallet.session,
+    wallet.startAuthoritativeRun,
+  ]);
+
+  const applyAuthoritativeCombat = useCallback((authoritative: AuthoritativeRun) => {
+    if (!authoritative.state || typeof authoritative.state !== 'object') return;
+    const canonical = authoritative.state as unknown as GameStateV4;
+    if (!canonical.meta || !("run" in canonical)) return;
+    replaceState(canonical);
+  }, [replaceState]);
+
+  const authoritativeHandlers = useRef<{
+    submit: (action: GameAction) => Promise<AuthoritativeRun | null>;
+    apply: (run: AuthoritativeRun) => void;
+  }>({
+    submit: async (_action: GameAction): Promise<AuthoritativeRun | null> => null,
+    apply: (_run: AuthoritativeRun) => {},
+  });
+  authoritativeHandlers.current = {
+    submit: async (action: GameAction) => {
+      if (!wallet.serverRun) {
+        const recovered = await wallet.reconnectAuthoritativeRun();
+        if (!recovered) return null;
+      }
+      return wallet.submitAuthoritativeAction(action);
+    },
+    apply: applyAuthoritativeCombat,
+  };
+  const authoritativeDispatcher = useRef(
+    createSingleFlightActionDispatcher<GameAction, AuthoritativeRun>({
+      submit: action => authoritativeHandlers.current.submit(action),
+      apply: run => authoritativeHandlers.current.apply(run),
+      onPendingChange: setAuthoritativeActionPending,
+    }),
+  );
+
+  const dispatchGameAction = useCallback((action: GameAction) => {
+    const run = state?.run;
+    if (
+      wallet.session &&
+      run &&
+      action.type !== 'START_RUN'
+    ) {
+      void authoritativeDispatcher.current.dispatch(action).catch(() => undefined);
+      return;
+    }
+    dispatch(action);
+  }, [
+    dispatch,
+    state?.run,
+    wallet.session,
+  ]);
+
+  useEffect(() => {
+    setAutomaticActionDispatcher(wallet.session ? dispatchGameAction : null);
+    return () => setAutomaticActionDispatcher(null);
+  }, [dispatchGameAction, setAutomaticActionDispatcher, wallet.session]);
+
+  useEffect(() => {
+    const authoritative = wallet.serverRun;
+    if (!authoritative || !state?.run || authoritativeSyncedSequence.current === authoritative.sequence) return;
+    authoritativeSyncedSequence.current = authoritative.sequence;
+    applyAuthoritativeCombat(authoritative);
+  }, [applyAuthoritativeCombat, state?.run, wallet.serverRun, wallet.serverRun?.sequence]);
 
   useEffect(() => {
     const hasRun = Boolean(state?.run);
@@ -63,13 +156,13 @@ export default function Game() {
   useAudioEvents(state);
 
   const handleSkipCinematic = useCallback(() => {
-    dispatch({ type: 'FINISH_TRAIL_CINEMATIC' });
-  }, [dispatch]);
+    dispatchGameAction({ type: 'FINISH_TRAIL_CINEMATIC' });
+  }, [dispatchGameAction]);
 
   if (!state) return null;
 
   if (!state.run) {
-    return <Lobby state={state} dispatch={dispatch} wallet={wallet} />;
+    return <Lobby state={state} dispatch={wallet.session ? dispatchGameAction : dispatch} wallet={wallet} />;
   }
 
   const r = state.run;
@@ -81,7 +174,13 @@ export default function Game() {
 
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans select-none">
-      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#2b4c2b]">
+      <div
+        className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#2b4c2b]"
+        aria-busy={authoritativeActionPending}
+      >
+        {authoritativeActionPending && (
+          <div className="absolute inset-0 z-[100] cursor-wait" aria-hidden="true" />
+        )}
         
         {/* Scene Split - If in combat, shrink board to bottom */}
         <div className={`absolute inset-0 transition-transform duration-700 ease-in-out ${inCombat ? 'translate-y-[40%] scale-90 opacity-40' : 'translate-y-0 scale-100'}`}>
@@ -90,7 +189,7 @@ export default function Game() {
               visualPosition={r.position} 
               speed={speed}
               paused={paused}
-              onCinematicFinish={handleSkipCinematic}
+               onCinematicFinish={handleSkipCinematic}
            />
         </div>
         <div
@@ -109,14 +208,14 @@ export default function Game() {
            <WalletButton wallet={wallet} compact />
          </div>
 
-        <CombatOverlay run={r} dispatch={dispatch} speed={speed} paused={paused} />
+         <CombatOverlay run={r} dispatch={dispatchGameAction} speed={speed} paused={paused || authoritativeActionPending} />
 
         {isPrologue && (
           <OpeningPrologue
             characterId={r.characterId}
             step={r.prologueStep ?? 0}
             onAdvance={handleSkipCinematic}
-            onSkip={() => dispatch({ type: 'SKIP_PROLOGUE' })}
+             onSkip={() => dispatchGameAction({ type: 'SKIP_PROLOGUE' })}
           />
         )}
 
@@ -132,12 +231,12 @@ export default function Game() {
         </div>
 
         <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-           {!r.heroDeathPending && <ActionOverlay run={r} dispatch={dispatch} meta={state.meta} />}
+            {!r.heroDeathPending && <ActionOverlay run={r} dispatch={dispatchGameAction} meta={state.meta} />}
         </div>
 
         {/* Dice Button Bottom */}
         <div className={`absolute bottom-6 left-0 right-0 flex justify-center z-30 transition-opacity duration-500 pointer-events-none ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-           <DiceButton run={r} dispatch={dispatch} />
+           <DiceButton run={r} dispatch={dispatchGameAction} />
         </div>
 
         {/* Skills panel toggle */}

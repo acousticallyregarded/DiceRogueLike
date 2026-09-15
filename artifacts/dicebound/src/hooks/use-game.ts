@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { applyGameAction, isGemPurchase } from '../gem-purchases';
 
 const KEY_V4 = "dicebound-save-v4";
+type GameActionDispatcher = (action: GameAction) => void;
 
 export function loadGame(): GameStateV4 {
   try {
@@ -47,6 +48,7 @@ export function useGame() {
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   const guestPersistenceRef = useRef(true);
+  const automaticActionDispatcherRef = useRef<GameActionDispatcher | null>(null);
   
   useEffect(() => {
     const loaded = loadGame();
@@ -88,6 +90,14 @@ export function useGame() {
     });
   }, []);
 
+  const dispatchAutomaticAction = useCallback((action: GameAction) => {
+    (automaticActionDispatcherRef.current ?? dispatch)(action);
+  }, [dispatch]);
+
+  const setAutomaticActionDispatcher = useCallback((dispatcher: GameActionDispatcher | null) => {
+    automaticActionDispatcherRef.current = dispatcher;
+  }, []);
+
   const setPaused = useCallback((nextPaused: boolean) => {
     pausedRef.current = nextPaused;
     setPausedState(nextPaused);
@@ -122,19 +132,19 @@ export function useGame() {
 
   useEffect(() => {
     if (paused || !state?.run?.heroDeathPending) return;
-    const timer = window.setTimeout(() => dispatch({ type: 'FINISH_HERO_DEATH' }),
+    const timer = window.setTimeout(() => dispatchAutomaticAction({ type: 'FINISH_HERO_DEATH' }),
       getHeroDeathDurationMs(state.run) / Math.max(1, speed));
     return () => window.clearTimeout(timer);
-  }, [state?.run?.heroDeathPending, dispatch, speed, paused]);
+  }, [state?.run?.heroDeathPending, dispatchAutomaticAction, speed, paused]);
 
   useEffect(() => {
     if (paused || state?.run?.phase !== 'combat' || state.run.combatTurn !== 'enemy') return;
     const pending = Boolean(state.run.playerCombat?.pendingHeroAttack);
     const timer = window.setTimeout(() => {
-      dispatch({ type: pending ? 'FINISH_HERO_ATTACK' : 'RESOLVE_ENEMY_TURN' });
+      dispatchAutomaticAction({ type: pending ? 'FINISH_HERO_ATTACK' : 'RESOLVE_ENEMY_TURN' });
     }, pending ? getPendingHeroAttackDurationMs(state.run) : getEnemyResponseDelayMs(state.run));
     return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.combatTurn, state?.run?.phase, responseSpeed, pendingAttackKey, paused]);
+  }, [dispatchAutomaticAction, state?.run?.combatTurn, state?.run?.phase, responseSpeed, pendingAttackKey, paused]);
 
   // The reducer commits the actual dice result before the presentation starts.
   // Holding movement here keeps the displayed pair stable and means a save
@@ -143,10 +153,10 @@ export function useGame() {
     if (paused || state?.run?.phase !== 'moving' || !state.run.rollAnimating) return;
 
     const timer = window.setTimeout(() => {
-      dispatch({ type: 'BEGIN_MOVEMENT' });
+      dispatchAutomaticAction({ type: 'BEGIN_MOVEMENT' });
     }, DICE_ROLL_ANIMATION_DURATION_MS);
     return () => window.clearTimeout(timer);
-  }, [dispatch, state?.run?.phase, state?.run?.rollAnimating, paused]);
+  }, [dispatchAutomaticAction, state?.run?.phase, state?.run?.rollAnimating, paused]);
 
   // GameBoard owns cinematic completion, including the rise and sword pose.
 
@@ -176,14 +186,14 @@ export function useGame() {
         const moveInterval = 300 / Math.max(1, speed);
         if (dtMove >= moveInterval) { // Keep each tile step on the 300ms base timeline
           moveTick.current = time;
-          dispatch({ type: 'STEP_MOVE' });
+          dispatchAutomaticAction({ type: 'STEP_MOVE' });
         }
       }
     };
     
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, state?.run?.trailCinematic, dispatch, speed, paused]);
+  }, [state?.run?.phase, state?.run?.position, state?.run?.rollAnimating, state?.run?.trailCinematic, dispatchAutomaticAction, speed, paused]);
 
   return {
     state,
@@ -194,5 +204,6 @@ export function useGame() {
     setPaused,
     replaceState,
     setGuestPersistence,
+    setAutomaticActionDispatcher,
   };
 }

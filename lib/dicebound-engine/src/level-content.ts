@@ -1,0 +1,118 @@
+export type BossId = "skeleton-king" | "grubgut" | "silkmaw" | "cinder";
+export type BiomeId = "forest" | "swamp" | "webwood" | "ashlands";
+
+export interface LevelDefinition {
+  floor: number;
+  name: string;
+  biome: BiomeId;
+  description: string;
+  boss: { id: BossId; name: string; arena: string; description: string };
+}
+
+export interface VictoryInterlude {
+  fragment: string;
+  title: string;
+  body: string;
+  destination: string;
+}
+
+export const LEVELS: readonly LevelDefinition[] = [
+  {
+    floor: 1, name: "The Forest Trail", biome: "forest",
+    description: "Follow the forest trail to the ancient king's platform.",
+    boss: { id: "skeleton-king", name: "Skeleton King", arena: "The King's Platform", description: "The ancient guardian of the forest." },
+  },
+  {
+    floor: 2, name: "Mirebridge Marsh", biome: "swamp",
+    description: "Cross mossy paths and misty wetlands to a ruined stone bridge.",
+    boss: { id: "grubgut", name: "Grubgut, the Troll King", arena: "The Broken Bridge", description: "A regenerating troll monarch with a tree-trunk club and poisonous breath." },
+  },
+  {
+    floor: 3, name: "Silkmaw's Hollow", biome: "webwood",
+    description: "Travel through a web-covered forest to a colossal hollow tree.",
+    boss: { id: "silkmaw", name: "Lady Silkmaw, the Spider Queen", arena: "The Hollow Throne", description: "A venomous queen who snares her prey and calls her brood." },
+  },
+  {
+    floor: 4, name: "The Cinder March", biome: "ashlands",
+    description: "Climb through a burned forest toward the gates of a ruined fortress.",
+    boss: { id: "cinder", name: "Sir Cinder, the Ashen Knight", arena: "The Ashen Gate", description: "A black-armored knight whose burning sword grows fiercer as his armor cracks." },
+  },
+];
+
+export const VICTORY_INTERLUDES: readonly VictoryInterlude[] = [
+  {
+    fragment: "The Verdant Shard",
+    title: "A Crown Fragment Rekindled",
+    body: "The Skeleton King’s curse breaks, and a green shard of the Crown answers your touch. In its reflection, Grubgut damns Mirebridge Marsh and chokes the road east.",
+    destination: "Carry the Verdant Shard to Mirebridge Marsh and confront Grubgut, the Troll King.",
+  },
+  {
+    fragment: "The Mire Shard",
+    title: "The Web Tightens",
+    body: "Grubgut falls, freeing a dark shard from beneath the broken bridge. Silver threads coil across its surface: Lady Silkmaw is binding the next Crown fragment inside her hollow throne.",
+    destination: "Follow the threads into Silkmaw’s Hollow before the Spider Queen seals it away.",
+  },
+  {
+    fragment: "The Silken Shard",
+    title: "Ash on the Horizon",
+    body: "Lady Silkmaw’s web burns away, leaving a pale shard in your hand. It grows hot and points toward Sir Cinder, whose ruined fortress feeds on the Crown’s final fire.",
+    destination: "Cross the Cinder March and face the Ashen Knight at the fortress gate.",
+  },
+];
+
+export function getVictoryInterlude(floor: number): VictoryInterlude | null {
+  return VICTORY_INTERLUDES[Math.floor(floor) - 1] ?? null;
+}
+
+export function getRecoveredCrownFragments(run: {
+  floor: number;
+  victoryReport?: { boss: boolean; floor: number } | null;
+}): readonly VictoryInterlude[] {
+  const completedFloors = Math.max(0, Math.floor(Number(run.floor) || 1) - 1);
+  const pendingBossFloor = run.victoryReport?.boss
+    ? Math.floor(Number(run.victoryReport.floor) || 0)
+    : 0;
+  const recoveredThrough = Math.max(completedFloors, pendingBossFloor);
+  return VICTORY_INTERLUDES.slice(0, Math.min(VICTORY_INTERLUDES.length, recoveredThrough));
+}
+
+export function getLevelDefinition(floor: number): LevelDefinition {
+  return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, Math.floor(floor || 1) - 1))];
+}
+
+/** Match the saved enemy, not only the floor, so legacy King fights keep their art. */
+export function getBossId(enemy: { boss?: boolean; name: string }): BossId | null {
+  if (!enemy.boss) return null;
+  if (enemy.name.startsWith("Grubgut")) return "grubgut";
+  if (enemy.name.includes("Silkmaw")) return "silkmaw";
+  if (enemy.name.includes("Cinder")) return "cinder";
+  return "skeleton-king";
+}
+
+export function getBossDeathDurationMs(enemy: { boss?: boolean; name: string }): number {
+  const bossId = getBossId(enemy);
+  if (bossId === "skeleton-king") return 5200;
+  if (bossId === "grubgut") return 2600;
+  if (bossId === "silkmaw") return 4200;
+  if (bossId === "cinder") return 5000;
+  return 1800;
+}
+
+export function getBossMovePresentation(enemy: {
+  boss?: boolean; name: string; bossMove?: string; lastBossAttack?: string;
+}): { label: string; kind: "melee" | "ranged" | "support"; durationMs: number } {
+  switch (enemy.bossMove) {
+    case "club": return { label: "Bridgebreaker", kind: "melee", durationMs: 2600 };
+    case "poison_belch": return { label: "Swamp Belch", kind: "ranged", durationMs: 3400 };
+    case "regen": return { label: "Troll Regeneration", kind: "support", durationMs: 2200 };
+    case "venom_bite": return { label: "Venom Lunge", kind: "melee", durationMs: 3400 };
+    case "web": return { label: "Royal Web", kind: "ranged", durationMs: 2600 };
+    case "summon_brood": return { label: "Brood Call", kind: "support", durationMs: 2400 };
+    case "slash": return { label: "Executioner's Slash", kind: "melee", durationMs: 2600 };
+    case "fire_wave": return { label: "Cinder Wave", kind: "ranged", durationMs: 2600 };
+    case "rage": return { label: "Furnace Rage", kind: "support", durationMs: 2400 };
+    default: return enemy.lastBossAttack === "fireball"
+      ? { label: "Fireball", kind: "ranged", durationMs: 4200 }
+      : { label: "Sword Strike", kind: "melee", durationMs: 1800 };
+  }
+}
