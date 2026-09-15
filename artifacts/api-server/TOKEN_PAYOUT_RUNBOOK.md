@@ -11,6 +11,51 @@ grants inserted by a server-authoritative subsystem. Re-enable combat rewards
 only after implementing server-owned run progression, inventory, character
 abilities, reconnect state, and transactional reward settlement as one feature.
 
+## Historical reward provenance audit
+
+Historical reward rows default to `provenance_status=unverified` and cannot be
+shown, reserved, or claimed. Before a production rollout, prepare a reviewed
+JSON manifest containing exact eligibility IDs from a trusted server-side source:
+
+```json
+{
+  "auditId": "production-2026-09-15",
+  "trustedPeriods": [{
+    "source": "reviewed server settlement export",
+    "period": "2026-08-authoritative-pilot",
+    "startsAt": "2026-08-01T00:00:00.000Z",
+    "endsAt": "2026-09-01T00:00:00.000Z",
+    "eligibilityIds": ["exact-id-from-reviewed-export"]
+  }]
+}
+```
+
+1. Pause purchases and claims during the rollout.
+2. Apply the database schema first; do not change provenance defaults to trusted.
+3. Run `pnpm --filter @workspace/api-server audit-token-rewards ./manifest.json`
+   against the target environment. This is a dry run and reports trusted,
+   quarantined, and already-classified counts.
+4. Have a second operator compare the manifest, UTC period boundaries, source
+   export, and counts. Database patterns alone are not proof of provenance.
+5. Run the same command with `--apply`. Exact manifest IDs within their stated
+   creation periods become trusted. Every remaining unverified row becomes
+   quarantined with the audit ID, timestamp, source classification, period
+   classification, and reason retained on the row.
+   Pending unsigned reward payouts backed by a quarantined or missing source are
+   marked failed with `reward_provenance_quarantined`; their claim is marked
+   quarantined and no transaction is signed.
+6. Re-run the dry run. It must report zero newly trusted or quarantined rows and
+   all rows as already classified. Archive the manifest and command output with
+   the rollout record.
+7. Keep quarantined rows. Never delete or directly relabel them. A correction
+   requires a new reviewed audit procedure and preserved evidence.
+
+Already-signed or submitted payouts are not cancellable database intents. The
+audit preserves their signed bytes, nonce, hash, and recovery behavior. Keep
+purchases disabled, reconcile each one against chain history, and follow the
+stuck nonce procedure below before resuming payouts. Do not clear or replace a
+signed row merely because its source reward was quarantined.
+
 # Token payout operator runbook
 
 The API emits structured `Token payout operator alert` log records once per minute while token purchases are enabled. Repeated alerts are limited to once every 30 minutes per condition, and a resolution record is emitted when a condition clears. These records contain operational counts, timestamps, and base-unit balances only. They never contain private keys or signed transaction bytes.

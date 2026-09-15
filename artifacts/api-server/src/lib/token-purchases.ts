@@ -462,6 +462,7 @@ export async function unresolvedReservation(
     .where(and(
       eq(tokenRewards.tokenAddress, tokenAddress),
       eq(tokenRewards.status, "unclaimed"),
+      eq(tokenRewards.provenanceStatus, "trusted"),
     ));
   return rows.reduce((total: bigint, row: { amount: string }) => total + BigInt(row.amount), 0n)
     + rewards.reduce((total: bigint, row: { amount: string }) => total + BigInt(row.amount), 0n);
@@ -688,6 +689,33 @@ async function signAndPersist(row: typeof tokenPurchases.$inferSelect): Promise<
     }
     const current = (await tx.select().from(tokenPurchases).where(eq(tokenPurchases.id, row.id)).limit(1))[0];
     if (!current || current.rawSignedTransaction) return [current ?? row];
+    if (current.payoutKind === "reward") {
+      const sources = current.rewardClaimId
+        ? await tx.select({ provenanceStatus: tokenRewards.provenanceStatus })
+          .from(tokenRewards).where(and(
+            eq(tokenRewards.claimId, current.rewardClaimId),
+            eq(tokenRewards.symbol, current.symbol),
+          ))
+        : [];
+      if (sources.length === 0 || sources.some((source) => source.provenanceStatus !== "trusted")) {
+        const [failed] = await tx.update(tokenPurchases).set({
+          status: "failed",
+          errorCode: "reward_provenance_quarantined",
+          errorMessage: "Reward payout blocked because its source rewards are not trusted.",
+          updatedAt: new Date(),
+        }).where(and(
+          eq(tokenPurchases.id, current.id),
+          eq(tokenPurchases.status, "pending"),
+        )).returning();
+        if (current.rewardClaimId) {
+          await tx.update(tokenRewardClaims).set({
+            status: "quarantined",
+            updatedAt: new Date(),
+          }).where(eq(tokenRewardClaims.id, current.rewardClaimId));
+        }
+        return [failed ?? current];
+      }
+    }
     const earlierSigned = await tx
       .select({ id: tokenPurchases.id })
       .from(tokenPurchases)

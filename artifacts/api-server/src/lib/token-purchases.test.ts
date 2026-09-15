@@ -16,6 +16,8 @@ import {
   tokenRewards,
 } from "@workspace/db";
 import { tokenAmountForPrice, tokenAmountForUsdCents } from "./token-purchase-math";
+import { auditTokenRewardProvenance } from "./token-reward-provenance";
+import { claimTokenRewards } from "./token-rewards";
 import {
   GEM_COST,
   MAX_REDEEMABLE_GEM_GRANT,
@@ -436,4 +438,105 @@ test("reward payout failure is symbol-scoped and never mints gems", async () => 
   assert.equal(afterSuccess.find(row => row.symbol === "SLV")?.status, "claimed");
   assert.equal((await db.select().from(tokenRewardClaims))[0]?.status, "partial");
   assert.equal(await gemBalance(WALLET), 0);
+});
+
+test("provenance audit quarantines unverifiable rewards and claims cannot create payouts", async () => {
+  await db.insert(tokenRewards).values([
+    {
+      id: "trusted-reward",
+      walletAddress: WALLET,
+      eligibilityId: "trusted-eligibility",
+      monsterId: "trusted-monster",
+      symbol: "GLD",
+      tokenAddress: tokenAddress("GLD"),
+      tokenAmountBaseUnits: "15",
+      createdAt: new Date("2026-08-15T12:00:00.000Z"),
+    },
+    {
+      id: "unknown-reward",
+      walletAddress: OTHER_WALLET,
+      eligibilityId: "unknown-eligibility",
+      monsterId: "unknown-monster",
+      symbol: "SLV",
+      tokenAddress: tokenAddress("SLV"),
+      tokenAmountBaseUnits: "30",
+      status: "claiming",
+      claimId: "historical-claim",
+      createdAt: new Date("2026-08-16T12:00:00.000Z"),
+    },
+  ]);
+  await db.insert(tokenRewardClaims).values({
+    id: "historical-claim",
+    walletAddress: OTHER_WALLET,
+    status: "pending",
+  });
+  await db.insert(tokenPurchases).values({
+    id: "historical-payout",
+    walletAddress: OTHER_WALLET,
+    idempotencyKey: "reward-claim:historical-claim:SLV",
+    symbol: "SLV",
+    tokenAddress: tokenAddress("SLV"),
+    gemCost: 0,
+    quotePrice: "0",
+    quoteSource: "historical reward",
+    quoteTimestamp: new Date("2026-08-16T12:00:00.000Z"),
+    quoteDelayed: "previous-close",
+    tokenAmountBaseUnits: "30",
+    status: "pending",
+    payoutKind: "reward",
+    rewardClaimId: "historical-claim",
+  });
+  const manifest = {
+    auditId: "test-audit",
+    trustedPeriods: [{
+      source: "reviewed server export",
+      period: "authoritative-pilot",
+      startsAt: "2026-08-01T00:00:00.000Z",
+      endsAt: "2026-09-01T00:00:00.000Z",
+      eligibilityIds: ["trusted-eligibility"],
+    }],
+  };
+
+  const preview = await auditTokenRewardProvenance(manifest);
+  assert.deepEqual(preview, {
+    auditId: "test-audit",
+    trusted: 1,
+    quarantined: 1,
+    alreadyClassified: 0,
+    blockedPendingPayouts: 0,
+    dryRun: true,
+  });
+  assert.equal((await db.select().from(tokenRewards))[0]?.provenanceStatus, "unverified");
+
+  const applied = await auditTokenRewardProvenance(manifest, { apply: true });
+  assert.equal(applied.blockedPendingPayouts, 1);
+  const rows = await db.select().from(tokenRewards).orderBy(tokenRewards.id);
+  assert.equal(rows.find((row) => row.id === "trusted-reward")?.provenanceStatus, "trusted");
+  assert.equal(rows.find((row) => row.id === "trusted-reward")?.provenanceSource, "reviewed server export");
+  assert.equal(rows.find((row) => row.id === "unknown-reward")?.provenanceStatus, "quarantined");
+  assert.equal(rows.find((row) => row.id === "unknown-reward")?.provenanceAuditId, "test-audit");
+  assert.ok(rows.find((row) => row.id === "unknown-reward")?.quarantineReason);
+
+  await recoverPendingPurchases();
+  const [blockedPayout] = await db.select().from(tokenPurchases);
+  assert.equal(blockedPayout?.status, "failed");
+  assert.equal(blockedPayout?.errorCode, "reward_provenance_quarantined");
+  assert.equal(blockedPayout?.rawSignedTransaction, null);
+  assert.equal(chain.broadcasts.length, 0);
+  assert.equal((await db.select().from(tokenRewardClaims))[0]?.status, "quarantined");
+
+  const claim = await claimTokenRewards(OTHER_WALLET);
+  assert.equal(claim.status, "empty");
+  assert.equal((await db.select().from(tokenPurchases)).length, 1);
+  assert.equal((await db.select().from(tokenRewardClaims)).length, 1);
+
+  const repeat = await auditTokenRewardProvenance(manifest);
+  assert.deepEqual(repeat, {
+    auditId: "test-audit",
+    trusted: 0,
+    quarantined: 0,
+    alreadyClassified: 2,
+    blockedPendingPayouts: 0,
+    dryRun: true,
+  });
 });

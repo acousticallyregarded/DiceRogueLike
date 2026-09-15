@@ -79,6 +79,7 @@ export async function claimTokenRewards(walletAddress: string) {
     const rewards = await tx.select().from(tokenRewards).where(and(
       eq(tokenRewards.walletAddress, walletAddress),
       eq(tokenRewards.status, "unclaimed"),
+      eq(tokenRewards.provenanceStatus, "trusted"),
     ));
     if (!rewards.length) return false;
     const claimId = crypto.randomUUID();
@@ -103,6 +104,7 @@ export async function claimTokenRewards(walletAddress: string) {
         eq(tokenRewards.walletAddress, walletAddress),
         eq(tokenRewards.status, "unclaimed"),
         eq(tokenRewards.symbol, symbol),
+        eq(tokenRewards.provenanceStatus, "trusted"),
       ));
       const amount = group.reduce((sum, reward) => sum + BigInt(reward.tokenAmountBaseUnits), 0n);
       const [payout] = await tx.insert(tokenPurchases).values({
@@ -154,6 +156,7 @@ export async function getTokenRewards(walletAddress: string) {
   const rows = await db.select().from(tokenRewards).where(and(
     eq(tokenRewards.walletAddress, walletAddress),
     inArray(tokenRewards.status, ["unclaimed", "claiming"]),
+    eq(tokenRewards.provenanceStatus, "trusted"),
   ));
   const totals = { GLD: 0n, SLV: 0n };
   const counts = { GLD: 0, SLV: 0 };

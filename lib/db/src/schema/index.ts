@@ -80,12 +80,19 @@ export const tokenRewards = pgTable(
     usdCents: integer("usd_cents").notNull().default(15),
     status: text("status").notNull().default("unclaimed"),
     claimId: text("claim_id"),
+    provenanceStatus: text("provenance_status").notNull().default("unverified"),
+    provenanceSource: text("provenance_source"),
+    provenancePeriod: text("provenance_period"),
+    provenanceAuditId: text("provenance_audit_id"),
+    provenanceAuditedAt: timestamp("provenance_audited_at", { withTimezone: true, mode: "date" }),
+    quarantineReason: text("quarantine_reason"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "date" }),
   },
   (table) => ({
     monsterIndex: uniqueIndex("token_rewards_eligibility_monster_idx").on(table.eligibilityId, table.monsterId),
     walletStatusIndex: index("token_rewards_wallet_status_idx").on(table.walletAddress, table.status),
+    provenanceIndex: index("token_rewards_provenance_idx").on(table.provenanceStatus, table.createdAt),
   }),
 );
 
