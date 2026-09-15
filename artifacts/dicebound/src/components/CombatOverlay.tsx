@@ -496,7 +496,8 @@ export function CombatOverlay({
   const playerDrinkTrigger = visualEvents.heroDrink;
   const finishHeroDrink = useCallback(() => {
     setCompletedHeroDrink(playerDrinkTrigger);
-  }, [playerDrinkTrigger]);
+    dispatch({ type: 'FINISH_BONUS_CONSUMABLE' });
+  }, [dispatch, playerDrinkTrigger]);
   const playerFireBombTrigger = visualEvents.heroFireBomb;
   const finishHeroFireBomb = useCallback(() => {
     setCompletedHeroFireBomb(playerFireBombTrigger);
@@ -507,7 +508,8 @@ export function CombatOverlay({
   }, [visualEvents.heroHit]);
   const finishHeroGuard = useCallback(() => {
     setCompletedHeroGuard(playerGuardTrigger);
-  }, [playerGuardTrigger]);
+    dispatch({ type: 'FINISH_BONUS_CONSUMABLE' });
+  }, [dispatch, playerGuardTrigger]);
   const finishHeroAttack = useCallback(() => {
     setCompletedHeroAttack(visualEvents.heroAttack);
   }, [visualEvents.heroAttack]);
@@ -567,7 +569,8 @@ export function CombatOverlay({
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
   const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit;
-  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack && !leaving && !bossAnimating && !uncRecovering;
+  const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack
+    && !drinkingPotion && !guardingHero && !leaving && !bossAnimating && !uncRecovering;
   const statusLabel = run.heroDeathPending ? 'Defeated'
     : run.playerCombat?.pendingHeroAttack ? 'Attacking'
     : uncRecovering ? 'Recovering'
@@ -921,7 +924,7 @@ export function CombatOverlay({
               {
                 id: 'health_potion' as const,
                 name: 'Health Potion',
-                description: 'Restore 40% max HP (capped at full health).',
+                description: 'Bonus action · Restore 40% max HP (capped at full health).',
                 count: run.consumables.health_potion,
                 icon: Heart,
                 color: 'text-rose-500',
@@ -930,7 +933,7 @@ export function CombatOverlay({
               {
                 id: 'fire_bomb' as const,
                 name: 'Fire Bomb',
-                description: 'Fire damage to every living enemy.',
+                description: 'Full action · Fire damage to every living enemy.',
                 count: run.consumables.fire_bomb,
                 icon: Flame,
                 color: 'text-orange-500',
@@ -939,7 +942,7 @@ export function CombatOverlay({
               {
                 id: 'guard_tonic' as const,
                 name: 'Guard Tonic',
-                description: 'Halve damage from the next enemy response.',
+                description: 'Bonus action · Halve damage from the next enemy response.',
                 count: run.consumables.guard_tonic,
                 icon: Shield,
                 color: 'text-sky-500',

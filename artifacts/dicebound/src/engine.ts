@@ -531,6 +531,7 @@ export type GameAction =
   | { type: "UNC_HOLD_MY_BEER"; targetId?: string }
   | { type: "JOHN_TAKEDOWN"; targetId?: string }
   | { type: "USE_CONSUMABLE"; consumable: ConsumableType }
+  | { type: "FINISH_BONUS_CONSUMABLE" }
   | { type: "RESOLVE_ENEMY_TURN" }
   | { type: "FINISH_HERO_ATTACK" }
   | { type: "FINISH_HERO_DEATH" }
@@ -2062,14 +2063,11 @@ function resolveConsumable(s: GameStateV4, consumable: ConsumableType) {
 
   if (consumable === "health_potion" && r.hp >= r.maxHp) return;
 
+  const isBonusAction = consumable === "health_potion" || consumable === "guard_tonic";
   r.consumables[consumable]--;
-  r.playerCombat.roundCounter++;
   r.playerCombat.lastConsumable = consumable;
   r.playerCombat.heroImpactResolved = false;
-  delete r.playerCombat.attackDamageType;
   r.playerCombat.heroConsumableSequence = (r.playerCombat.heroConsumableSequence ?? 0) + 1;
-  const poisonTick = applyPoisonTicks(r);
-  if (poisonTick.defeatedBoss) r.playerCombat.pendingBossDeath = poisonTick.defeatedBoss;
 
   if (consumable === "health_potion") {
     const healed = Math.max(1, Math.floor(r.maxHp * 0.4));
@@ -2087,7 +2085,25 @@ function resolveConsumable(s: GameStateV4, consumable: ConsumableType) {
     logMessage(r, "Fire Bomb arcs toward every living enemy.");
   }
 
+  if (isBonusAction) return;
+
+  r.playerCombat.roundCounter++;
+  delete r.playerCombat.attackDamageType;
+  const poisonTick = applyPoisonTicks(r);
+  if (poisonTick.defeatedBoss) r.playerCombat.pendingBossDeath = poisonTick.defeatedBoss;
   beginEnemyTurn(r);
+}
+
+function finishBonusConsumable(s: GameStateV4) {
+  const r = s.run;
+  const lastConsumable = r?.playerCombat?.lastConsumable;
+  if (
+    !r
+    || r.phase !== "combat"
+    || r.combatTurn !== "player"
+    || (lastConsumable !== "health_potion" && lastConsumable !== "guard_tonic")
+  ) return;
+  r.playerCombat!.lastConsumable = null;
 }
 
 function resolveFireBomb(r: RunState) {
@@ -2781,6 +2797,10 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "USE_CONSUMABLE") {
     resolveConsumable(s, action.consumable);
+  }
+
+  if (action.type === "FINISH_BONUS_CONSUMABLE") {
+    finishBonusConsumable(s);
   }
 
   if (action.type === "RESOLVE_ENEMY_TURN") {

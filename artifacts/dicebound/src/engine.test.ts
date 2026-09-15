@@ -732,24 +732,27 @@ function runAssertions() {
   items = act(items, { type: "USE_CONSUMABLE", consumable: "health_potion" });
   assert.equal(items.run!.combatTurn, "player");
 
-  // Only a successful potion commits a durable drink marker. The marker
-  // selects the long enemy-response delay and clears after that response.
+  // A successful potion is a bonus action: it heals and animates without
+  // advancing the round, applying poison, or handing the turn to enemies.
   let potion = combatState({ ...skeleton, id: "potion", hp: 50 });
   potion.run!.maxHp = 100;
   potion.run!.consumables.health_potion = 2;
+  potion.run!.poisonStacks = 2;
+  const potionRound = potion.run!.playerCombat!.roundCounter;
   potion = act(potion, { type: "USE_CONSUMABLE", consumable: "health_potion" });
   assert.equal(potion.run!.consumables.health_potion, 1);
   assert.equal(potion.run!.playerCombat!.lastConsumable, "health_potion");
   assert.equal(potion.run!.playerCombat!.heroConsumableSequence, 1);
-  assert.equal(getEnemyResponseDelayMs(potion.run!), POTION_ANIMATION_DURATION_MS);
+  assert.equal(potion.run!.combatTurn, "player");
+  assert.equal(potion.run!.playerCombat!.roundCounter, potionRound);
+  assert.equal(potion.run!.poisonStacks, 2);
   const reloadedPotion = validateState(JSON.parse(JSON.stringify(potion)));
   assert.equal(reloadedPotion.run!.consumables.health_potion, 1);
   assert.equal(reloadedPotion.run!.playerCombat!.lastConsumable, "health_potion");
-  assert.equal(getEnemyResponseDelayMs(reloadedPotion.run!), POTION_ANIMATION_DURATION_MS);
-  const resolvedReloadedPotion = act(reloadedPotion, { type: "RESOLVE_ENEMY_TURN" });
-  const resolvedReloadedAgain = act(resolvedReloadedPotion, { type: "RESOLVE_ENEMY_TURN" });
-  assert.equal(JSON.stringify(resolvedReloadedAgain.run), JSON.stringify(resolvedReloadedPotion.run));
-  potion = act(potion, { type: "RESOLVE_ENEMY_TURN" });
+  const resolvedReloadedPotion = act(reloadedPotion, { type: "FINISH_BONUS_CONSUMABLE" });
+  assert.equal(resolvedReloadedPotion.run!.combatTurn, "player");
+  assert.equal(resolvedReloadedPotion.run!.playerCombat!.lastConsumable, null);
+  potion = act(potion, { type: "FINISH_BONUS_CONSUMABLE" });
   assert.equal(potion.run!.playerCombat!.lastConsumable, null);
   assert.equal(getEnemyResponseDelayMs(potion.run!), DEFAULT_ENEMY_RESPONSE_DELAY_MS);
 
@@ -766,13 +769,15 @@ function runAssertions() {
   assert.equal(potion.run!.playerCombat!.heroConsumableSequence, potionBeforeFailedAttempt);
   assert.equal(getEnemyResponseDelayMs(potion.run!), DEFAULT_ENEMY_RESPONSE_DELAY_MS);
 
-  // Fire Bomb and Guard Tonic are committed actions, but neither is a potion.
+  // Guard Tonic is also a bonus action; Fire Bomb still consumes the full turn.
   let otherConsumable = combatState({ ...skeleton, id: "other-consumables", hp: 50 });
+  const guardRound = otherConsumable.run!.playerCombat!.roundCounter;
   otherConsumable = act(otherConsumable, { type: "USE_CONSUMABLE", consumable: "guard_tonic" });
   assert.equal(otherConsumable.run!.playerCombat!.lastConsumable, "guard_tonic");
   assert.equal(otherConsumable.run!.consumables.guard_tonic, 0);
   assert.equal(otherConsumable.run!.playerCombat!.heroConsumableSequence, 1);
-  assert.equal(getEnemyResponseDelayMs(otherConsumable.run!), GUARD_TONIC_ANIMATION_DURATION_MS);
+  assert.equal(otherConsumable.run!.combatTurn, "player");
+  assert.equal(otherConsumable.run!.playerCombat!.roundCounter, guardRound);
 
   // A fire bomb consumes immediately but holds all damage until its 2600ms
   // impact. The selected attack stance cannot change the bomb's fire type.
@@ -854,18 +859,22 @@ function runAssertions() {
   const resolvedLegacyBomb = act(validateState(legacyBomb), { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(resolvedLegacyBomb.run!.enemies[0].hp, legacyBeforeHp);
 
-  // Guard is consumed now, delays the response for its animation, and clears
-  // after exactly one response. A saved pending guard does not consume twice.
+  // Guard is consumed as a bonus action and remains active for the player's
+  // subsequent full action and the next enemy response.
   let guarded = combatState({ ...skeleton, id: "guarded", attack: 20 });
   guarded.run!.defense = 0;
   guarded = act(guarded, { type: "USE_CONSUMABLE", consumable: "guard_tonic" });
   assert.equal(guarded.run!.guardActive, true);
   assert.equal(guarded.run!.playerCombat!.lastConsumable, "guard_tonic");
-  assert.equal(getEnemyResponseDelayMs(guarded.run!), GUARD_TONIC_ANIMATION_DURATION_MS);
+  assert.equal(guarded.run!.combatTurn, "player");
   const savedGuard = validateState(JSON.parse(JSON.stringify(guarded)));
   assert.equal(savedGuard.run!.consumables.guard_tonic, 0);
   assert.equal(savedGuard.run!.playerCombat!.heroConsumableSequence, 1);
-  const resolvedGuard = act(savedGuard, { type: "RESOLVE_ENEMY_TURN" });
+  const finishedGuardAnimation = act(savedGuard, { type: "FINISH_BONUS_CONSUMABLE" });
+  assert.equal(finishedGuardAnimation.run!.playerCombat!.lastConsumable, null);
+  const guardAttack = act(finishedGuardAnimation, { type: "PLAYER_ATTACK" });
+  const guardImpact = act(guardAttack, { type: "FINISH_HERO_ATTACK" });
+  const resolvedGuard = act(guardImpact, { type: "RESOLVE_ENEMY_TURN" });
   assert.equal(resolvedGuard.run!.guardActive, false);
   assert.equal(resolvedGuard.run!.playerCombat!.lastConsumable, null);
   assert.equal(resolvedGuard.run!.hp, 40);
@@ -1732,8 +1741,8 @@ function runFocusedCombatAssertions() {
     poisoned: true,
   });
   const poisonedWoken = act(poisonWake, { type: "USE_CONSUMABLE", consumable: "health_potion" });
-  assert.equal(poisonedWoken.run!.enemies[0].hp, 99);
-  assert.equal(poisonedWoken.run!.enemies[0].sleepTurns, 0);
+  assert.equal(poisonedWoken.run!.enemies[0].hp, 100);
+  assert.equal(poisonedWoken.run!.enemies[0].sleepTurns, 2);
 
   const bombWake = combatState({
     id: "bomb-wake",
