@@ -1,12 +1,14 @@
 import { GameStateV4, GameAction, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE } from '../engine';
-import { Play, Settings2, Sparkles, Sword, Shield, Zap, Box, HelpCircle, BookOpen, Gem, Heart, Wind } from 'lucide-react';
-import { useState } from 'react';
+import { Play, Settings2, Sparkles, Sword, Shield, Zap, Box, HelpCircle, BookOpen, Gem, Heart, Wind, Store } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { MonsterGuide } from './MonsterGuide';
 import { CharacterPickerModal } from './CharacterPickerModal';
 
 import statueUrl from '../assets/statue.png';
 import treeUrl from '../assets/tree.png';
 import heroUrl from '../assets/custom-lobby-hero.png';
+import goldBarUrl from '../assets/gold-bar.png';
+import silverBarUrl from '../assets/silver-bar.png';
 import { SpriteAnimator } from './SpriteAnimator';
 import { AudioSettingsButton } from './AudioSettings';
 import { WalletButton } from './WalletButton';
@@ -21,12 +23,18 @@ export function Lobby({
   dispatch: (a: GameAction) => void;
   wallet: WalletCloudController;
 }) {
-  const [tab, setTab] = useState<'play' | 'gear' | 'talents'>('play');
+  const [tab, setTab] = useState<'play' | 'gear' | 'talents' | 'shop'>('play');
   const [showHelp, setShowHelp] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
   const [showCharacterPicker, setShowCharacterPicker] = useState(false);
 
   const { meta } = state;
+
+  useEffect(() => {
+    if (tab === 'shop' && wallet.session) {
+      wallet.refreshInventory();
+    }
+  }, [tab, wallet.session, wallet.refreshInventory]);
 
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans">
@@ -105,7 +113,7 @@ export function Lobby({
                <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
                  <Box className="w-5 h-5 text-slate-400" /> Gear & Inventory
                </h2>
-               
+
                <div className="flex justify-between items-center bg-slate-100 border-2 border-slate-200 p-3 rounded-2xl mb-4">
                  <div className="flex items-center gap-2 font-black text-slate-600">
                    <Gem className="w-5 h-5 text-cyan-400 fill-current"/> 100 to open
@@ -174,6 +182,104 @@ export function Lobby({
              </div>
            )}
 
+           {tab === 'shop' && (
+             <div className="bg-white rounded-[32px] p-5 border-4 border-[#1c1c1c] shadow-[0_8px_0_rgba(28,28,28,1)] mt-4 mb-8">
+               <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                 <Store className="w-5 h-5 text-slate-400" /> Token Shop
+               </h2>
+
+                <p className="mb-4 text-xs font-bold leading-relaxed text-slate-600">
+                  Spend 100 gems for $10 of GLD or SLV, calculated from Massive’s delayed previous close. Tokens transfer to your connected wallet.
+                </p>
+                <div className="flex flex-col gap-4">
+                 {wallet.purchaseError && (
+                   <div className="bg-red-100 text-red-700 p-3 rounded-xl border-2 border-red-200 text-sm font-bold">
+                     {wallet.purchaseError}
+                   </div>
+                 )}
+                  {wallet.lastPurchase && wallet.lastPurchase.status !== 'failed' && (
+                    <div role="status" className="bg-green-100 text-green-800 p-3 rounded-xl border-2 border-green-200 text-sm font-bold">
+                      {wallet.lastPurchase.status === 'confirmed'
+                        ? `${wallet.lastPurchase.tokenAmount} ${wallet.lastPurchase.symbol} sent.`
+                        : `${wallet.lastPurchase.symbol} transfer ${wallet.lastPurchase.status}. Tap the same product to check again.`}
+                      {wallet.lastTxHash && (
+                        <>
+                          {' '}
+                          <a href={`https://robinhoodchain.blockscout.com/tx/${wallet.lastTxHash}`} target="_blank" rel="noreferrer" className="underline text-green-700">
+                            View transaction
+                          </a>
+                        </>
+                      )}
+                   </div>
+                 )}
+
+                 {!wallet.session ? (
+                   <div className="text-center font-bold text-slate-400 py-6">Wallet connection required.</div>
+                 ) : !wallet.inventory ? (
+                   <div className="text-center font-bold text-slate-400 py-6">Loading shop...</div>
+                 ) : (
+                   wallet.inventory.map(item => {
+                      const isAvailable = item.available;
+                     const canAfford = meta.gems >= item.gemCost;
+                     const disabled = !isAvailable || !canAfford || !wallet.canSpendGems || wallet.isPurchasing;
+
+                     return (
+                       <div key={item.symbol} className={`bg-slate-100 border-2 border-slate-200 p-4 rounded-2xl flex flex-col gap-3 ${disabled ? 'opacity-60 grayscale' : ''}`}>
+                         <div className="flex items-start justify-between gap-3">
+                           <div className="flex items-center gap-3">
+                             <img src={item.symbol === 'GLD' ? goldBarUrl : silverBarUrl} alt={`${item.symbol} bar`} className="w-12 h-12 object-contain drop-shadow-md" />
+                             <div>
+                               <div className="font-black text-lg text-slate-800 tracking-tight">{item.symbol} Token</div>
+                               <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Massive previous close/delayed</div>
+                             </div>
+                           </div>
+                           <button
+                             onClick={() => {
+                               wallet.clearPurchaseState();
+                               wallet.buyToken(item.symbol);
+                             }}
+                             disabled={disabled}
+                             className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-4 py-2 rounded-xl font-black text-sm transition-all disabled:active:border-b-4 disabled:active:translate-y-0 disabled:cursor-not-allowed shrink-0"
+                           >
+                             {wallet.isPurchasing ? '...' : (
+                               <span className="flex items-center gap-1">
+                                 {item.gemCost} <Gem className="w-4 h-4 text-fuchsia-500 fill-current" />
+                               </span>
+                             )}
+                           </button>
+                         </div>
+
+                          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-1">
+                           <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                             <span>Value</span>
+                             <span className="text-slate-800">${item.usdValue} USD</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                             <span>Amount</span>
+                             <span className="text-slate-800">{item.tokenAmount} {item.symbol}</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                             <span>Quote Time</span>
+                             <span className="text-slate-800">{new Date(item.quoteTimestamp).toLocaleString()}</span>
+                           </div>
+                         </div>
+                          {!isAvailable && (
+                            <p role="status" className="text-center text-xs font-black text-slate-600">
+                              Unavailable: escrow holds less than this $10 amount, or pricing is unavailable.
+                            </p>
+                          )}
+                         <div className="text-[10px] font-bold text-slate-500 text-center px-2 leading-tight">
+                           Transfer goes to connected wallet:<br/>
+                           <span className="font-mono text-slate-400 break-all">{wallet.session?.address || 'Not connected'}</span>
+                         </div>
+                       </div>
+                     );
+                   })
+                 )}
+               </div>
+             </div>
+           )}
+
            {tab === 'talents' && (
              <div className="bg-white rounded-[32px] p-5 border-4 border-[#1c1c1c] shadow-[0_8px_0_rgba(28,28,28,1)] mt-4">
                <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
@@ -223,6 +329,10 @@ export function Lobby({
           <button onClick={() => setTab('play')} aria-label="Play tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'play' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
             <Play className="w-8 h-8 fill-current" />
             <span className="text-[10px] font-black uppercase tracking-wider">Play</span>
+          </button>
+          <button onClick={() => setTab('shop')} aria-label="Shop tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'shop' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
+            <Store className="w-6 h-6" />
+            <span className="text-[10px] font-black uppercase tracking-wider">Shop</span>
           </button>
           <button onClick={() => setTab('talents')} aria-label="Talents tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'talents' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
             <Settings2 className="w-6 h-6" />

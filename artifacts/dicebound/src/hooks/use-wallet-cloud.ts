@@ -64,6 +64,37 @@ export interface WalletConflict {
   message: string;
 }
 
+export interface TokenInventoryItem {
+  symbol: "GLD" | "SLV";
+  tokenAddress: string;
+  decimals: number;
+  gemCost: number;
+  usdValue: string;
+  tokenAmount: string;
+  quotePrice: string;
+  quoteSource: string;
+  quoteTimestamp: string;
+  quoteDelayed: string;
+  delayed: boolean;
+  available: boolean;
+  escrowBalance: string;
+  escrowBalanceBaseUnits: string;
+}
+
+export interface TokenPurchaseResponse {
+  id: string;
+  symbol: string;
+  status: "pending" | "signed" | "submitted" | "confirmed" | "failed";
+  gemCost: number;
+  tokenAmount: string;
+  quotePrice: string;
+  quoteSource: string;
+  quoteTimestamp: string;
+  quoteDelayed: string;
+  delayed: boolean;
+  transactionHash?: string | null;
+}
+
 export interface WalletCloudController {
   canSpendGems: boolean;
   status: CloudStatus;
@@ -82,6 +113,14 @@ export interface WalletCloudController {
   chooseFresh: () => void;
   retry: () => Promise<void>;
   disconnect: () => Promise<void>;
+  inventory: TokenInventoryItem[] | null;
+  refreshInventory: () => Promise<void>;
+  isPurchasing: boolean;
+  purchaseError: string | null;
+  lastTxHash: string | null;
+  lastPurchase: TokenPurchaseResponse | null;
+  buyToken: (symbol: string) => Promise<void>;
+  clearPurchaseState: () => void;
 }
 
 interface UseWalletCloudArgs {
@@ -363,6 +402,13 @@ export function useWalletCloud({
   const [providerChoices, setProviderChoices] = useState<WalletInfo[]>([]);
   const [conflict, setConflict] = useState<WalletConflict | null>(null);
 
+  const [inventory, setInventory] = useState<TokenInventoryItem[] | null>(null);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+  const [lastPurchase, setLastPurchase] = useState<TokenPurchaseResponse | null>(null);
+  const pendingPurchaseRef = useRef<{ symbol: string; key: string } | null>(null);
+
   const stateRef = useRef(state);
   stateRef.current = state;
   const replaceStateRef = useRef(replaceState);
@@ -391,6 +437,28 @@ export function useWalletCloud({
   const restoredSessionRef = useRef<WalletSession | null>(null);
   const autoRestoreSessionRef = useRef(false);
   const observedSaveRef = useRef<string | null>(null);
+
+  const clearPurchaseState = useCallback(() => {
+    setPurchaseError(null);
+    setLastTxHash(null);
+    setLastPurchase(null);
+  }, []);
+
+  const refreshInventory = useCallback(async () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    try {
+      const body = await requestJson("/wallet/inventory", {
+        method: "GET",
+        headers: { "x-wallet-address": s.address },
+      });
+      if (body && Array.isArray(body.items)) {
+        setInventory(body.items);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   const invalidateSession = useCallback((nextStatus: "expired" | "locked", message: string) => {
     if (sessionRef.current) invalidSessionRef.current = sessionRef.current;
@@ -476,6 +544,62 @@ export function useWalletCloud({
     });
     return cloudRecordFrom(body);
   }, []);
+
+  const buyToken = useCallback(async (symbol: string) => {
+    const s = sessionRef.current;
+    if (!s || !activeRef.current) return;
+    const pending = pendingPurchaseRef.current;
+    if (pending && pending.symbol !== symbol) {
+      setPurchaseError(`Finish checking the pending ${pending.symbol} purchase before buying ${symbol}.`);
+      return;
+    }
+    setIsPurchasing(true);
+    setPurchaseError(null);
+    setLastTxHash(null);
+    setLastPurchase(null);
+    const intent = pending ?? { symbol, key: crypto.randomUUID() };
+    pendingPurchaseRef.current = intent;
+
+    try {
+      const body = await requestJson("/wallet/purchase", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": s.address,
+          "x-csrf-token": s.csrfToken,
+          "Idempotency-Key": intent.key,
+        },
+        body: JSON.stringify({ symbol }),
+      }) as TokenPurchaseResponse;
+
+      const txHash = body?.transactionHash || null;
+      setLastPurchase(body);
+      if (body?.status === "failed") {
+        setPurchaseError("The on-chain transfer failed. The 100 gems remain reserved; do not create another purchase for this payout.");
+        setIsPurchasing(false);
+        pendingPurchaseRef.current = null;
+        return;
+      }
+
+      setLastTxHash(txHash);
+      if (body?.status === "confirmed") pendingPurchaseRef.current = null;
+
+      try {
+        const cloud = await fetchCloud(s.address);
+        if (cloud.save) {
+          activate(cloud.save, s.address, cloud.revision, cloud.updatedAt);
+        }
+      } catch {
+        setPurchaseError("Purchase accepted, but the updated gem balance could not be refreshed yet. Reconnect before spending more gems.");
+      }
+      setIsPurchasing(false);
+      void refreshInventory();
+    } catch (rawError) {
+      const requestError = rawError as HttpError;
+      setPurchaseError(requestError.body?.error || requestError.message || "Purchase failed.");
+      setIsPurchasing(false);
+    }
+  }, [activate, fetchCloud, refreshInventory]);
 
   const putCloud = useCallback(async (
     walletSession: WalletSession,
@@ -1190,6 +1314,14 @@ export function useWalletCloud({
     chooseFresh,
     retry,
     disconnect,
+    inventory,
+    refreshInventory,
+    isPurchasing,
+    purchaseError,
+    lastTxHash,
+    lastPurchase,
+    buyToken,
+    clearPurchaseState,
   };
 }
 

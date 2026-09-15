@@ -1,4 +1,5 @@
 import {
+  bigint,
   integer,
   jsonb,
   pgTable,
@@ -63,6 +64,46 @@ export const walletSaves = pgTable("wallet_saves", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }),
 });
 
+/**
+ * A purchase is both the durable user intent and the outbox record used to
+ * submit its already-signed transaction.  Keeping these in one normalized
+ * table makes idempotency and retrying an ambiguous RPC response atomic.
+ */
+export const tokenPurchases = pgTable(
+  "token_purchases",
+  {
+    id: text("id").primaryKey(),
+    walletAddress: text("wallet_address").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    symbol: text("symbol").notNull(),
+    tokenAddress: text("token_address").notNull(),
+    gemCost: integer("gem_cost").notNull(),
+    quotePrice: text("quote_price").notNull(),
+    quoteSource: text("quote_source").notNull(),
+    quoteTimestamp: timestamp("quote_timestamp", { withTimezone: true, mode: "date" }).notNull(),
+    quoteDelayed: text("quote_delayed").notNull(),
+    tokenAmountBaseUnits: text("token_amount_base_units").notNull(),
+    status: text("status").notNull(),
+    rawSignedTransaction: text("raw_signed_transaction"),
+    transactionHash: text("transaction_hash"),
+    nonce: bigint("nonce", { mode: "bigint" }),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true, mode: "date" }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true, mode: "date" }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true, mode: "date" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    walletIdempotencyIndex: uniqueIndex("token_purchases_wallet_idempotency_idx").on(
+      table.walletAddress,
+      table.idempotencyKey,
+    ),
+  }),
+);
+
 export type WalletChallenge = typeof walletChallenges.$inferSelect;
 export type WalletSession = typeof walletSessions.$inferSelect;
 export type WalletSave = typeof walletSaves.$inferSelect;
+export type TokenPurchase = typeof tokenPurchases.$inferSelect;

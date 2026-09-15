@@ -51,7 +51,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, X-CSRF-Token, X-Wallet-Address",
+    "Content-Type, X-CSRF-Token, X-Wallet-Address, Idempotency-Key",
   );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   if (req.method === "OPTIONS") {

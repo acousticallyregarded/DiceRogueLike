@@ -27,6 +27,20 @@ import {
   WALLET_CHAIN_ID,
 } from "../lib/wallet-security";
 import { validateGameStateV4 } from "../lib/wallet-save-validation";
+import {
+  GetTokenCatalogResponse,
+  GetTokenInventoryResponse,
+  PurchaseTokenBody,
+  PurchaseTokenResponse,
+} from "@workspace/api-zod";
+import {
+  catalogItem,
+  getInventory,
+  getTokenQuote,
+  isPayoutConfigured,
+  purchaseToken,
+  TokenPurchaseError,
+} from "../lib/token-purchases";
 
 const router: IRouter = Router();
 router.use("/wallet", (_req, res, next) => {
@@ -522,6 +536,98 @@ router.post(
       );
     setSessionCookie(req, res, null);
     res.json({ ok: true });
+  }),
+);
+
+router.get(
+  "/wallet/catalog",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    const payoutConfigured = isPayoutConfigured();
+    const items = await Promise.all(
+      (["GLD", "SLV"] as const).map(async (symbol) => {
+        try {
+          const item = catalogItem(await getTokenQuote(symbol));
+          return { ...item, available: item.available && payoutConfigured };
+        } catch {
+          return {
+            symbol,
+            tokenAddress: symbol === "GLD"
+              ? "0xc9a981fee1f9dec688bb123ccdecc63d0debfc4e"
+              : "0x411efb0e7f985935daec3d4c3ebaea0d0ad7d89f",
+            decimals: 18,
+            gemCost: 100,
+            usdValue: "10",
+            tokenAmount: "0",
+            quotePrice: "",
+            quoteSource: "Massive previous-day aggregate",
+            quoteTimestamp: new Date(0).toISOString(),
+            quoteDelayed: "previous-close",
+            delayed: true,
+            available: false,
+          };
+        }
+      }),
+    );
+    res.json(GetTokenCatalogResponse.parse({ items }));
+  }),
+);
+
+router.get(
+  "/wallet/inventory",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    res.json(GetTokenInventoryResponse.parse({ items: await getInventory() }));
+  }),
+);
+
+router.post(
+  "/wallet/purchase",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (
+      !requireWalletAddress(req, res, session.address) ||
+      !requireCsrf(req, res, session.csrfToken)
+    ) return;
+    const body = bodyRecord(req);
+    const idempotencyKey = req.get("idempotency-key");
+    const parsedBody = PurchaseTokenBody.safeParse(body);
+    if (
+      !parsedBody.success ||
+      typeof idempotencyKey !== "string" ||
+      !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)
+    ) {
+      sendJsonError(res, 400, "invalid_purchase_request");
+      return;
+    }
+    try {
+      res.json(PurchaseTokenResponse.parse(
+        await purchaseToken(session.address, parsedBody.data.symbol, idempotencyKey),
+      ));
+    } catch (error) {
+      if (error instanceof TokenPurchaseError) {
+        sendJsonError(res, error.status, error.code);
+        return;
+      }
+      throw error;
+    }
   }),
 );
 

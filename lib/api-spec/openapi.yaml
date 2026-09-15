@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: token-purchases
+    description: Authenticated GLD and SLV token purchases
 paths:
   /healthz:
     get:
@@ -24,7 +26,129 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /wallet/catalog:
+    get:
+      operationId: getTokenCatalog
+      tags: [token-purchases]
+      summary: Get the GLD and SLV catalog
+      security:
+        - walletSession: []
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Catalog with current approved delayed quotes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenCatalogResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /wallet/inventory:
+    get:
+      operationId: getTokenInventory
+      tags: [token-purchases]
+      summary: Get escrow-backed token inventory
+      security:
+        - walletSession: []
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Inventory and approved quote availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenInventoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /wallet/purchase:
+    post:
+      operationId: purchaseToken
+      tags: [token-purchases]
+      summary: Spend 100 gems for one GLD or SLV token payout
+      security:
+        - walletSession: []
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CsrfToken"
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenPurchaseInput"
+      responses:
+        "200":
+          description: Existing or newly-created purchase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPurchaseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Idempotency key already belongs to another symbol, or no token inventory
+        "503":
+          description: Approved quote or payout infrastructure unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    walletSession:
+      type: apiKey
+      in: cookie
+      name: dicebound_session
+  parameters:
+    WalletAddress:
+      in: header
+      name: X-Wallet-Address
+      required: true
+      schema:
+        type: string
+        pattern: "^0x[0-9a-fA-F]{40}$"
+    CsrfToken:
+      in: header
+      name: X-CSRF-Token
+      required: true
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Wallet session is missing or expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Origin, wallet, or CSRF check failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +157,72 @@ components:
           type: string
       required:
         - status
+    TokenSymbol:
+      type: string
+      enum: [GLD, SLV]
+    TokenCatalogItem:
+      type: object
+      required: [symbol, tokenAddress, decimals, gemCost, usdValue, tokenAmount, quotePrice, quoteSource, quoteTimestamp, quoteDelayed, delayed, available]
+      properties:
+        symbol: { $ref: "#/components/schemas/TokenSymbol" }
+        tokenAddress: { type: string }
+        decimals: { type: integer, const: 18 }
+        gemCost: { type: integer, const: 100 }
+        usdValue: { type: string, const: "10" }
+        tokenAmount: { type: string }
+        quotePrice: { type: string }
+        quoteSource: { type: string }
+        quoteTimestamp: { type: string, format: date-time }
+        quoteDelayed: { type: string, const: "previous-close" }
+        delayed: { type: boolean, const: true }
+        available: { type: boolean }
+    TokenCatalogResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TokenCatalogItem" }
+    TokenInventoryItem:
+      allOf:
+        - $ref: "#/components/schemas/TokenCatalogItem"
+        - type: object
+          required: [escrowBalance, escrowBalanceBaseUnits]
+          properties:
+            escrowBalance: { type: string }
+            escrowBalanceBaseUnits: { type: string }
+    TokenInventoryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TokenInventoryItem" }
+    TokenPurchaseInput:
+      type: object
+      required: [symbol]
+      properties:
+        symbol: { $ref: "#/components/schemas/TokenSymbol" }
+    TokenPurchaseResponse:
+      type: object
+      required: [id, symbol, status, gemCost, tokenAmount, quotePrice, quoteSource, quoteTimestamp, quoteDelayed, delayed]
+      properties:
+        id: { type: string }
+        symbol: { $ref: "#/components/schemas/TokenSymbol" }
+        status:
+          type: string
+          enum: [pending, signed, submitted, confirmed, failed]
+        gemCost: { type: integer, const: 100 }
+        tokenAmount: { type: string }
+        quotePrice: { type: string }
+        quoteSource: { type: string }
+        quoteTimestamp: { type: string, format: date-time }
+        quoteDelayed: { type: string, const: "previous-close" }
+        delayed: { type: boolean, const: true }
+        transactionHash: { type: ["string", "null"] }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
 
