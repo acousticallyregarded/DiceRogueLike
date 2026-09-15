@@ -2,9 +2,13 @@ import type { BossId } from '../level-content';
 import { getBossMovePresentation } from '../level-content';
 import type { CSSProperties } from 'react';
 import { useEffect, useState } from 'react';
-import grubgutAsset from '../assets/boss-placeholders/grubgut-troll.svg';
 import silkmawAsset from '../assets/boss-placeholders/silkmaw-spider.svg';
 import ashenKnightAsset from '../assets/boss-placeholders/ashen-knight.svg';
+import grubgutIdle from '../assets/bosses/grubgut/idle.gif';
+import grubgutClubAttack from '../assets/bosses/grubgut/club-attack.gif';
+import grubgutPoisonBreath from '../assets/bosses/grubgut/poison-breath.gif';
+import grubgutHit from '../assets/bosses/grubgut/hit.gif';
+import grubgutDeath from '../assets/bosses/grubgut/death.gif';
 import './new-boss-placeholder.css';
 
 export type PlaceholderBossId = Exclude<BossId, 'skeleton-king'>;
@@ -14,13 +18,13 @@ export type PlaceholderBossId = Exclude<BossId, 'skeleton-king'>;
  * Replace only the values in this map when the final transparent GIFs arrive.
  */
 export const BOSS_PLACEHOLDER_ASSETS: Record<PlaceholderBossId, string> = {
-  grubgut: grubgutAsset,
+  grubgut: grubgutIdle,
   silkmaw: silkmawAsset,
   cinder: ashenKnightAsset,
 };
 
 export const BOSS_ASSET_GUIDE: Record<PlaceholderBossId, string> = {
-  grubgut: 'Replace with the transparent Grubgut troll GIF (club attack frames included).',
+  grubgut: 'Grubgut uses transparent idle, club attack, poison breath, hit, and death GIFs.',
   silkmaw: 'Replace with the transparent Lady Silkmaw spider GIF (web attack frames included).',
   cinder: 'Replace with the transparent Sir Cinder armored knight GIF (ember sword frames included).',
 };
@@ -30,6 +34,20 @@ const BOSS_LABELS: Record<PlaceholderBossId, string> = {
   silkmaw: 'Lady Silkmaw, the Spider Queen',
   cinder: 'Sir Cinder, the Ashen Knight',
 };
+
+function getBossActionAsset(
+  bossId: PlaceholderBossId,
+  action: 'idle' | 'attack' | 'hit' | 'death',
+  movePresentation?: ReturnType<typeof getBossMovePresentation>,
+) {
+  if (bossId !== 'grubgut') return BOSS_PLACEHOLDER_ASSETS[bossId];
+  if (action === 'death') return grubgutDeath;
+  if (action === 'hit') return grubgutHit;
+  if (action === 'attack') {
+    return movePresentation?.label === 'Swamp Belch' ? grubgutPoisonBreath : grubgutClubAttack;
+  }
+  return grubgutIdle;
+}
 
 export const NEW_BOSS_DEATH_EXIT_MS = 1800;
 
@@ -73,7 +91,7 @@ export function NewBossPlaceholder({
       : activeAttack
         ? 'attack'
         : 'idle';
-  const asset = BOSS_PLACEHOLDER_ASSETS[bossId];
+  const asset = getBossActionAsset(bossId, action, movePresentation);
   const moveKind = movePresentation?.kind ?? 'melee';
   const moveDuration = (movePresentation?.durationMs ?? 1800) / Math.max(1, speed);
   const completeVisualEvent = () => {
@@ -85,6 +103,7 @@ export function NewBossPlaceholder({
       style={{
         '--boss-animation-speed': Math.max(1, speed),
         '--boss-move-duration': `${moveDuration}ms`,
+        '--boss-death-duration': `${bossId === 'grubgut' ? 2600 : 1800}ms`,
       } as CSSProperties}
       data-boss-placeholder={bossId}
       data-boss-action={action}
@@ -97,7 +116,7 @@ export function NewBossPlaceholder({
       >
         <img
           src={asset}
-          alt={`${BOSS_LABELS[bossId]} art placeholder`}
+          alt={bossId === 'grubgut' ? BOSS_LABELS[bossId] : `${BOSS_LABELS[bossId]} art placeholder`}
           draggable={false}
         />
       </div>

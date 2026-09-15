@@ -90,7 +90,10 @@ export function getBossId(enemy: { boss?: boolean; name: string }): BossId | nul
 }
 
 export function getBossDeathDurationMs(enemy: { boss?: boolean; name: string }): number {
-  return getBossId(enemy) === "skeleton-king" ? 5200 : 1800;
+  const bossId = getBossId(enemy);
+  if (bossId === "skeleton-king") return 5200;
+  if (bossId === "grubgut") return 2600;
+  return 1800;
 }
 
 export function getBossMovePresentation(enemy: {

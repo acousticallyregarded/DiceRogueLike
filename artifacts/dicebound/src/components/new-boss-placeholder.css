@@ -47,7 +47,7 @@
 }
 
 .new-boss-placeholder--death .new-boss-placeholder__art {
-  animation: dicebound-placeholder-death calc(1800ms / var(--boss-animation-speed)) ease-in both;
+  animation: dicebound-placeholder-death calc(var(--boss-death-duration, 1800ms) / var(--boss-animation-speed)) ease-in both;
 }
 
 .new-boss-placeholder--platform {
