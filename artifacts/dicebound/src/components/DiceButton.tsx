@@ -66,16 +66,12 @@ export function DiceButton({ run, dispatch }: { run: RunState, dispatch: (a: Gam
         <button 
           onClick={handleRoll}
           aria-label="Roll dice"
-          className="pointer-events-auto relative w-28 h-24 transform transition-transform active:scale-95 group"
+          className="pointer-events-auto relative w-28 h-24 transform transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ff5733] focus-visible:ring-offset-2 rounded-3xl"
         >
            {/* 3D Dice Button CSS drawing */}
            <div className="absolute inset-0 bg-[#d9381e] rounded-3xl mt-4" />
            <div className="absolute inset-0 bg-[#ff5733] rounded-3xl mb-4 border-b-4 border-[#ff8c70] shadow-[0_0_20px_rgba(255,87,51,0.6)] flex items-center justify-center group-active:translate-y-4 group-active:mb-0 transition-transform">
               <Dices className="w-10 h-10 text-white drop-shadow-md" />
-           </div>
-           {/* Floating hand icon indicator like in screenshot */}
-           <div className="absolute -top-10 left-1/2 -ml-4 animate-bounce">
-              <div className="bg-white text-black px-2 py-1 rounded text-2xl border-2 border-black drop-shadow-md">👇</div>
            </div>
         </button>
       )}

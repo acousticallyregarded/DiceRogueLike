@@ -216,11 +216,21 @@
   letter-spacing: .05em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: all 0.15s ease-out;
+  outline: none;
+}
+
+.opening-prologue__continue:hover {
+  background: #fbbf24;
+}
+
+.opening-prologue__continue:focus-visible {
+  box-shadow: 0 4px 0 #171717, 0 0 0 4px rgba(244, 189, 62, 1), 0 0 0 6px #171717;
 }
 
 .opening-prologue__continue:active {
   transform: translateY(4px);
-  box-shadow: none;
+  box-shadow: 0 0 0 2px rgba(244, 189, 62, 0);
 }
 
 .opening-prologue__continue svg {
@@ -242,6 +252,19 @@
   letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: color 0.15s ease-out;
+  outline: none;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.opening-prologue__skip:hover {
+  color: rgb(255 248 226 / 90%);
+}
+
+.opening-prologue__skip:focus-visible {
+  color: rgb(255 248 226 / 90%);
+  box-shadow: 0 0 0 2px rgb(255 248 226 / 56%);
 }
 
 .opening-prologue__skip svg {

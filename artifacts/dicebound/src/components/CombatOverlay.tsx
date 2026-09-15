@@ -211,11 +211,13 @@ export function CombatOverlay({
   dispatch,
   speed = 1,
   paused = false,
+  headerHeight = 0,
 }: {
   run: RunState;
   dispatch: (action: GameAction) => void;
   speed?: number;
   paused?: boolean;
+  headerHeight?: number;
 }) {
   const [visualEvents, setVisualEvents] = useState<VisualEvents>(EMPTY_EVENTS);
   const [damagePopups, setDamagePopups] = useState<DamagePopup[]>([]);
@@ -580,9 +582,12 @@ export function CombatOverlay({
     : run.combatTurn === 'enemy' || bossAnimating ? 'Enemies turn' : 'Your turn';
 
   return (
-    <div className={`absolute top-0 left-0 right-0 h-[82%] min-h-[620px] flex flex-col z-20 overflow-hidden pt-24 pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}>
-      <div className="relative z-40 flex shrink-0 flex-col gap-2 px-3">
-        <div className="flex items-center justify-between gap-2">
+    <div
+      className={`combat-overlay absolute left-0 right-0 bottom-[18%] min-h-[480px] flex flex-col z-20 overflow-hidden pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}
+      style={{ top: headerHeight + 20 }}
+    >
+      <div className="combat-overlay__hud relative z-40 flex shrink-0 flex-col gap-2 px-3">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
           <div className="bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full font-black text-[10px] border-2 border-[#1c1c1c] shadow-[0_2px_0_#1c1c1c] uppercase tracking-wider">
             Floor {renderedRun.floor} • Round {renderedRun.playerCombat.roundCounter}
           </div>
@@ -640,7 +645,7 @@ export function CombatOverlay({
               type="button"
               onClick={() => setInspectedEnemyId(null)}
               aria-label="Close enemy details"
-              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black"
+              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black transition-colors hover:bg-slate-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
             >
               Close
             </button>
@@ -685,7 +690,7 @@ export function CombatOverlay({
         </div>
       )}
 
-      <div data-combat-arena className="flex-1 relative flex items-end justify-between px-3 pb-12">
+      <div data-combat-arena className="combat-overlay__arena flex-1 relative flex items-end justify-between px-3 pb-12">
          <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} floor={renderedRun.floor} />
         <div className={`relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
           <CombatApproach actorId="hero" {...heroApproach.current} paused={paused}>
@@ -920,7 +925,7 @@ export function CombatOverlay({
             <button
               type="button"
               onClick={() => setBagOpen(false)}
-              className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black"
+              className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black transition-colors hover:bg-slate-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
             >
               Close
             </button>
@@ -965,7 +970,7 @@ export function CombatOverlay({
                     dispatch({ type: 'USE_CONSUMABLE', consumable: item.id });
                     setBagOpen(false);
                   }}
-                  className="flex items-center gap-2 rounded-xl border-2 border-slate-200 bg-slate-50 p-2 text-left transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-45"
+                  className="flex items-center gap-2 rounded-xl border-2 border-slate-200 bg-slate-50 p-2 text-left transition hover:bg-slate-100 hover:border-slate-300 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-slate-50 disabled:hover:border-slate-200"
                 >
                   <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
                   <span className="min-w-0 flex-1">
@@ -981,7 +986,7 @@ export function CombatOverlay({
       )}
 
       {run.phase === 'combat' && run.characterId === 'alan-a-dale' && (
-        <div className="relative z-40 px-3 pt-2">
+        <div className="combat-overlay__ability relative z-40 px-3 pt-2">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold text-white">
             <span>Bard spells · DC {getBardSpellDC(run)}</span>
             <BardSpellHelp dc={getBardSpellDC(run)} armorClass={getPlayerArmorClass(run)} />
@@ -996,7 +1001,7 @@ export function CombatOverlay({
                 disabled={!canInput || !selectedEnemy}
                 title={spell.title}
                 onClick={() => selectedEnemy && dispatch({ type: 'BARD_ATTACK', move: spell.move, targetId: selectedEnemy.id })}
-                className="rounded-xl border-2 border-indigo-300 bg-indigo-950 px-1 py-2 text-[11px] font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
+                className="rounded-xl border-2 border-indigo-300 bg-indigo-950 px-1 py-2 text-[11px] font-black text-white transition-colors hover:bg-indigo-900 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-indigo-950 disabled:active:scale-100">
                 {spell.label}
                 <span className="mt-0.5 block text-[8px] font-medium text-indigo-100">{spell.hint}</span>
               </button>
@@ -1005,11 +1010,11 @@ export function CombatOverlay({
         </div>
       )}
       {run.phase === 'combat' && (!run.characterId || run.characterId === 'john') && (
-        <div className="relative z-40 px-3 pt-2">
+        <div className="combat-overlay__ability relative z-40 px-3 pt-2">
           <button type="button"
             disabled={!canInput || !selectedEnemy || Boolean(run.playerCombat?.takedownUsed)}
             onClick={() => selectedEnemy && dispatch({ type: 'JOHN_TAKEDOWN', targetId: selectedEnemy.id })}
-            className="w-full rounded-xl border-2 border-amber-700 bg-amber-100 px-3 py-2 text-sm font-black text-amber-950 disabled:opacity-45 disabled:cursor-not-allowed">
+            className="w-full rounded-xl border-2 border-amber-700 bg-amber-100 px-3 py-2 text-sm font-black text-amber-950 transition-colors hover:bg-amber-200 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-amber-100 disabled:active:scale-100">
             Takedown
             <span className="ml-2 text-[10px] font-semibold">
               {run.playerCombat?.takedownUsed ? 'Used this fight' : 'Heavy hit · once per fight'}
@@ -1018,11 +1023,11 @@ export function CombatOverlay({
         </div>
       )}
       {run.phase === 'combat' && run.characterId === 'unc' && (
-        <div className="relative z-40 px-3 pt-2">
+        <div className="combat-overlay__ability relative z-40 px-3 pt-2">
           <button type="button"
             disabled={!canInput || !selectedEnemy || Boolean(run.playerCombat?.holdMyBeerUsed)}
             onClick={() => selectedEnemy && dispatch({ type: 'UNC_HOLD_MY_BEER', targetId: selectedEnemy.id })}
-            className="w-full rounded-xl border-2 border-amber-700 bg-amber-100 px-3 py-2 text-sm font-black text-amber-950 disabled:opacity-45 disabled:cursor-not-allowed">
+            className="w-full rounded-xl border-2 border-amber-700 bg-amber-100 px-3 py-2 text-sm font-black text-amber-950 transition-colors hover:bg-amber-200 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-amber-100 disabled:active:scale-100">
             Hold My Beer
             <span className="ml-2 text-[10px] font-semibold">
               {run.playerCombat?.holdMyBeerUsed ? 'Used this fight' : 'Two punches · once per fight'}
@@ -1031,7 +1036,7 @@ export function CombatOverlay({
         </div>
       )}
       {run.phase === 'combat' && selectedEnemy && (
-        <div className="relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white">
+        <div className="combat-overlay__target relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white">
           Target: <span className="text-amber-300">{selectedEnemy.name}</span>
           {run.characterId === 'alan-a-dale' && (
             <span className="ml-1 text-indigo-100">
@@ -1041,12 +1046,12 @@ export function CombatOverlay({
           {livingEnemies.length > 1 && <span className="ml-1 text-white/80">— tap an enemy to change</span>}
         </div>
       )}
-      <div className="relative z-40 flex shrink-0 gap-2 px-3 pt-2">
+      <div className="combat-overlay__actions relative z-40 flex shrink-0 gap-2 px-3 pt-2">
         <button
           type="button"
           disabled={!canInput || !selectedEnemy}
           onClick={() => selectedEnemy && dispatch({ type: 'PLAYER_ATTACK', targetId: selectedEnemy.id })}
-          className="flex-1 rounded-2xl border-4 border-[#1c1c1c] bg-amber-400 py-3 text-base font-black uppercase text-slate-950 shadow-[0_4px_0_#1c1c1c] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-[0_4px_0_#1c1c1c]"
+          className="flex-1 rounded-2xl border-4 border-[#1c1c1c] bg-amber-400 py-3 text-base font-black uppercase text-slate-950 shadow-[0_4px_0_#1c1c1c] transition-all hover:bg-amber-300 active:translate-y-1 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-[0_4px_0_#1c1c1c] disabled:hover:bg-amber-400"
         >
           <Sword className="mr-1 inline h-5 w-5" /> Attack
         </button>
@@ -1055,7 +1060,7 @@ export function CombatOverlay({
           aria-expanded={bagOpen}
           disabled={!canInput}
           onClick={() => setBagOpen(open => !open)}
-          className="rounded-2xl border-4 border-[#1c1c1c] bg-white px-4 py-3 font-black text-slate-800 shadow-[0_4px_0_#1c1c1c] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-2xl border-4 border-[#1c1c1c] bg-white px-4 py-3 font-black text-slate-800 shadow-[0_4px_0_#1c1c1c] transition-all hover:bg-slate-100 active:translate-y-1 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-[0_4px_0_#1c1c1c] disabled:hover:bg-white"
         >
           <Backpack className="inline h-5 w-5" />
           <span className="ml-1 text-xs">Bag</span>

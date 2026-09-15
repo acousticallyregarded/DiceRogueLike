@@ -1,5 +1,5 @@
 import { RunState, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE, getCombatSpeedBonus } from '../engine';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Heart, Sword, Gem, ShieldAlert, Coins, Wind, Skull, BookMarked } from 'lucide-react';
 import { AudioSettingsButton } from './AudioSettings';
 import { CrownJournal } from './CrownJournal';
@@ -10,8 +10,9 @@ function getNextLevelXp(level: number): number {
   return Math.floor(100 * Math.pow(1.5, level - 1));
 }
 
-export function TopBar({ run }: { run: RunState }) {
+export function TopBar({ run, onHeightChange, onOpenBestiary }: { run: RunState; onHeightChange?: (height: number) => void; onOpenBestiary?: () => void }) {
   const [journalOpen, setJournalOpen] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
   const nextXp = getNextLevelXp(run.level);
   const heroDef = getCharacter(run.characterId);
   const level = getLevelDefinition(run.floor);
@@ -27,9 +28,19 @@ export function TopBar({ run }: { run: RunState }) {
       : run.isBossCombat
         ? `${level.boss.name.toUpperCase()} BATTLE`
         : `${level.boss.name.toUpperCase()} IN ${Math.max(0, countdown)} PACES`;
+
+  useEffect(() => {
+    const element = barRef.current;
+    if (!element || !onHeightChange) return;
+    const updateHeight = () => onHeightChange(Math.ceil(element.getBoundingClientRect().height));
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [onHeightChange]);
   
   return (
-    <div className="absolute top-4 left-4 right-4 flex flex-col gap-2 z-30 pointer-events-none">
+    <div ref={barRef} className="absolute top-4 left-4 right-4 flex flex-col gap-2 z-30 pointer-events-none">
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
           {/* Character Name */}
@@ -106,6 +117,12 @@ export function TopBar({ run }: { run: RunState }) {
           <BookMarked className="w-3 h-3 mr-1" />
           CROWN {recoveredFragments.length}/3
         </button>
+        {onOpenBestiary && (
+          <button type="button" onClick={onOpenBestiary} aria-label="Open Bestiary"
+            className="pointer-events-auto rounded-full border-2 border-[#1c1c1c] bg-white px-3 py-1 text-[10px] font-black text-purple-700 hover:bg-purple-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 active:translate-y-0.5">
+            BESTIARY
+          </button>
+        )}
       </div>
       {journalOpen && (
         <CrownJournal entries={recoveredFragments} onClose={() => setJournalOpen(false)} />

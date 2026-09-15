@@ -55,7 +55,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
           <button
             type="button"
             onClick={() => dispatch({ type: 'FIGHT_BOSS' })}
-            className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-400 py-2.5 text-sm font-black uppercase text-slate-950 transition-all active:translate-y-1 active:border-b-0"
+            className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-400 py-2.5 text-sm font-black uppercase text-slate-950 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 active:translate-y-1 active:border-b-0 hover:bg-amber-300"
           >
              Fight {level.boss.name}
           </button>
@@ -80,7 +80,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
               <button
                 key={sk.id}
                 onClick={() => dispatch({ type: 'CHOOSE_SKILL', skillId: sk.id })}
-                className="bg-slate-100 border-2 border-slate-300 hover:border-amber-400 active:bg-slate-200 rounded-2xl p-4 flex items-center gap-4 transition-all active:scale-95 group w-full text-left"
+                className="bg-slate-100 border-2 border-slate-300 hover:border-amber-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 active:bg-slate-200 rounded-2xl p-4 flex items-center gap-4 transition-all active:scale-95 group w-full text-left"
               >
                 <div className="p-3 bg-white rounded-xl shadow-sm border border-slate-200">
                   <Zap className="w-6 h-6 text-yellow-500 fill-current" />
@@ -110,7 +110,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
                   key={item.id}
                   onClick={() => dispatch({ type: 'BUY_SHOP', itemId: item.id })}
                   disabled={!canAfford}
-                  className={`bg-slate-100 border-2 rounded-2xl p-3 flex flex-row items-center text-left gap-3 transition-all w-full ${canAfford ? 'border-slate-300 active:scale-95' : 'border-slate-200 opacity-60'}`}
+                  className={`bg-slate-100 border-2 rounded-2xl p-3 flex flex-row items-center text-left gap-3 transition-all w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 ${canAfford ? 'border-slate-300 hover:border-amber-400 hover:bg-slate-50 active:scale-95' : 'border-slate-200 opacity-60 cursor-not-allowed'}`}
                 >
                   <div className="flex-1">
                     <h3 className="text-sm font-black text-slate-800 leading-tight">{item.name}</h3>
@@ -130,13 +130,13 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
             <button 
               onClick={() => dispatch({ type: 'REROLL_SHOP' })}
               disabled={run.gold < run.shopRerollCost}
-              className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-black text-sm border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-50 disabled:active:translate-y-0 disabled:border-b-4"
+              className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-black text-sm border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all hover:bg-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:active:translate-y-0 disabled:border-b-4 disabled:cursor-not-allowed disabled:hover:bg-blue-500"
             >
               Reroll ({run.shopRerollCost})
             </button>
             <button 
               onClick={() => dispatch({ type: 'LEAVE_SHOP' })}
-              className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-2xl font-black text-sm border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all"
+              className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-2xl font-black text-sm border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all hover:bg-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
             >
               Leave
             </button>

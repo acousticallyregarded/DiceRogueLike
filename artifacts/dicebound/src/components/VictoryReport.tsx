@@ -69,7 +69,7 @@ export function VictoryReport({ report, recoveredFragments, dispatch }: {
             </p>
             <button ref={button} type="button"
               onClick={() => dispatch({ type: 'DISMISS_VICTORY_REPORT' })}
-              className="mt-6 w-full border-2 border-[#624323] rounded-sm bg-[#624323] py-3 text-[#fff1cf] text-lg italic shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#624323]">
+              className="mt-6 w-full border-2 border-[#624323] rounded-sm bg-[#624323] py-3 text-[#fff1cf] text-lg italic shadow-md transition-colors hover:bg-[#78512b] hover:border-[#78512b] active:scale-[.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#624323]">
               Journey to {getLevelDefinition(report.floor + 1).name}
             </button>
             {journalButton}
@@ -104,7 +104,7 @@ export function VictoryReport({ report, recoveredFragments, dispatch }: {
           </ul> : <p className="mt-1 text-sm italic">No equipment found in this battle.</p>}
           <button ref={button} type="button"
             onClick={() => dispatch({ type: interlude ? 'ADVANCE_VICTORY_REPORT' : 'DISMISS_VICTORY_REPORT' })}
-            className="mt-6 w-full border-2 border-[#624323] rounded-sm bg-[#624323] py-3 text-[#fff1cf] text-lg italic shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#624323]">
+            className="mt-6 w-full border-2 border-[#624323] rounded-sm bg-[#624323] py-3 text-[#fff1cf] text-lg italic shadow-md transition-colors hover:bg-[#78512b] hover:border-[#78512b] active:scale-[.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#624323]">
             {interlude ? 'Reveal the Crown Fragment' : 'Continue'}
           </button>
           {interlude && (

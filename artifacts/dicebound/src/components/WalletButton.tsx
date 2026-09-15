@@ -64,7 +64,7 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
       <button
         type="button"
         onClick={active || status !== "guest" ? () => setOpen(true) : connect}
-        className={`flex items-center gap-2 rounded-xl border-2 border-[#1c1c1c] bg-white px-3 py-2 font-black text-slate-800 shadow-[0_3px_0_#1c1c1c] transition-transform active:translate-y-0.5 active:shadow-none ${compact ? "text-xs" : "text-sm"} ${className}`}
+        className={`flex items-center gap-2 rounded-xl border-2 border-[#1c1c1c] bg-white px-3 py-2 font-black text-slate-800 shadow-[0_3px_0_#1c1c1c] transition-all hover:bg-slate-50 active:translate-y-0.5 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 ${compact ? "text-xs" : "text-sm"} ${className}`}
         aria-label={active ? "Open wallet cloud save status" : "Connect wallet for cloud saves"}
       >
         <span className={`h-2.5 w-2.5 rounded-full ${STATUS_COLOR[status]}`} aria-hidden="true" />
@@ -87,7 +87,7 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
                 </h2>
                 <p className="mt-1 text-xs font-bold text-slate-500">Off-chain wallet-linked progress</p>
               </div>
-              <button type="button" onClick={close} aria-label="Close wallet dialog" className="rounded-full p-1 text-slate-500 hover:bg-slate-100">
+              <button type="button" onClick={close} aria-label="Close wallet dialog" className="rounded-full p-1 text-slate-500 transition-colors hover:bg-slate-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -100,7 +100,7 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
               {wallet.address && (
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
                   <span className="truncate">{wallet.address}</span>
-                  <button type="button" aria-label="Copy wallet address" onClick={() => void navigator.clipboard?.writeText(wallet.address ?? "")} className="rounded-lg p-1 hover:bg-white">
+                  <button type="button" aria-label="Copy wallet address" onClick={() => void navigator.clipboard?.writeText(wallet.address ?? "")} className="rounded-lg p-1 transition-colors hover:bg-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
                     <Copy className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -119,7 +119,7 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
                     type="button"
                     key={choice.uuid}
                     onClick={() => void wallet.chooseProvider(choice)}
-                    className="flex w-full items-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-3 text-left font-black shadow-sm transition-colors hover:border-violet-400 hover:bg-violet-50"
+                    className="flex w-full items-center gap-3 rounded-2xl border-2 border-slate-200 bg-white p-3 text-left font-black shadow-sm transition-colors hover:border-violet-400 hover:bg-violet-50 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
                   >
                     {choice.icon ? <img src={choice.icon} alt="" className="h-8 w-8 rounded-lg" /> : <Wallet className="h-8 w-8 text-violet-700" />}
                     <span>{choice.name}</span>
@@ -135,7 +135,7 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
                     ? "Connect an injected MetaMask, Rabby, or Robinhood Wallet account to sync your complete save across devices."
                     : "Reconnect and sign in again to resume this wallet's cloud save."}
                 </p>
-                <button type="button" onClick={connect} className="w-full rounded-2xl border-b-4 border-violet-900 bg-violet-700 py-3 text-lg font-black text-white active:translate-y-1 active:border-b-0">
+                <button type="button" onClick={connect} className="w-full rounded-2xl border-b-4 border-violet-900 bg-violet-700 py-3 text-lg font-black text-white transition-all hover:bg-violet-600 active:translate-y-1 active:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2">
                   Connect wallet
                 </button>
                 <p className="text-center text-[11px] font-bold text-slate-400">
@@ -157,15 +157,15 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
                 <p className="text-[11px] font-bold text-amber-800">Cloud saves are not merged: gems, inventory, gear, and any active run move together.</p>
                 <div className="grid gap-2">
                   {wallet.conflict.cloudSave && (
-                    <button type="button" onClick={() => { wallet.chooseCloud(); setOpen(false); }} className="rounded-xl bg-violet-700 px-3 py-2 text-sm font-black text-white">
+                    <button type="button" onClick={() => { wallet.chooseCloud(); setOpen(false); }} className="rounded-xl bg-violet-700 px-3 py-2 text-sm font-black text-white transition-colors hover:bg-violet-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2">
                       Use wallet cloud (revision {wallet.conflict.cloudRevision})
                     </button>
                   )}
-                  <button type="button" onClick={() => void wallet.chooseDevice()} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-900">
+                  <button type="button" onClick={() => void wallet.chooseDevice()} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-900 transition-colors hover:bg-amber-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2">
                     Replace with this device
                   </button>
                   {wallet.conflict.kind === "cloud-empty" && (
-                    <button type="button" onClick={() => { wallet.chooseFresh(); setOpen(false); }} className="rounded-xl bg-slate-200 px-3 py-2 text-sm font-black text-slate-700">
+                    <button type="button" onClick={() => { wallet.chooseFresh(); setOpen(false); }} className="rounded-xl bg-slate-200 px-3 py-2 text-sm font-black text-slate-700 transition-colors hover:bg-slate-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
                       Start a fresh wallet save
                     </button>
                   )}
@@ -173,19 +173,19 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
               </div>
             )}
 
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               {(status === "expired" || status === "locked") && (
-                <button type="button" onClick={() => void wallet.beginConnect()} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-violet-700 px-3 py-2 text-sm font-black text-white">
+                <button type="button" onClick={() => void wallet.beginConnect()} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-violet-700 px-3 py-2 text-sm font-black text-white transition-colors hover:bg-violet-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2">
                   <RefreshCw className="h-4 w-4" /> Reconnect wallet
                 </button>
               )}
               {(status === "offline" || status === "conflict") && (
-                <button type="button" onClick={() => void wallet.retry()} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-slate-200 px-3 py-2 text-sm font-black text-slate-700">
+                <button type="button" onClick={() => void wallet.retry()} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-slate-200 px-3 py-2 text-sm font-black text-slate-700 transition-colors hover:bg-slate-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
                   <RefreshCw className="h-4 w-4" /> Retry
                 </button>
               )}
               {active && (
-                <button type="button" onClick={() => { void wallet.disconnect(); setOpen(false); }} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-rose-100 px-3 py-2 text-sm font-black text-rose-700">
+                <button type="button" onClick={() => { void wallet.disconnect(); setOpen(false); }} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-rose-100 px-3 py-2 text-sm font-black text-rose-700 transition-colors hover:bg-rose-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2">
                   <LogOut className="h-4 w-4" /> Disconnect
                 </button>
               )}

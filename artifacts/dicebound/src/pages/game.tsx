@@ -40,6 +40,7 @@ export default function Game() {
   const { setMusicScene, stopPlayback } = useAudio();
   const [showSkills, setShowSkills] = useState(false);
   const [showBestiary, setShowBestiary] = useState(false);
+  const [topBarHeight, setTopBarHeight] = useState(0);
   const [authoritativeActionPending, setAuthoritativeActionPending] = useState(false);
   const previousRun = useRef(Boolean(state?.run));
   const authoritativeSyncedSequence = useRef<number | null>(null);
@@ -175,7 +176,7 @@ export default function Game() {
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans select-none">
       <div
-        className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#2b4c2b]"
+        className="dicebound-desktop-shell w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#2b4c2b]"
         aria-busy={authoritativeActionPending}
       >
         {authoritativeActionPending && (
@@ -199,7 +200,7 @@ export default function Game() {
         />
 
         <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-           <TopBar run={r} />
+           <TopBar run={r} onHeightChange={setTopBarHeight} onOpenBestiary={() => setShowBestiary(true)} />
         </div>
 
          {/* A low edge slot keeps wallet access clear of TopBar stats and
@@ -208,7 +209,7 @@ export default function Game() {
            <WalletButton wallet={wallet} compact />
          </div>
 
-         <CombatOverlay run={r} dispatch={dispatchGameAction} speed={speed} paused={paused || authoritativeActionPending} />
+         <CombatOverlay run={r} dispatch={dispatchGameAction} speed={speed} paused={paused || authoritativeActionPending} headerHeight={topBarHeight} />
 
         {isPrologue && (
           <OpeningPrologue
@@ -218,17 +219,6 @@ export default function Game() {
              onSkip={() => dispatchGameAction({ type: 'SKIP_PROLOGUE' })}
           />
         )}
-
-        <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-           <button
-             type="button"
-             onClick={() => setShowBestiary(true)}
-             aria-label="Open Bestiary"
-             className="absolute top-20 right-3 z-40 rounded-full bg-white p-2 border-4 border-[#1c1c1c] shadow-[0_3px_0_#1c1c1c] active:translate-y-1 active:shadow-none"
-           >
-             <BookOpen className="w-5 h-5 text-purple-700" />
-           </button>
-        </div>
 
         <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             {!r.heroDeathPending && <ActionOverlay run={r} dispatch={dispatchGameAction} meta={state.meta} />}
@@ -245,7 +235,7 @@ export default function Game() {
              <button 
                 onClick={() => setShowSkills(true)}
                 aria-label="Run skills"
-                className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-4 border-[#1c1c1c] shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all"
+                className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-4 border-[#1c1c1c] shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
               >
                 <BookOpen className="w-6 h-6 text-slate-800" />
              </button>
@@ -257,7 +247,7 @@ export default function Game() {
            <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50">
              <button 
                 onClick={handleSkipCinematic}
-                className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-sm text-white px-5 py-2.5 rounded-full border-2 border-slate-700 font-bold shadow-xl active:scale-95 transition-all"
+                className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-sm text-white px-5 py-2.5 rounded-full border-2 border-slate-700 font-bold shadow-xl active:scale-95 transition-all hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
              >
                 Skip Cutscene <SkipForward className="w-4 h-4" />
              </button>
@@ -272,7 +262,7 @@ export default function Game() {
                 disabled={Boolean(r.playerCombat?.pendingHeroAttack) || ((r.characterId === 'unc' || r.characterId === 'alan-a-dale') && (r.phase === 'combat' || Boolean(r.heroDeathPending) || Boolean(r.victoryReport)))}
                 title={r.phase === 'combat' ? 'Choose pace between fights so full animations stay synchronized.' : 'Change playback pace'}
                 aria-label="Toggle speed"
-                className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg border-2 border-[#1c1c1c] font-black shadow-[0_4px_0_#1c1c1c] active:translate-y-1 active:shadow-none transition-all hover:bg-[#5a2899] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-ui-purple)]"
               >
                  <FastForward className="w-4 h-4 fill-current" /> Pace x{speed}
              </button>

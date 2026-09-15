@@ -38,7 +38,7 @@ export function CrownJournal({
             type="button"
             aria-label="Close Crown Fragment Journal"
             onClick={onClose}
-            className="rounded-full border-2 border-[#78512b]/40 bg-[#fff1cf]/60 p-2 active:scale-95"
+            className="rounded-full border-2 border-[#78512b]/40 bg-[#fff1cf]/60 p-2 transition-colors hover:bg-[#fff1cf]/80 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#78512b]"
           >
             <X className="h-5 w-5" />
           </button>

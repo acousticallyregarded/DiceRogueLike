@@ -17,6 +17,87 @@ body {
   font-family: var(--app-font-sans);
 }
 
+/* Controls share a tactile, keyboard-visible language across board, battle,
+   and lobby screens. Component colors stay intentionally specific. */
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .dicebound-desktop-shell {
+    max-width: 1180px !important;
+    border-inline: 4px solid #1c1c1c;
+    box-shadow: 0 0 0 8px rgba(114, 52, 186, .18), 0 22px 50px rgba(15, 23, 42, .42);
+  }
+
+  .dicebound-lobby-header {
+    padding: 24px 30px !important;
+  }
+
+  .dicebound-lobby-scene {
+    height: auto !important;
+    bottom: 100px;
+    width: 56% !important;
+    left: 0 !important;
+    right: auto !important;
+  }
+
+  .dicebound-lobby-main {
+    width: 44%;
+    margin-left: auto;
+    padding: 24px 30px 112px !important;
+  }
+
+  .combat-overlay {
+    display: grid !important;
+    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    column-gap: 18px;
+    padding: 20px 24px 14px;
+    overflow: visible !important;
+  }
+
+  .combat-overlay__hud {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+    margin: 0;
+    padding: 0 !important;
+    align-self: start;
+  }
+
+  .combat-overlay__arena {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-height: 0;
+  }
+
+  .combat-overlay__actions {
+    grid-column: 1;
+    grid-row: 4;
+    padding-inline: 0 !important;
+    align-self: end;
+  }
+
+  .combat-overlay__ability,
+  .combat-overlay__target {
+    grid-column: 1;
+    padding-inline: 0 !important;
+  }
+
+  .combat-overlay__ability {
+    grid-row: 2;
+  }
+
+  .combat-overlay__target {
+    grid-row: 3;
+  }
+}
+
 @layer utilities {
   .animate-bounce-slow {
     animation: bounce 2s infinite;

@@ -409,11 +409,21 @@
   letter-spacing: .06em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: all 0.15s ease-out;
+  outline: none;
+}
+
+.final-epilogue__continue:hover {
+  background: #4ade80;
+}
+
+.final-epilogue__continue:focus-visible {
+  box-shadow: 0 4px 0 #064e3b, 0 0 0 4px rgba(134, 239, 172, 1), 0 0 0 6px #064e3b;
 }
 
 .final-epilogue__continue:active {
   transform: translateY(4px);
-  box-shadow: none;
+  box-shadow: 0 0 0 2px rgba(134, 239, 172, 0);
 }
 
 .final-epilogue__continue svg {

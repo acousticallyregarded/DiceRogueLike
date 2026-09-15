@@ -59,7 +59,7 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
         aria-label="Sound settings"
         title="Sound settings"
         onClick={openSettings}
-        className={`rounded-full border-2 border-[#1c1c1c] bg-white p-1.5 text-slate-800 shadow-md active:scale-95 ${className}`}
+        className={`rounded-full border-2 border-[#1c1c1c] bg-white p-1.5 text-slate-800 shadow-md transition-colors hover:bg-slate-100 hover:border-slate-900 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 ${className}`}
       >
         {settings.musicMuted && settings.effectsMuted
           ? <VolumeX className="h-4 w-4" aria-hidden="true" />
@@ -86,7 +86,7 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
                 type="button"
                 aria-label="Close sound settings"
                 onClick={() => setOpen(false)}
-                className="rounded-full bg-slate-100 p-2 text-slate-700 active:scale-95"
+                className="rounded-full bg-slate-100 p-2 text-slate-700 transition-colors hover:bg-slate-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -117,7 +117,7 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
                 type="button"
                 aria-pressed={settings.musicMuted}
                 onClick={() => updateSettings({ musicMuted: !settings.musicMuted })}
-                className="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-black"
+                className="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-black transition-colors hover:bg-slate-100 hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 active:scale-95"
               >
                 {settings.musicMuted ? "Music muted" : "Mute music"}
               </button>
@@ -142,7 +142,7 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
                 type="button"
                 aria-pressed={settings.effectsMuted}
                 onClick={() => updateSettings({ effectsMuted: !settings.effectsMuted })}
-                className="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-black"
+                className="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-black transition-colors hover:bg-slate-100 hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 active:scale-95"
               >
                 {settings.effectsMuted ? "Effects muted" : "Mute effects"}
               </button>
@@ -151,7 +151,7 @@ export function AudioSettingsButton({ className = "" }: { className?: string }) 
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="mt-5 w-full rounded-2xl bg-slate-200 py-3 font-black text-slate-700"
+              className="mt-5 w-full rounded-2xl bg-slate-200 py-3 font-black text-slate-700 transition-colors hover:bg-slate-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
             >
               Done
             </button>

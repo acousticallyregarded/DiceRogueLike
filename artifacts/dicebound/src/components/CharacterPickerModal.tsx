@@ -45,7 +45,7 @@ export function CharacterPickerModal({ onClose, onConfirm }: CharacterPickerModa
         }}>
         <div className="bg-amber-400 p-4 border-b-4 border-[#1c1c1c] flex justify-between items-center shrink-0">
           <h2 id="character-picker-title" className="text-xl font-black uppercase tracking-widest text-slate-900">Choose Hero</h2>
-          <button onClick={onClose} aria-label="Close" className="p-1 bg-white rounded-full border-2 border-slate-900 active:scale-95 text-slate-900">
+          <button onClick={onClose} aria-label="Close" className="p-1 bg-white rounded-full border-2 border-slate-900 active:scale-95 text-slate-900 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-amber-400">
             <X className="w-5 h-5"/>
           </button>
         </div>
@@ -58,10 +58,10 @@ export function CharacterPickerModal({ onClose, onConfirm }: CharacterPickerModa
                 key={char.id}
                 aria-pressed={isSelected}
                 onClick={() => setSelectedId(char.id)}
-                className={`relative w-full text-left rounded-2xl p-3 border-4 transition-all ${
+                className={`relative w-full text-left rounded-2xl p-3 border-4 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 focus-visible:ring-offset-2 ${
                   isSelected 
                     ? 'border-fuchsia-500 bg-white shadow-[0_4px_0_rgba(217,70,239,1)]' 
-                    : 'border-slate-300 bg-slate-50 hover:bg-white hover:border-slate-400 shadow-[0_4px_0_rgba(203,213,225,1)]'
+                    : 'border-slate-300 bg-slate-50 hover:bg-white hover:border-slate-400 shadow-[0_4px_0_rgba(203,213,225,1)] hover:-translate-y-0.5'
                 }`}
               >
                 <div className="flex gap-4 items-center">
@@ -108,7 +108,7 @@ export function CharacterPickerModal({ onClose, onConfirm }: CharacterPickerModa
         <div className="p-4 bg-white border-t-4 border-[#1c1c1c] shrink-0">
           <button 
             onClick={() => onConfirm(selectedId)}
-            className="w-full bg-fuchsia-500 hover:bg-fuchsia-400 active:bg-fuchsia-600 text-white py-4 rounded-2xl font-black text-xl uppercase tracking-wider border-4 border-[#1c1c1c] shadow-[0_4px_0_rgba(28,28,28,1)] active:shadow-none active:translate-y-1 transition-all"
+            className="w-full bg-fuchsia-500 hover:bg-fuchsia-400 active:bg-fuchsia-600 text-white py-4 rounded-2xl font-black text-xl uppercase tracking-wider border-4 border-[#1c1c1c] shadow-[0_4px_0_rgba(28,28,28,1)] active:shadow-none active:translate-y-1 transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-500 focus-visible:ring-offset-2"
           >
             Start Adventure
           </button>

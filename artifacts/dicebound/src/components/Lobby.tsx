@@ -50,13 +50,13 @@ export function Lobby({
 
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans">
-      <div className="w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#e0ff00] flex flex-col">
+      <div className="dicebound-desktop-shell w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#e0ff00] flex flex-col">
         
         {/* Grass Background details */}
         <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'radial-gradient(#a3e635 2px, transparent 2px)', backgroundSize: '24px 24px' }} />
 
         {/* Scenic Art - Replace empty space with scenic outdoor lobby */}
-        <div className="absolute top-0 left-0 right-0 h-[min(440px,65dvh)] pointer-events-none flex justify-center items-end opacity-100 overflow-hidden">
+        <div className="dicebound-lobby-scene absolute top-0 left-0 right-0 h-[min(440px,65dvh)] pointer-events-none flex justify-center items-end opacity-100 overflow-hidden">
            <div className="absolute inset-0 bg-gradient-to-b from-sky-300 to-sky-100" />
            <div className="absolute bottom-0 left-0 right-0 h-16 bg-[#9ecb36] border-t-4 border-[#8aab29]" />
            <img src={statueUrl} className="absolute bottom-16 right-4 h-32 object-contain opacity-70" alt="Statue" />
@@ -76,13 +76,13 @@ export function Lobby({
         </div>
 
         {/* Top Header */}
-        <div className="relative z-20 p-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
+        <div className="dicebound-lobby-header relative z-20 p-4 flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <h1 className="text-3xl font-black tracking-tighter uppercase italic text-amber-500" style={{ WebkitTextStroke: '1.5px black' }}>Dicebound</h1>
-            <button onClick={() => setShowHelp(true)} aria-label="Help" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-slate-700">
+            <button onClick={() => setShowHelp(true)} aria-label="Help" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-slate-700 hover:bg-slate-100 hover:border-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 transition-colors">
               <HelpCircle className="w-4 h-4"/>
             </button>
-            <button onClick={() => setShowBestiary(true)} aria-label="Open Bestiary" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-purple-700">
+            <button onClick={() => setShowBestiary(true)} aria-label="Open Bestiary" className="p-1.5 bg-white rounded-full border-2 border-slate-800 shadow-sm active:scale-95 text-purple-700 hover:bg-slate-100 hover:border-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-700 focus-visible:ring-offset-2 transition-colors">
               <BookOpen className="w-4 h-4"/>
             </button>
             <AudioSettingsButton />
@@ -98,7 +98,7 @@ export function Lobby({
          </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 relative z-20 flex flex-col px-4 pb-28 overflow-y-auto">
+        <div className="dicebound-lobby-main flex-1 relative z-20 flex flex-col px-4 pb-28 overflow-y-auto">
            {tab !== 'play' && (
              <p role="status" className="mt-3 rounded-xl border-2 border-slate-800 bg-white px-3 py-2 text-xs font-bold text-slate-700">
                {wallet.canSpendGems
@@ -116,7 +116,7 @@ export function Lobby({
                 </p>
                <button 
                  onClick={() => setShowCharacterPicker(true)}
-                 className="w-full bg-[#ff5733] hover:bg-[#ff6847] active:bg-[#d9381e] text-white py-6 rounded-[32px] font-black text-3xl uppercase tracking-wider border-4 border-[#1c1c1c] shadow-[0_8px_0_rgba(28,28,28,1)] active:shadow-none active:translate-y-2 transition-all flex justify-center items-center gap-3 group"
+                 className="w-full bg-[#ff5733] hover:bg-[#ff6847] active:bg-[#d9381e] text-white py-6 rounded-[32px] font-black text-3xl uppercase tracking-wider border-4 border-[#1c1c1c] shadow-[0_8px_0_rgba(28,28,28,1)] active:shadow-none active:translate-y-2 transition-all flex justify-center items-center gap-3 group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ff5733] focus-visible:ring-offset-4 focus-visible:ring-offset-[#e0ff00]"
                >
                  <Play className="w-8 h-8 fill-current group-hover:animate-bounce" /> Play
                </button>
@@ -136,7 +136,7 @@ export function Lobby({
                  <button 
                    onClick={() => dispatch({ type: 'OPEN_CHEST' })}
                    disabled={!wallet.canSpendGems || meta.gems < 100}
-                   className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-4 py-2 rounded-xl font-black text-sm transition-all disabled:opacity-50 disabled:active:border-b-4 disabled:active:translate-y-0"
+                   className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-4 py-2 rounded-xl font-black text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:active:border-b-4 disabled:active:translate-y-0 disabled:cursor-not-allowed disabled:hover:bg-amber-400"
                  >
                    Open Chest
                  </button>
@@ -153,7 +153,7 @@ export function Lobby({
                      <div key={s.slot} className="bg-slate-100 aspect-square rounded-2xl flex flex-col items-center justify-center border-2 border-slate-200 relative">
                        <div className="text-[10px] font-black text-slate-400 mb-1 uppercase tracking-wider">{s.slot}</div>
                        {equippedId ? (
-                         <button onClick={() => dispatch({ type: 'UNEQUIP_ITEM', slot: s.slot as any })} aria-label={`Unequip ${s.slot}`} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm active:scale-95 transition-transform">
+                         <button onClick={() => dispatch({ type: 'UNEQUIP_ITEM', slot: s.slot as any })} aria-label={`Unequip ${s.slot}`} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-50 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
                            <s.icon className={`w-6 h-6 ${s.color} fill-current`} />
                          </button>
                        ) : (
@@ -184,7 +184,7 @@ export function Lobby({
                          {meta.equipped[item.type] !== item.id && (
                            <button 
                              onClick={() => dispatch({ type: 'EQUIP_ITEM', itemId: item.id })}
-                             className="bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg font-black text-xs active:scale-95 shadow-sm"
+                             className="bg-[var(--color-ui-purple)] text-white px-3 py-1.5 rounded-lg font-black text-xs transition-colors hover:bg-[#5a2899] active:scale-95 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                            >
                              Equip
                            </button>
@@ -229,7 +229,7 @@ export function Lobby({
                       <button
                         onClick={() => { void wallet.claimRewards(); }}
                         disabled={wallet.rewardsLoading}
-                        className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-slate-900 shadow-sm disabled:opacity-50"
+                        className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-slate-900 shadow-sm transition-colors hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-400"
                       >
                         {wallet.rewardsLoading ? 'Claiming…' : 'Claim'}
                       </button>
@@ -335,7 +335,7 @@ export function Lobby({
                                wallet.buyToken(item.symbol);
                              }}
                              disabled={disabled}
-                             className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-4 py-2 rounded-xl font-black text-sm transition-all disabled:active:border-b-4 disabled:active:translate-y-0 disabled:cursor-not-allowed shrink-0"
+                             className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-4 py-2 rounded-xl font-black text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:active:border-b-4 disabled:active:translate-y-0 disabled:cursor-not-allowed disabled:hover:bg-amber-400 shrink-0"
                            >
                              {wallet.isPurchasing ? '...' : (
                                <span className="flex items-center gap-1">
@@ -404,7 +404,7 @@ export function Lobby({
                        <button 
                          onClick={() => dispatch({ type: 'BUY_TALENT', stat: t.id as any })}
                          disabled={!wallet.canSpendGems || meta.gems < cost}
-                         className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-3 py-1.5 rounded-xl font-black text-xs transition-all disabled:opacity-50 disabled:active:border-b-4 disabled:active:translate-y-0"
+                         className="bg-amber-400 hover:bg-amber-300 text-slate-900 border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 px-3 py-1.5 rounded-xl font-black text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:active:border-b-4 disabled:active:translate-y-0 disabled:cursor-not-allowed disabled:hover:bg-amber-400"
                        >
                          {cost} <Gem className="inline w-3 h-3 text-fuchsia-500 fill-current" />
                        </button>
@@ -418,19 +418,19 @@ export function Lobby({
 
         {/* Bottom Navigation */}
         <div className="absolute bottom-0 left-0 right-0 bg-white border-t-4 border-[#1c1c1c] flex justify-around items-end pt-3 pb-6 z-30 shadow-[0_-8px_20px_rgba(0,0,0,0.1)]">
-          <button onClick={() => setTab('gear')} aria-label="Gear tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'gear' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
+          <button onClick={() => setTab('gear')} aria-label="Gear tab" className={`flex flex-col items-center gap-1 transition-all rounded-xl px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 hover:text-slate-600 ${tab === 'gear' ? 'text-amber-500 hover:text-amber-400 -translate-y-2' : 'text-slate-400'}`}>
             <Box className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-wider">Gear</span>
           </button>
-          <button onClick={() => setTab('play')} aria-label="Play tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'play' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
+          <button onClick={() => setTab('play')} aria-label="Play tab" className={`flex flex-col items-center gap-1 transition-all rounded-xl px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 hover:text-slate-600 ${tab === 'play' ? 'text-amber-500 hover:text-amber-400 -translate-y-2' : 'text-slate-400'}`}>
             <Play className="w-8 h-8 fill-current" />
             <span className="text-[10px] font-black uppercase tracking-wider">Play</span>
           </button>
-          <button onClick={() => setTab('shop')} aria-label="Shop tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'shop' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
+          <button onClick={() => setTab('shop')} aria-label="Shop tab" className={`flex flex-col items-center gap-1 transition-all rounded-xl px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 hover:text-slate-600 ${tab === 'shop' ? 'text-amber-500 hover:text-amber-400 -translate-y-2' : 'text-slate-400'}`}>
             <Store className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-wider">Shop</span>
           </button>
-          <button onClick={() => setTab('talents')} aria-label="Talents tab" className={`flex flex-col items-center gap-1 transition-transform ${tab === 'talents' ? 'text-amber-500 -translate-y-2' : 'text-slate-400'}`}>
+          <button onClick={() => setTab('talents')} aria-label="Talents tab" className={`flex flex-col items-center gap-1 transition-all rounded-xl px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 hover:text-slate-600 ${tab === 'talents' ? 'text-amber-500 hover:text-amber-400 -translate-y-2' : 'text-slate-400'}`}>
             <Settings2 className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-wider">Talents</span>
           </button>
@@ -450,7 +450,7 @@ export function Lobby({
                 <p><strong>Campaign Progress:</strong> Campaign gems buy random gear Chests and permanent Talents in the lobby.</p>
                 <p><strong>Wallet Rewards:</strong> Connect a wallet to qualify for occasional GLD or SLV rewards from verified monster kills. Rewards accumulate until you claim them.</p>
               </div>
-              <button onClick={() => setShowHelp(false)} className="mt-4 w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-black text-lg border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all">Got it!</button>
+              <button onClick={() => setShowHelp(false)} className="mt-4 w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-black text-lg border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all hover:bg-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">Got it!</button>
             </div>
           </div>
         )}
