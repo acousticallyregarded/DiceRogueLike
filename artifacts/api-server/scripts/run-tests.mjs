@@ -34,7 +34,6 @@ try {
   for (const table of [
     "redeemable_gem_accounts",
     "redeemable_gem_ledger",
-    "encounter_eligibilities",
     "token_rewards",
     "token_reward_claims",
     "token_payout_alert_states",

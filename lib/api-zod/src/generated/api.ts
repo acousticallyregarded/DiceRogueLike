@@ -117,58 +117,6 @@ export const PurchaseTokenResponse = zod.object({
 
 
 /**
- * @summary Issue a single-use combat encounter eligibility ticket
- */
-export const issueEncounterTicketHeaderXWalletAddressRegExp = new RegExp('^0x[0-9a-fA-F]{40}$');
-
-
-export const IssueEncounterTicketHeader = zod.object({
-  "X-Wallet-Address": zod.string().regex(issueEncounterTicketHeaderXWalletAddressRegExp),
-  "X-CSRF-Token": zod.string()
-})
-
-export const issueEncounterTicketBodyEncounterIdMax = 120;
-
-export const issueEncounterTicketBodyMonsterIdsMax = 12;
-
-
-
-export const IssueEncounterTicketBody = zod.object({
-  "encounterId": zod.string().min(1).max(issueEncounterTicketBodyEncounterIdMax),
-  "monsterIds": zod.array(zod.string()).min(1).max(issueEncounterTicketBodyMonsterIdsMax)
-})
-
-export const IssueEncounterTicketResponse = zod.object({
-  "id": zod.string(),
-  "encounterId": zod.string(),
-  "monsterIds": zod.array(zod.string()),
-  "expiresAt": zod.coerce.date()
-})
-
-
-/**
- * @summary Settle one defeated monster against an encounter ticket
- */
-export const SettleEncounterMonsterParams = zod.object({
-  "id": zod.coerce.string()
-})
-
-export const settleEncounterMonsterHeaderXWalletAddressRegExp = new RegExp('^0x[0-9a-fA-F]{40}$');
-
-
-export const SettleEncounterMonsterHeader = zod.object({
-  "X-Wallet-Address": zod.string().regex(settleEncounterMonsterHeaderXWalletAddressRegExp),
-  "X-CSRF-Token": zod.string()
-})
-
-export const SettleEncounterMonsterBody = zod.object({
-  "monsterId": zod.string()
-})
-
-export const SettleEncounterMonsterResponse = zod.unknown()
-
-
-/**
  * @summary Get accumulated server-side monster rewards
  */
 export const getTokenRewardsHeaderXWalletAddressRegExp = new RegExp('^0x[0-9a-fA-F]{40}$');

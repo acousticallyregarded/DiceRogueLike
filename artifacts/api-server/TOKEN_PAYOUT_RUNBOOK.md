@@ -1,14 +1,15 @@
 # Dicebound monster reward trust boundary
 
-Monster defeat reports are accepted only for a short-lived, server-issued
-encounter ticket bound to the authenticated wallet session. The ticket is
-single-use per monster, enforces a minimum completion interval, and the server
-performs the cryptographic roll, delayed-price conversion, inventory
-reservation, and durable payout claim. The browser still supplies the
-combat-enemy identifiers and reports when an enemy disappears because the full
-combat simulation is not server-side. Consequently a compromised client could
-misrepresent a plausible encounter within its ticket; it cannot choose the
-chance, token, amount, replay a monster, or create an unbacked liability.
+Browser-authored Dicebound saves and combat commands are not reward authority.
+The public encounter-ticket and transcript settlement endpoints have been
+removed, and `tokenRewardsEnabled()` is permanently fail-closed. Neither
+`TOKEN_REWARDS_ENABLED` nor `TOKEN_REWARDS_COMBAT_VERIFIED` can activate combat
+rewards. Do not add an operator override or manually trust a client save.
+
+The token claim and payout machinery remains available for trusted future
+grants inserted by a server-authoritative subsystem. Re-enable combat rewards
+only after implementing server-owned run progression, inventory, character
+abilities, reconnect state, and transactional reward settlement as one feature.
 
 # Token payout operator runbook
 

@@ -66,31 +66,6 @@ export const walletSaves = pgTable("wallet_saves", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }),
 });
 
-/**
- * A server-issued combat eligibility window.  The client may report only
- * monster identifiers that were included in this ticket; the ticket itself is
- * single-use per monster and is bound to the authenticated wallet session.
- */
-export const encounterEligibilities = pgTable(
-  "encounter_eligibilities",
-  {
-    id: text("id").primaryKey(),
-    walletAddress: text("wallet_address").notNull(),
-    sessionId: text("session_id").notNull(),
-    encounterId: text("encounter_id").notNull(),
-    monsterIds: jsonb("monster_ids").$type<string[]>().notNull(),
-    completedMonsterIds: jsonb("completed_monster_ids").$type<string[]>().notNull(),
-    issuedAt: timestamp("issued_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-    lastCompletedAt: timestamp("last_completed_at", { withTimezone: true, mode: "date" }),
-    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-    status: text("status").notNull().default("active"),
-  },
-  (table) => ({
-    walletStatusIndex: index("encounter_eligibilities_wallet_status_idx").on(table.walletAddress, table.status),
-    encounterIndex: uniqueIndex("encounter_eligibilities_wallet_encounter_idx").on(table.walletAddress, table.encounterId),
-  }),
-);
-
 /** A fixed-$0.15 liability reserved against escrow inventory at award time. */
 export const tokenRewards = pgTable(
   "token_rewards",
@@ -228,7 +203,6 @@ export const tokenPayoutMonitorState = pgTable("token_payout_monitor_state", {
 export type WalletChallenge = typeof walletChallenges.$inferSelect;
 export type WalletSession = typeof walletSessions.$inferSelect;
 export type WalletSave = typeof walletSaves.$inferSelect;
-export type EncounterEligibility = typeof encounterEligibilities.$inferSelect;
 export type TokenReward = typeof tokenRewards.$inferSelect;
 export type TokenRewardClaim = typeof tokenRewardClaims.$inferSelect;
 export type RedeemableGemAccount = typeof redeemableGemAccounts.$inferSelect;

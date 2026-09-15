@@ -516,16 +516,6 @@ export function useWalletCloud({
   const observedSaveRef = useRef<string | null>(null);
 
   const refreshPendingPurchasesRef = useRef<(() => Promise<void>) | null>(null);
-  const encounterLifecycleRef = useRef<{
-    address: string;
-    key: string | null;
-    ticketId: string | null;
-    lastEnemyIds: Set<string>;
-    pendingDefeats: Set<string>;
-    inFlightDefeats: Set<string>;
-    closed: boolean;
-  } | null>(null);
-
   const clearPurchaseState = useCallback(() => {
     setPurchaseError(null);
     setLastTxHash(null);
@@ -705,136 +695,11 @@ export function useWalletCloud({
     }
   }, [refreshRewards]);
 
-  const settleEncounterDefeat = useCallback(async (ticketId: string, monsterId: string, s: WalletSession) => {
-    const lifecycle = encounterLifecycleRef.current;
-    if (!lifecycle || lifecycle.ticketId !== ticketId || lifecycle.inFlightDefeats.has(monsterId)) return;
-    lifecycle.inFlightDefeats.add(monsterId);
-    try {
-      await requestJson(`/wallet/encounter-ticket/${encodeURIComponent(ticketId)}/monster`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": s.address,
-          "x-csrf-token": s.csrfToken,
-        },
-        body: JSON.stringify({ monsterId }),
-      });
-      lifecycle.pendingDefeats.delete(monsterId);
-      void refreshRewards();
-      if (lifecycle.closed && lifecycle.pendingDefeats.size === 0) {
-        encounterLifecycleRef.current = null;
-      }
-    } catch (rawError) {
-      const error = rawError as HttpError;
-      // Only an explicit non-retryable response can remove a pending defeat.
-      // Network/5xx/429 errors stay queued and retry until the server settles
-      // the idempotent completion.
-      const definitive = Boolean(error.status && error.status >= 400 && error.status < 500
-        && error.status !== 408 && error.status !== 429
-        && error.body?.error !== "token_rewards_disabled");
-      if (definitive || error.body?.error === "token_rewards_disabled") {
-        lifecycle.pendingDefeats.delete(monsterId);
-      } else {
-        window.setTimeout(() => void settleEncounterDefeat(ticketId, monsterId, s), 1_000);
-      }
-    } finally {
-      lifecycle.inFlightDefeats.delete(monsterId);
-    }
-  }, [refreshRewards]);
-
-  /**
-   * This hooks the reducer's actual combat state transitions. The server ticket
-   * prevents replay and performs the value-bearing roll/reservation, but the
-   * browser still reports which enemy disappeared because full combat
-   * simulation is not server-side. That is the remaining trust limitation.
-   */
-  useEffect(() => {
-    const run = state?.run;
-    const s = sessionRef.current;
-    if (!s || !activeRef.current || !run || run.phase !== "combat") {
-      const lifecycle = encounterLifecycleRef.current;
-      // finishVictory removes the final enemy and changes phase in the same
-      // reducer snapshot. Reconcile against the last combat snapshot before
-      // closing the lifecycle, otherwise the final monster is never queued.
-      if (
-        s &&
-        activeRef.current &&
-        lifecycle &&
-        run &&
-        (run.phase === "explore" || run.phase === "victory") &&
-        run.enemies.length === 0
-      ) {
-        for (const monsterId of lifecycle.lastEnemyIds) {
-          lifecycle.pendingDefeats.add(monsterId);
-        }
-        if (lifecycle.ticketId) {
-          for (const monsterId of lifecycle.pendingDefeats) {
-            void settleEncounterDefeat(lifecycle.ticketId, monsterId, s);
-          }
-        }
-        lifecycle.lastEnemyIds = new Set();
-      }
-      if (lifecycle) lifecycle.closed = true;
-      if (!run || !run.phase) encounterLifecycleRef.current = null;
-      return;
-    }
-    let lifecycle = encounterLifecycleRef.current;
-    if (lifecycle?.closed && lifecycle.pendingDefeats.size === 0) lifecycle = null;
-    if (!lifecycle || lifecycle.address !== s.address) {
-      lifecycle = {
-        address: s.address,
-        key: null,
-        ticketId: null,
-        lastEnemyIds: new Set<string>(),
-        pendingDefeats: new Set<string>(),
-        inFlightDefeats: new Set<string>(),
-        closed: false,
-      };
-      encounterLifecycleRef.current = lifecycle;
-    }
-    const ids = run.enemies.map(enemy => enemy.id);
-    if (!lifecycle.key) {
-      lifecycle.key = `${run.floor}:${crypto.randomUUID()}`;
-      lifecycle.lastEnemyIds = new Set(ids);
-      void requestJson("/wallet/encounter-ticket", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": s.address,
-          "x-csrf-token": s.csrfToken,
-        },
-        body: JSON.stringify({ encounterId: lifecycle.key, monsterIds: ids }),
-      }).then((body) => {
-        if (encounterLifecycleRef.current !== lifecycle || !body?.id) return;
-        lifecycle!.ticketId = body.id;
-        for (const monsterId of lifecycle!.pendingDefeats) {
-          void settleEncounterDefeat(body.id, monsterId, s);
-        }
-      }).catch(() => {
-        // Ticket creation is retried on a subsequent combat render.
-        if (encounterLifecycleRef.current === lifecycle) lifecycle!.key = null;
-      });
-      return;
-    }
-    for (const monsterId of lifecycle.lastEnemyIds) {
-      if (!ids.includes(monsterId)) {
-        lifecycle.pendingDefeats.add(monsterId);
-      }
-    }
-    if (lifecycle.ticketId) {
-      for (const monsterId of lifecycle.pendingDefeats) {
-        void settleEncounterDefeat(lifecycle.ticketId, monsterId, s);
-      }
-    }
-    lifecycle.lastEnemyIds = new Set(ids);
-  }, [state, settleEncounterDefeat]);
-
   const invalidateSession = useCallback((nextStatus: "expired" | "locked", message: string) => {
     if (sessionRef.current) invalidSessionRef.current = sessionRef.current;
     activeRef.current = false;
     ownerEpochRef.current += 1;
     sessionRef.current = null;
-    encounterLifecycleRef.current = null;
     setRewards(null);
     setRewardsError(null);
     setRewardClaim(null);
@@ -1485,7 +1350,6 @@ export function useWalletCloud({
     activeRef.current = false;
     sessionRef.current = null;
     invalidSessionRef.current = null;
-    encounterLifecycleRef.current = null;
     setRewards(null);
     setRewardsError(null);
     setRewardClaim(null);

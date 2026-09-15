@@ -8,9 +8,6 @@
 
 export * from './badRequestResponse';
 export * from './csrfTokenParameter';
-export * from './encounterMonsterInput';
-export * from './encounterTicketInput';
-export * from './encounterTicketResponse';
 export * from './errorResponse';
 export * from './forbiddenResponse';
 export * from './healthStatus';

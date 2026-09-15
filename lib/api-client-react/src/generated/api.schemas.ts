@@ -51,30 +51,6 @@ export interface TokenPurchaseInput {
   symbol: TokenSymbol;
 }
 
-export interface EncounterTicketInput {
-  /**
-     * @minLength 1
-     * @maxLength 120
-     */
-  encounterId: string;
-  /**
-     * @minItems 1
-     * @maxItems 12
-     */
-  monsterIds: string[];
-}
-
-export interface EncounterTicketResponse {
-  id: string;
-  encounterId: string;
-  monsterIds: string[];
-  expiresAt: string;
-}
-
-export interface EncounterMonsterInput {
-  monsterId: string;
-}
-
 export interface TokenRewardsResponse {
   enabled: boolean;
   GLD: string;

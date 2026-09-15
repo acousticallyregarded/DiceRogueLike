@@ -284,7 +284,7 @@ export function isPayoutConfigured(): boolean {
 
 /** Shared fail-closed gate for creating any new value-bearing liability. */
 export async function isRewardPayoutOperational(tx?: any): Promise<boolean> {
-  if (process.env.TOKEN_REWARDS_ENABLED !== "true" || process.env.TOKEN_PURCHASES_ENABLED !== "true") return false;
+  if (!tokenRewardsEnabled() || process.env.TOKEN_PURCHASES_ENABLED !== "true") return false;
   try {
     escrowAccount();
     const getBalance = (dependencies.chainClient as TokenPurchaseChainClient & {
@@ -299,7 +299,10 @@ export async function isRewardPayoutOperational(tx?: any): Promise<boolean> {
 }
 
 export function tokenRewardsEnabled(): boolean {
-  return process.env.TOKEN_REWARDS_ENABLED === "true";
+  // Browser combat is not an authority. Keep this permanently fail-closed
+  // until a future server-authoritative run implementation replaces the
+  // removed public encounter endpoints.
+  return false;
 }
 
 function decimalFromBaseUnits(value: bigint): string {
