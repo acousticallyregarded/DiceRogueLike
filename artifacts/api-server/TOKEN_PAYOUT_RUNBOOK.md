@@ -8,6 +8,8 @@ Set the secret `TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL` to an operator-owned HTTPS in
 
 The same `alertKey` identifies warning repeats, critical escalation, and resolution. Firing notifications are limited to once every 30 minutes per key, except that a warning becoming critical is delivered immediately; a resolved notification is sent once when that key clears. Delivery times out after five seconds. A failed delivery is logged without the webhook URL or response body and never blocks later monitor cycles or payout processing.
 
+Monitor `GET /api/healthz/token-payout-incident-delivery` through an operational path that does not depend on the incident webhook. It returns HTTP `503` with `status: "degraded"` after a delivery attempt fails and includes only the consecutive failure count plus the last failure and success timestamps. A successful delivery resets the count and restores HTTP `200` with `status: "ok"`. Alert on a non-200 response or a nonzero `consecutiveFailures` value. This health state is process-local and begins fresh when the API restarts, so the external check must also detect API restarts or unavailability.
+
 Keep the webhook URL in Replit Secrets, not in source control or deployment logs. Configure the receiving channel to group or thread events by `event.alertKey`. The endpoint must accept an HTTPS `POST` with JSON; Slack-compatible incoming webhooks can display the top-level `text` field, while general incident receivers can inspect the complete `event`.
 
 ### Send a test notification

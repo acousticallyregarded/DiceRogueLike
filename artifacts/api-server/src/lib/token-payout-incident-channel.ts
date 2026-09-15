@@ -3,6 +3,20 @@ import type { TokenPayoutAlert } from "./token-payout-health";
 
 const DELIVERY_TIMEOUT_MS = 5_000;
 
+export interface TokenPayoutIncidentDeliveryHealth {
+  status: "ok" | "degraded";
+  consecutiveFailures: number;
+  lastFailureAt: string | null;
+  lastSuccessAt: string | null;
+}
+
+let deliveryHealth: TokenPayoutIncidentDeliveryHealth = {
+  status: "ok",
+  consecutiveFailures: 0,
+  lastFailureAt: null,
+  lastSuccessAt: null,
+};
+
 export interface TokenPayoutIncidentEvent {
   status: "firing" | "resolved";
   alertKey: string;
@@ -26,6 +40,28 @@ function incidentWebhookUrl(): string | null {
   } catch {
     return null;
   }
+}
+
+function recordDeliveryFailure(): void {
+  deliveryHealth = {
+    ...deliveryHealth,
+    status: "degraded",
+    consecutiveFailures: deliveryHealth.consecutiveFailures + 1,
+    lastFailureAt: new Date().toISOString(),
+  };
+}
+
+function recordDeliverySuccess(): void {
+  deliveryHealth = {
+    status: "ok",
+    consecutiveFailures: 0,
+    lastFailureAt: null,
+    lastSuccessAt: new Date().toISOString(),
+  };
+}
+
+export function getTokenPayoutIncidentDeliveryHealth(): TokenPayoutIncidentDeliveryHealth {
+  return { ...deliveryHealth };
 }
 
 export function incidentEventForAlert(
@@ -58,7 +94,10 @@ export async function deliverTokenPayoutIncident(
   event: TokenPayoutIncidentEvent,
 ): Promise<boolean> {
   const url = incidentWebhookUrl();
-  if (!url) return false;
+  if (!url) {
+    recordDeliveryFailure();
+    return false;
+  }
   const summary = `[Dicebound payout ${event.status}] ${event.alertKey}: ${event.condition}`;
   try {
     const response = await incidentFetch(url, {
@@ -75,9 +114,12 @@ export async function deliverTokenPayoutIncident(
         alertKey: event.alertKey,
         status: event.status,
         responseStatus: response.status,
+        consecutiveFailures: deliveryHealth.consecutiveFailures + 1,
       }, "Token payout incident delivery failed");
+      recordDeliveryFailure();
       return false;
     }
+    recordDeliverySuccess();
     return true;
   } catch {
     // Do not attach the error: HTTP client errors can include request details,
@@ -85,7 +127,9 @@ export async function deliverTokenPayoutIncident(
     logger.warn({
       alertKey: event.alertKey,
       status: event.status,
+      consecutiveFailures: deliveryHealth.consecutiveFailures + 1,
     }, "Token payout incident delivery failed");
+    recordDeliveryFailure();
     return false;
   }
 }
@@ -93,4 +137,14 @@ export async function deliverTokenPayoutIncident(
 /** Test-only seam for deterministic webhook responses. */
 export function setTokenPayoutIncidentTestFetch(override: IncidentFetch | null): void {
   incidentFetch = override ?? fetch;
+}
+
+/** Test-only seam for isolating delivery-health assertions. */
+export function resetTokenPayoutIncidentDeliveryHealthForTest(): void {
+  deliveryHealth = {
+    status: "ok",
+    consecutiveFailures: 0,
+    lastFailureAt: null,
+    lastSuccessAt: null,
+  };
 }

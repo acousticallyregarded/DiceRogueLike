@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import {
   deliverTokenPayoutIncident,
+  getTokenPayoutIncidentDeliveryHealth,
   incidentEventForAlert,
+  resetTokenPayoutIncidentDeliveryHealthForTest,
   resolvedIncidentEvent,
   setTokenPayoutIncidentTestFetch,
 } from "./token-payout-incident-channel";
@@ -10,6 +12,7 @@ import {
 afterEach(() => {
   delete process.env.TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL;
   setTokenPayoutIncidentTestFetch(null);
+  resetTokenPayoutIncidentDeliveryHealthForTest();
 });
 
 const alert = {
@@ -50,4 +53,37 @@ test("incident delivery failures are contained", async () => {
   assert.equal(await deliverTokenPayoutIncident(
     incidentEventForAlert(alert, new Date()),
   ), false);
+});
+
+test("incident delivery health counts consecutive failures and clears on success", async () => {
+  process.env.TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL = "https://incident.example.test/hook";
+  setTokenPayoutIncidentTestFetch(async () => new Response(null, { status: 503 }));
+  const event = incidentEventForAlert(alert, new Date());
+
+  assert.equal(await deliverTokenPayoutIncident(event), false);
+  assert.equal(await deliverTokenPayoutIncident(event), false);
+  const degraded = getTokenPayoutIncidentDeliveryHealth();
+  assert.equal(degraded.status, "degraded");
+  assert.equal(degraded.consecutiveFailures, 2);
+  assert.ok(degraded.lastFailureAt);
+  assert.equal(degraded.lastSuccessAt, null);
+  assert.deepEqual(
+    Object.keys(degraded).sort(),
+    ["consecutiveFailures", "lastFailureAt", "lastSuccessAt", "status"],
+  );
+
+  setTokenPayoutIncidentTestFetch(async () => new Response(null, { status: 204 }));
+  assert.equal(await deliverTokenPayoutIncident(event), true);
+  const recovered = getTokenPayoutIncidentDeliveryHealth();
+  assert.equal(recovered.status, "ok");
+  assert.equal(recovered.consecutiveFailures, 0);
+  assert.equal(recovered.lastFailureAt, null);
+  assert.ok(recovered.lastSuccessAt);
+});
+
+test("missing or invalid webhook configuration degrades delivery health", async () => {
+  assert.equal(await deliverTokenPayoutIncident(
+    incidentEventForAlert(alert, new Date()),
+  ), false);
+  assert.equal(getTokenPayoutIncidentDeliveryHealth().consecutiveFailures, 1);
 });

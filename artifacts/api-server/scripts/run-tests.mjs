@@ -41,9 +41,15 @@ try {
     );
   }
   const isolatedUrl = schemaUrl();
-  const testFiles = (await readdir(new URL("../src/lib", import.meta.url)))
-    .filter((file) => file.endsWith(".test.ts"))
-    .map((file) => `src/lib/${file}`);
+  const testFiles = (
+    await Promise.all(
+      ["lib", "routes"].map(async (directory) =>
+        (await readdir(new URL(`../src/${directory}`, import.meta.url)))
+          .filter((file) => file.endsWith(".test.ts"))
+          .map((file) => `src/${directory}/${file}`),
+      ),
+    )
+  ).flat();
   await run("pnpm", ["exec", "tsx", "--test", ...testFiles], {
     cwd: new URL("..", import.meta.url),
     env: { DATABASE_URL: isolatedUrl, NODE_ENV: "test" },
