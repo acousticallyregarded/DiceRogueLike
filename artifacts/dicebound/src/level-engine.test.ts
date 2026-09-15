@@ -7,7 +7,7 @@ import {
   type EnemyState,
   type GameStateV4,
 } from "./engine.js";
-import { getBossDeathDurationMs, getBossId, LEVELS } from "./level-content.js";
+import { getBossDeathDurationMs, getBossId, getVictoryInterlude, LEVELS } from "./level-content.js";
 
 function bossReady(floor: number): GameStateV4 {
   let state = act(createInitialState(), { type: "START_RUN" });
@@ -74,6 +74,11 @@ function runAssertions() {
   // The authored contract exposes four floors and every floor gets a fresh,
   // finite trail with a real endpoint boss.
   assert.equal(LEVELS.length, 4);
+  assert.equal(getVictoryInterlude(1)?.fragment, "The Verdant Shard");
+  assert.match(getVictoryInterlude(1)?.body ?? "", /Grubgut/);
+  assert.match(getVictoryInterlude(2)?.body ?? "", /Lady Silkmaw/);
+  assert.match(getVictoryInterlude(3)?.body ?? "", /Sir Cinder/);
+  assert.equal(getVictoryInterlude(4), null);
   assert.equal(generateBoard(1).length, 64);
   for (let floor = 1; floor <= 4; floor++) {
     const board = generateBoard(floor);
@@ -81,6 +86,36 @@ function runAssertions() {
     assert.equal(board[63].type, "boss");
     assert.ok(new Set(board.map(tile => tile.type)).size >= 6);
   }
+
+  // Story progression lives inside the persisted report and cannot advance
+  // the floor or grant rewards. Dismissing either page is a state-neutral skip.
+  let storyVictory = bossReady(1);
+  storyVictory = defeatBoss(storyVictory);
+  // Recreate the pending report because defeatBoss exercises the skip path.
+  storyVictory = bossReady(1);
+  storyVictory.run!.attack = 10_000;
+  storyVictory.run!.enemies[0].hp = 1;
+  storyVictory = act(storyVictory, { type: "PLAYER_ATTACK", targetId: storyVictory.run!.enemies[0].id });
+  storyVictory = act(storyVictory, { type: "FINISH_HERO_ATTACK" });
+  const rewardsBeforeStory = {
+    floor: storyVictory.run!.floor,
+    gold: storyVictory.run!.gold,
+    gems: storyVictory.run!.gemsEarned,
+  };
+  storyVictory = act(storyVictory, { type: "ADVANCE_VICTORY_REPORT" });
+  assert.equal(storyVictory.run!.victoryReport!.interludeVisible, true);
+  assert.deepEqual(
+    { floor: storyVictory.run!.floor, gold: storyVictory.run!.gold, gems: storyVictory.run!.gemsEarned },
+    rewardsBeforeStory,
+  );
+  const restoredStory = validateState(awaitableClone(storyVictory));
+  assert.equal(restoredStory.run!.victoryReport!.interludeVisible, true);
+  storyVictory = act(restoredStory, { type: "DISMISS_VICTORY_REPORT" });
+  assert.equal(storyVictory.run!.victoryReport, null);
+  assert.deepEqual(
+    { floor: storyVictory.run!.floor, gold: storyVictory.run!.gold, gems: storyVictory.run!.gemsEarned },
+    rewardsBeforeStory,
+  );
   assert.notDeepEqual(generateBoard(1), generateBoard(2));
   assert.notDeepEqual(generateBoard(2), generateBoard(3));
 

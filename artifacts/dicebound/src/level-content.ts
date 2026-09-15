@@ -9,6 +9,13 @@ export interface LevelDefinition {
   boss: { id: BossId; name: string; arena: string; description: string };
 }
 
+export interface VictoryInterlude {
+  fragment: string;
+  title: string;
+  body: string;
+  destination: string;
+}
+
 export const LEVELS: readonly LevelDefinition[] = [
   {
     floor: 1, name: "The Forest Trail", biome: "forest",
@@ -31,6 +38,31 @@ export const LEVELS: readonly LevelDefinition[] = [
     boss: { id: "cinder", name: "Sir Cinder, the Ashen Knight", arena: "The Ashen Gate", description: "A black-armored knight whose burning sword grows fiercer as his armor cracks." },
   },
 ];
+
+export const VICTORY_INTERLUDES: readonly VictoryInterlude[] = [
+  {
+    fragment: "The Verdant Shard",
+    title: "A Crown Fragment Rekindled",
+    body: "The Skeleton King’s curse breaks, and a green shard of the Crown answers your touch. In its reflection, Grubgut damns Mirebridge Marsh and chokes the road east.",
+    destination: "Carry the Verdant Shard to Mirebridge Marsh and confront Grubgut, the Troll King.",
+  },
+  {
+    fragment: "The Mire Shard",
+    title: "The Web Tightens",
+    body: "Grubgut falls, freeing a dark shard from beneath the broken bridge. Silver threads coil across its surface: Lady Silkmaw is binding the next Crown fragment inside her hollow throne.",
+    destination: "Follow the threads into Silkmaw’s Hollow before the Spider Queen seals it away.",
+  },
+  {
+    fragment: "The Silken Shard",
+    title: "Ash on the Horizon",
+    body: "Lady Silkmaw’s web burns away, leaving a pale shard in your hand. It grows hot and points toward Sir Cinder, whose ruined fortress feeds on the Crown’s final fire.",
+    destination: "Cross the Cinder March and face the Ashen Knight at the fortress gate.",
+  },
+];
+
+export function getVictoryInterlude(floor: number): VictoryInterlude | null {
+  return VICTORY_INTERLUDES[Math.floor(floor) - 1] ?? null;
+}
 
 export function getLevelDefinition(floor: number): LevelDefinition {
   return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, Math.floor(floor || 1) - 1))];

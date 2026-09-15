@@ -213,6 +213,7 @@ export interface RunState {
   victoryReport?: {
     id: string; boss: boolean; floor: number; xp: number; gold: number;
     gems: number; healing: number; equipment: string[]; showAt: number;
+    interludeVisible?: boolean;
   } | null;
   hp: number;
   maxHp: number;
@@ -510,6 +511,7 @@ export function getHeroDeathDurationMs(
 export type GameAction =
   | { type: "DISMISS_VICTORY_REPORT" }
   | { type: "ADVANCE_FINAL_EPILOGUE" }
+  | { type: "ADVANCE_VICTORY_REPORT" }
   | { type: "START_RUN"; characterId?: CharacterId }
   | { type: "ROLL_DICE" }
   | { type: "BEGIN_MOVEMENT" }
@@ -2401,6 +2403,12 @@ function resolveEnemyTurn(s: GameStateV4) {
 
 export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   const s: GameStateV4 = JSON.parse(JSON.stringify(state));
+  if (action.type === "ADVANCE_VICTORY_REPORT") {
+    if (s.run?.victoryReport?.boss && s.run.victoryReport.floor < LEVELS.length) {
+      s.run.victoryReport.interludeVisible = true;
+    }
+    return s;
+  }
   if (action.type === "DISMISS_VICTORY_REPORT") {
     if (s.run?.victoryReport) {
       s.run.victoryReport = null;
