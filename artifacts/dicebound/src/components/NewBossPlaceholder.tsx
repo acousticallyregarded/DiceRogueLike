@@ -2,7 +2,6 @@ import type { BossId } from '../level-content';
 import { getBossMovePresentation } from '../level-content';
 import type { CSSProperties } from 'react';
 import { useEffect, useState } from 'react';
-import ashenKnightAsset from '../assets/boss-placeholders/ashen-knight.svg';
 import grubgutIdle from '../assets/bosses/grubgut/idle.gif';
 import grubgutClubAttack from '../assets/bosses/grubgut/club-attack.gif';
 import grubgutPoisonBreath from '../assets/bosses/grubgut/poison-breath.gif';
@@ -14,6 +13,11 @@ import silkmawPoisonAttack from '../assets/bosses/silkmaw/poison-attack.gif';
 import silkmawWebAttack from '../assets/bosses/silkmaw/web-attack.gif';
 import silkmawHit from '../assets/bosses/silkmaw/hit.gif';
 import silkmawDeath from '../assets/bosses/silkmaw/death.gif';
+import cinderIdle from '../assets/bosses/cinder/idle.gif';
+import cinderEmberSwordAttack from '../assets/bosses/cinder/ember-sword-attack.gif';
+import cinderHeavyAttack from '../assets/bosses/cinder/heavy-attack.gif';
+import cinderHit from '../assets/bosses/cinder/hit.gif';
+import cinderDeath from '../assets/bosses/cinder/death.gif';
 import './new-boss-placeholder.css';
 
 export type PlaceholderBossId = Exclude<BossId, 'skeleton-king'>;
@@ -25,13 +29,13 @@ export type PlaceholderBossId = Exclude<BossId, 'skeleton-king'>;
 export const BOSS_PLACEHOLDER_ASSETS: Record<PlaceholderBossId, string> = {
   grubgut: grubgutIdle,
   silkmaw: silkmawIdle,
-  cinder: ashenKnightAsset,
+  cinder: cinderIdle,
 };
 
 export const BOSS_ASSET_GUIDE: Record<PlaceholderBossId, string> = {
   grubgut: 'Grubgut uses transparent idle, club attack, poison breath, hit, and death GIFs.',
   silkmaw: 'Lady Silkmaw uses transparent entrance, idle, poison, web, hit, and death GIFs.',
-  cinder: 'Replace with the transparent Sir Cinder armored knight GIF (ember sword frames included).',
+  cinder: 'Sir Cinder uses transparent idle, ember sword, heavy attack, hit, and death GIFs.',
 };
 
 const BOSS_LABELS: Record<PlaceholderBossId, string> = {
@@ -64,7 +68,12 @@ function getBossActionAsset(
     }
     return silkmawIdle;
   }
-  return BOSS_PLACEHOLDER_ASSETS[bossId];
+  if (action === 'death') return cinderDeath;
+  if (action === 'hit') return cinderHit;
+  if (action === 'attack') {
+    return movePresentation?.label === 'Cinder Wave' ? cinderHeavyAttack : cinderEmberSwordAttack;
+  }
+  return cinderIdle;
 }
 
 export const NEW_BOSS_DEATH_EXIT_MS = 1800;
@@ -132,8 +141,8 @@ export function NewBossPlaceholder({
       style={{
         '--boss-animation-speed': Math.max(1, speed),
         '--boss-move-duration': `${moveDuration}ms`,
-        '--boss-hit-duration': `${bossId === 'grubgut' ? 3400 : bossId === 'silkmaw' ? 2600 : 360}ms`,
-        '--boss-death-duration': `${bossId === 'grubgut' ? 2600 : bossId === 'silkmaw' ? 4200 : 1800}ms`,
+        '--boss-hit-duration': `${bossId === 'grubgut' ? 3400 : bossId === 'silkmaw' ? 2600 : 1800}ms`,
+        '--boss-death-duration': `${bossId === 'grubgut' ? 2600 : bossId === 'silkmaw' ? 4200 : 5000}ms`,
       } as CSSProperties}
       data-boss-placeholder={bossId}
       data-boss-action={action}
@@ -146,7 +155,7 @@ export function NewBossPlaceholder({
       >
         <img
           src={asset}
-          alt={bossId === 'cinder' ? `${BOSS_LABELS[bossId]} art placeholder` : BOSS_LABELS[bossId]}
+          alt={BOSS_LABELS[bossId]}
           draggable={false}
         />
       </div>

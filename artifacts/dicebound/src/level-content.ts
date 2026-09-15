@@ -94,6 +94,7 @@ export function getBossDeathDurationMs(enemy: { boss?: boolean; name: string }):
   if (bossId === "skeleton-king") return 5200;
   if (bossId === "grubgut") return 2600;
   if (bossId === "silkmaw") return 4200;
+  if (bossId === "cinder") return 5000;
   return 1800;
 }
 
@@ -107,8 +108,8 @@ export function getBossMovePresentation(enemy: {
     case "venom_bite": return { label: "Venom Lunge", kind: "melee", durationMs: 3400 };
     case "web": return { label: "Royal Web", kind: "ranged", durationMs: 2600 };
     case "summon_brood": return { label: "Brood Call", kind: "support", durationMs: 2400 };
-    case "slash": return { label: "Executioner's Slash", kind: "melee", durationMs: 1800 };
-    case "fire_wave": return { label: "Cinder Wave", kind: "ranged", durationMs: 4200 };
+    case "slash": return { label: "Executioner's Slash", kind: "melee", durationMs: 2600 };
+    case "fire_wave": return { label: "Cinder Wave", kind: "ranged", durationMs: 2600 };
     case "rage": return { label: "Furnace Rage", kind: "support", durationMs: 2400 };
     default: return enemy.lastBossAttack === "fireball"
       ? { label: "Fireball", kind: "ranged", durationMs: 4200 }
