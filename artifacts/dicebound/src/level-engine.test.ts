@@ -7,7 +7,13 @@ import {
   type EnemyState,
   type GameStateV4,
 } from "./engine.js";
-import { getBossDeathDurationMs, getBossId, getVictoryInterlude, LEVELS } from "./level-content.js";
+import {
+  getBossDeathDurationMs,
+  getBossId,
+  getRecoveredCrownFragments,
+  getVictoryInterlude,
+  LEVELS,
+} from "./level-content.js";
 
 function bossReady(floor: number): GameStateV4 {
   let state = act(createInitialState(), { type: "START_RUN" });
@@ -79,6 +85,15 @@ function runAssertions() {
   assert.match(getVictoryInterlude(2)?.body ?? "", /Lady Silkmaw/);
   assert.match(getVictoryInterlude(3)?.body ?? "", /Sir Cinder/);
   assert.equal(getVictoryInterlude(4), null);
+  assert.deepEqual(getRecoveredCrownFragments({ floor: 1 }), []);
+  assert.deepEqual(
+    getRecoveredCrownFragments({ floor: 2 }).map(entry => entry.fragment),
+    ["The Verdant Shard"],
+  );
+  assert.deepEqual(
+    getRecoveredCrownFragments({ floor: 4 }).map(entry => entry.fragment),
+    ["The Verdant Shard", "The Mire Shard", "The Silken Shard"],
+  );
   assert.equal(generateBoard(1).length, 64);
   for (let floor = 1; floor <= 4; floor++) {
     const board = generateBoard(floor);
@@ -110,12 +125,18 @@ function runAssertions() {
   );
   const restoredStory = validateState(awaitableClone(storyVictory));
   assert.equal(restoredStory.run!.victoryReport!.interludeVisible, true);
+  assert.deepEqual(
+    getRecoveredCrownFragments(restoredStory.run!).map(entry => entry.fragment),
+    ["The Verdant Shard"],
+  );
   storyVictory = act(restoredStory, { type: "DISMISS_VICTORY_REPORT" });
   assert.equal(storyVictory.run!.victoryReport, null);
   assert.deepEqual(
     { floor: storyVictory.run!.floor, gold: storyVictory.run!.gold, gems: storyVictory.run!.gemsEarned },
     rewardsBeforeStory,
   );
+  const freshCampaign = act(createInitialState(), { type: "START_RUN" });
+  assert.deepEqual(getRecoveredCrownFragments(freshCampaign.run!), []);
   assert.notDeepEqual(generateBoard(1), generateBoard(2));
   assert.notDeepEqual(generateBoard(2), generateBoard(3));
 

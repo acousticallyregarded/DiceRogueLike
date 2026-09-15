@@ -64,6 +64,18 @@ export function getVictoryInterlude(floor: number): VictoryInterlude | null {
   return VICTORY_INTERLUDES[Math.floor(floor) - 1] ?? null;
 }
 
+export function getRecoveredCrownFragments(run: {
+  floor: number;
+  victoryReport?: { boss: boolean; floor: number } | null;
+}): readonly VictoryInterlude[] {
+  const completedFloors = Math.max(0, Math.floor(Number(run.floor) || 1) - 1);
+  const pendingBossFloor = run.victoryReport?.boss
+    ? Math.floor(Number(run.victoryReport.floor) || 0)
+    : 0;
+  const recoveredThrough = Math.max(completedFloors, pendingBossFloor);
+  return VICTORY_INTERLUDES.slice(0, Math.min(VICTORY_INTERLUDES.length, recoveredThrough));
+}
+
 export function getLevelDefinition(floor: number): LevelDefinition {
   return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, Math.floor(floor || 1) - 1))];
 }

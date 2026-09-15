@@ -1,17 +1,21 @@
 import { RunState, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE, getCombatSpeedBonus } from '../engine';
-import { Heart, Sword, Gem, ShieldAlert, Coins, Wind, Skull } from 'lucide-react';
+import { useState } from 'react';
+import { Heart, Sword, Gem, ShieldAlert, Coins, Wind, Skull, BookMarked } from 'lucide-react';
 import { AudioSettingsButton } from './AudioSettings';
+import { CrownJournal } from './CrownJournal';
 import { getCharacter } from '../characters';
-import { getLevelDefinition } from '../level-content';
+import { getLevelDefinition, getRecoveredCrownFragments } from '../level-content';
 
 function getNextLevelXp(level: number): number {
   return Math.floor(100 * Math.pow(1.5, level - 1));
 }
 
 export function TopBar({ run }: { run: RunState }) {
+  const [journalOpen, setJournalOpen] = useState(false);
   const nextXp = getNextLevelXp(run.level);
   const heroDef = getCharacter(run.characterId);
   const level = getLevelDefinition(run.floor);
+  const recoveredFragments = getRecoveredCrownFragments(run);
   
   // Use bossCountdown if available (new paces logic), else fallback to bossRollsLeft
   const countdown = run.bossCountdown ?? run.bossRollsLeft;
@@ -93,7 +97,19 @@ export function TopBar({ run }: { run: RunState }) {
           <Skull className="w-3 h-3 mr-1" />
           {bossStatus}
         </div>
+        <button
+          type="button"
+          onClick={() => setJournalOpen(true)}
+          aria-label={`Open Crown Fragment Journal, ${recoveredFragments.length} of 3 recovered`}
+          className="flex items-center rounded-full bg-[#f4dfac] px-2 py-1 font-black text-[10px] text-[#3f2b18] border-2 border-[#1c1c1c] shadow-md pointer-events-auto active:translate-y-0.5 active:shadow-none"
+        >
+          <BookMarked className="w-3 h-3 mr-1" />
+          CROWN {recoveredFragments.length}/3
+        </button>
       </div>
+      {journalOpen && (
+        <CrownJournal entries={recoveredFragments} onClose={() => setJournalOpen(false)} />
+      )}
     </div>
   );
 }
