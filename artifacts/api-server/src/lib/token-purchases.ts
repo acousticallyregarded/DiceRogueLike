@@ -48,6 +48,7 @@ const publicClient = createPublicClient({
   transport: http(ROBINHOOD_MAINNET_RPC),
 });
 
+type EscrowAccount = ReturnType<typeof privateKeyToAccount>;
 export interface Quote {
   symbol: TokenSymbol;
   tokenAddress: Address;
@@ -220,7 +221,7 @@ function assertPurchasesEnabled(): void {
   }
 }
 
-function escrowAccount() {
+function configuredEscrowAccount() {
   // The private key is intentionally read only at signer construction. It is
   // never returned, logged, persisted, or included in an error.
   let account: ReturnType<typeof privateKeyToAccount>;
@@ -233,6 +234,9 @@ function escrowAccount() {
     throw new TokenPurchaseError("escrow_mismatch", "Token payout is not configured.");
   }
   return account;
+}
+function escrowAccount() {
+  return dependencies.escrowAccountFactory();
 }
 
 export function isPayoutConfigured(): boolean {
@@ -265,7 +269,7 @@ export function quoteAgeIsAllowed(timestamp: Date, now = new Date()): boolean {
   return today - quotedDay >= 86_400_000 && today - quotedDay <= 4 * 86_400_000;
 }
 
-async function fetchQuote(token: TokenSymbol): Promise<Quote> {
+async function fetchQuoteFromProvider(token: TokenSymbol): Promise<Quote> {
   const key = process.env.MASSIVE_API_KEY;
   if (!key) throw new TokenPurchaseError("quote_unavailable", "Approved token pricing is unavailable.");
   const ticker = MASSIVE_TICKERS[token];
@@ -312,6 +316,9 @@ async function fetchQuote(token: TokenSymbol): Promise<Quote> {
     quoteDelayed: "previous-close",
     delayed: true,
   };
+}
+async function fetchQuote(token: TokenSymbol): Promise<Quote> {
+  return dependencies.quoteFetcher(token);
 }
 
 export async function getTokenQuote(token: TokenSymbol): Promise<Quote> {
@@ -365,7 +372,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
 }
 
 async function getEscrowBalance(tokenAddress: Address): Promise<bigint> {
-  const balance = await publicClient.readContract({
+  const balance = await dependencies.chainClient.readContract({
     address: tokenAddress,
     abi: BALANCE_ABI,
     functionName: "balanceOf",
@@ -530,7 +537,7 @@ async function purchaseResponse(row: typeof tokenPurchases.$inferSelect) {
 async function receiptStatus(row: typeof tokenPurchases.$inferSelect) {
   if (!row.transactionHash || row.status === "confirmed" || row.status === "failed") return row;
   try {
-    const receipt = await publicClient.getTransactionReceipt({ hash: row.transactionHash as Hex });
+    const receipt = await dependencies.chainClient.getTransactionReceipt({ hash: row.transactionHash as Hex });
     const status: PurchaseStatus = receipt.status === "success" ? "confirmed" : "failed";
     if (status === "failed") return markDefinitiveRevert(row);
     const [updated] = await db.update(tokenPurchases).set({
@@ -581,7 +588,7 @@ async function signAndPersist(row: typeof tokenPurchases.$inferSelect): Promise<
     // Do not create a nonce gap by signing a later pending intent while an
     // earlier durable transaction still needs to be rebroadcast/confirmed.
     if (earlierSigned.length > 0) return [current];
-    const chainNonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
+    const chainNonce = await dependencies.chainClient.getTransactionCount({ address: account.address, blockTag: "pending" });
     const [latestSigned] = await tx
       .select({ nonce: tokenPurchases.nonce })
       .from(tokenPurchases)
@@ -598,8 +605,8 @@ async function signAndPersist(row: typeof tokenPurchases.$inferSelect): Promise<
       throw new TokenPurchaseError("nonce_unavailable", "Token payout nonce is unavailable.", 503);
     }
     const nonce = Math.max(chainNonce, Number(databaseNonceBig));
-    const gas = await publicClient.estimateGas({ account, to: row.tokenAddress as Address, data, value: 0n });
-    const gasPrice = await publicClient.getGasPrice();
+    const gas = await dependencies.chainClient.estimateGas({ account, to: row.tokenAddress as Address, data, value: 0n });
+    const gasPrice = await dependencies.chainClient.getGasPrice();
     const raw = await account.signTransaction({
       chainId: ROBINHOOD_MAINNET_CHAIN_ID,
       to: row.tokenAddress as Address,
@@ -625,7 +632,7 @@ async function signAndPersist(row: typeof tokenPurchases.$inferSelect): Promise<
 async function broadcast(row: typeof tokenPurchases.$inferSelect) {
   if (!row.rawSignedTransaction) return row;
   try {
-    await publicClient.sendRawTransaction({ serializedTransaction: row.rawSignedTransaction as Hex });
+    await dependencies.chainClient.sendRawTransaction({ serializedTransaction: row.rawSignedTransaction as Hex });
     if (row.status === "submitted") return receiptStatus(row);
     const [updated] = await db.update(tokenPurchases).set({
       status: "submitted",
@@ -791,4 +798,34 @@ export function startTokenPurchaseWorker(): ReturnType<typeof setInterval> | nul
 
 export function tokenAddress(symbol: TokenSymbol): Address {
   return TOKENS[symbol];
+}
+
+interface TokenPurchaseDependencies {
+  chainClient: TokenPurchaseChainClient;
+  quoteFetcher: (token: TokenSymbol) => Promise<Quote>;
+  escrowAccountFactory: () => EscrowAccount;
+}
+
+let dependencies = productionDependencies;
+
+/** Test-only seam for deterministic local chain clients. */
+export function setTokenPurchaseTestDependencies(
+  overrides: Partial<TokenPurchaseDependencies> | null,
+): void {
+  dependencies = overrides ? { ...productionDependencies, ...overrides } : productionDependencies;
+}
+
+const productionDependencies: TokenPurchaseDependencies = {
+  chainClient: publicClient as TokenPurchaseChainClient,
+  quoteFetcher: fetchQuoteFromProvider,
+  escrowAccountFactory: configuredEscrowAccount,
+};
+
+interface TokenPurchaseChainClient {
+  readContract(args: Parameters<typeof publicClient.readContract>[0]): Promise<unknown>;
+  getTransactionReceipt(args: Parameters<typeof publicClient.getTransactionReceipt>[0]): Promise<{ status: "success" | "reverted" }>;
+  getTransactionCount(args: Parameters<typeof publicClient.getTransactionCount>[0]): Promise<number>;
+  estimateGas(args: Parameters<typeof publicClient.estimateGas>[0]): Promise<bigint>;
+  getGasPrice(): Promise<bigint>;
+  sendRawTransaction(args: Parameters<typeof publicClient.sendRawTransaction>[0]): Promise<Hex>;
 }
