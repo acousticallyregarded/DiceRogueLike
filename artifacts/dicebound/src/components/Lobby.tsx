@@ -111,6 +111,9 @@ export function Lobby({
            
            {tab === 'play' && (
              <div className="mt-auto mb-10">
+                <p className="mx-auto mb-5 max-w-[330px] rounded-2xl border-2 border-[#1c1c1c] bg-white/90 px-5 py-3 text-center text-base font-black leading-snug text-slate-800 shadow-[0_4px_0_rgba(28,28,28,0.9)]">
+                  An RPG on Robinhood where you can earn stocks while you beat monsters.
+                </p>
                <button 
                  onClick={() => setShowCharacterPicker(true)}
                  className="w-full bg-[#ff5733] hover:bg-[#ff6847] active:bg-[#d9381e] text-white py-6 rounded-[32px] font-black text-3xl uppercase tracking-wider border-4 border-[#1c1c1c] shadow-[0_8px_0_rgba(28,28,28,1)] active:shadow-none active:translate-y-2 transition-all flex justify-center items-center gap-3 group"
