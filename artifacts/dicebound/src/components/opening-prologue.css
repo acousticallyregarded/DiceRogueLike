@@ -1,0 +1,296 @@
+.opening-prologue {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 18px;
+  overflow: hidden;
+  color: #fff8df;
+  background:
+    radial-gradient(circle at 50% 31%, rgb(255 204 74 / 20%), transparent 30%),
+    linear-gradient(180deg, rgb(6 19 13 / 76%), rgb(4 8 7 / 94%));
+  pointer-events: auto;
+}
+
+.opening-prologue__vignette {
+  position: absolute;
+  inset: -15%;
+  opacity: .58;
+  background:
+    radial-gradient(circle at 15% 25%, rgb(114 204 94 / 17%) 0 2px, transparent 3px),
+    radial-gradient(circle at 78% 42%, rgb(255 196 77 / 24%) 0 2px, transparent 3px);
+  background-size: 74px 86px, 91px 79px;
+  animation: opening-prologue-drift 9s linear infinite;
+}
+
+.opening-prologue--crown {
+  background:
+    radial-gradient(circle at 50% 29%, rgb(155 75 207 / 26%), transparent 31%),
+    linear-gradient(180deg, rgb(25 9 31 / 88%), rgb(5 7 8 / 96%));
+}
+
+.opening-prologue--lantern {
+  background:
+    radial-gradient(circle at 50% 27%, rgb(255 183 49 / 35%), transparent 29%),
+    linear-gradient(180deg, rgb(12 27 20 / 84%), rgb(5 8 7 / 96%));
+}
+
+.opening-prologue--quest {
+  background:
+    radial-gradient(circle at 50% 25%, rgb(239 88 38 / 28%), transparent 34%),
+    linear-gradient(180deg, rgb(35 13 15 / 90%), rgb(7 8 8 / 97%));
+}
+
+.opening-prologue__card {
+  position: relative;
+  width: 100%;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 26px 20px 18px;
+  border: 2px solid rgb(247 209 118 / 62%);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgb(17 31 23 / 94%), rgb(16 13 20 / 94%));
+  box-shadow: 0 18px 50px rgb(0 0 0 / 58%), inset 0 0 0 1px rgb(255 255 255 / 7%);
+  text-align: center;
+  animation: opening-prologue-card-in 260ms ease-out both;
+}
+
+.opening-prologue__sigil {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+  border: 2px solid #f0c765;
+  border-radius: 50%;
+  color: #ffe29a;
+  background: radial-gradient(circle, #7b5c22, #251e17);
+  box-shadow: 0 0 24px rgb(255 194 67 / 31%);
+}
+
+.opening-prologue__sigil svg {
+  width: 28px;
+  height: 28px;
+}
+
+.opening-prologue__eyebrow {
+  color: #e9bd5a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+.opening-prologue h2 {
+  margin: 5px 0 10px;
+  color: #fff5d4;
+  font-size: clamp(24px, 8vw, 31px);
+  font-weight: 900;
+  letter-spacing: -.025em;
+  line-height: .98;
+  text-shadow: 0 3px 0 #25180e;
+}
+
+.opening-prologue p {
+  max-width: 292px;
+  margin: 0;
+  color: rgb(255 245 218 / 84%);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.opening-prologue__hero {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 12px;
+  align-items: center;
+  margin-top: 17px;
+  padding: 10px;
+  border: 1px solid rgb(242 199 101 / 36%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 6%);
+  text-align: left;
+}
+
+.opening-prologue__portrait {
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgb(4 9 7 / 53%);
+}
+
+.opening-prologue__hero strong,
+.opening-prologue__hero span,
+.opening-prologue__hero q {
+  display: block;
+}
+
+.opening-prologue__hero strong {
+  color: #fff2c4;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.opening-prologue__hero span {
+  margin-bottom: 4px;
+  color: #d39ced;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.opening-prologue__hero q {
+  color: rgb(255 247 224 / 77%);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.opening-prologue__wardens {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.opening-prologue__wardens span {
+  padding: 7px 5px;
+  border: 1px solid rgb(232 161 82 / 29%);
+  border-radius: 9px;
+  color: #f4d2ad;
+  background: rgb(79 25 27 / 48%);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.opening-prologue__progress {
+  display: flex;
+  gap: 7px;
+  margin: 20px 0 14px;
+}
+
+.opening-prologue__progress span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 21%);
+  transition: width 180ms ease, background 180ms ease;
+}
+
+.opening-prologue__progress .is-past {
+  background: rgb(235 189 86 / 46%);
+}
+
+.opening-prologue__progress .is-current {
+  width: 24px;
+  background: #f2c45b;
+}
+
+.opening-prologue__continue {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 3px solid #171717;
+  border-radius: 16px;
+  color: #241407;
+  background: #f4bd3e;
+  box-shadow: 0 4px 0 #171717;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.opening-prologue__continue:active {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+.opening-prologue__continue svg {
+  width: 17px;
+  height: 17px;
+}
+
+.opening-prologue__skip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 13px;
+  border: 0;
+  color: rgb(255 248 226 / 56%);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.opening-prologue__skip svg {
+  width: 13px;
+  height: 13px;
+}
+
+@keyframes opening-prologue-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes opening-prologue-drift {
+  to { transform: translate3d(22px, -18px, 0); }
+}
+
+@media (max-height: 690px) {
+  .opening-prologue {
+    padding-block: 12px;
+  }
+
+  .opening-prologue__card {
+    padding-block: 18px 13px;
+  }
+
+  .opening-prologue__sigil {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 9px;
+  }
+
+  .opening-prologue h2 {
+    font-size: 23px;
+  }
+
+  .opening-prologue__hero {
+    margin-top: 10px;
+  }
+
+  .opening-prologue__progress {
+    margin-block: 12px 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opening-prologue__card,
+  .opening-prologue__vignette {
+    animation: none;
+  }
+}

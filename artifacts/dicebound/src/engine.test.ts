@@ -50,6 +50,7 @@ function combatState(enemy: EnemyState, skills: Skill[] = []) {
   try {
     let state = createInitialState();
     state = act(state, { type: "START_RUN" });
+    state = act(state, { type: "SKIP_PROLOGUE" });
     state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
     const run = state.run!;
     run.attack = 10;
@@ -77,6 +78,7 @@ function combatState(enemy: EnemyState, skills: Skill[] = []) {
 
 function startedRun() {
   let state = act(createInitialState(), { type: "START_RUN" });
+  state = act(state, { type: "SKIP_PROLOGUE" });
   state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
   return state;
 }
@@ -174,6 +176,7 @@ function runAssertions() {
   // Identity survives serialization and a subsequent floor transition.
   let restoredUnc = validateState(JSON.parse(JSON.stringify(unc)));
   assert.equal(restoredUnc.run!.characterId, "unc");
+  restoredUnc = act(restoredUnc, { type: "SKIP_PROLOGUE" });
   restoredUnc = act(restoredUnc, { type: "FINISH_TRAIL_CINEMATIC" });
   restoredUnc.run!.phase = "victory";
   restoredUnc.run!.victoryReport = null;
@@ -190,21 +193,35 @@ function runAssertions() {
   assert.equal(getWalkDirection(TRAIL_TILE_COUNT - 1, 0), null);
   assert.equal(getWalkDirection(1, 0), null);
 
-  // New runs begin with a durable intro scene. Every other input is blocked
-  // until that scene is explicitly finished.
+  // New runs begin with a durable, player-paced prologue. Every other input
+  // stays blocked through the prologue and the existing floor intro.
   let intro = act(createInitialState(), { type: "START_RUN" });
   assert.equal(intro.run!.tiles.length, TRAIL_TILE_COUNT);
   assert.equal(intro.run!.position, 0);
   assert.equal(intro.run!.bossCountdown, TRAIL_TILE_COUNT - 1);
   assert.equal(intro.run!.bossRollsLeft, TRAIL_TILE_COUNT - 1);
-  assert.equal(intro.run!.trailCinematic, "intro");
+  assert.equal(intro.run!.trailCinematic, "prologue");
+  assert.equal(intro.run!.prologueStep, 0);
   assert.equal(intro.run!.trailIntroSeen, false);
   assert.equal(intro.run!.tiles[TRAIL_TILE_COUNT - 1].type, "boss");
   assert.ok(new Set(intro.run!.tiles.map(tile => tile.type)).size >= 6);
   assert.deepEqual(act(intro, { type: "ROLL_DICE" }).run, intro.run);
+  for (let step = 1; step <= 3; step++) {
+    intro = act(intro, { type: "FINISH_TRAIL_CINEMATIC" });
+    assert.equal(intro.run!.trailCinematic, "prologue");
+    assert.equal(intro.run!.prologueStep, step);
+  }
+  intro = act(intro, { type: "FINISH_TRAIL_CINEMATIC" });
+  assert.equal(intro.run!.trailCinematic, "intro");
+  assert.equal(intro.run!.prologueStep, undefined);
   intro = act(intro, { type: "FINISH_TRAIL_CINEMATIC" });
   assert.equal(intro.run!.trailCinematic, null);
   assert.equal(intro.run!.trailIntroSeen, true);
+
+  let skippedStory = act(createInitialState(), { type: "START_RUN", characterId: "unc" });
+  skippedStory = act(skippedStory, { type: "SKIP_PROLOGUE" });
+  assert.equal(skippedStory.run!.trailCinematic, "intro");
+  assert.equal(skippedStory.run!.prologueStep, undefined);
 
   // The reducer owns the one authentic 2d6 roll. The displayed pair and
   // movement budget are committed together, so a second click cannot replace
@@ -931,6 +948,7 @@ function runAssertions() {
   let uncSkillLevel = startedRun();
   uncSkillLevel = act(uncSkillLevel, { type: "RESET_SAVE" });
   uncSkillLevel = act(uncSkillLevel, { type: "START_RUN", characterId: "unc" });
+  uncSkillLevel = act(uncSkillLevel, { type: "SKIP_PROLOGUE" });
   uncSkillLevel = act(uncSkillLevel, { type: "FINISH_TRAIL_CINEMATIC" });
   uncSkillLevel.run!.queuedLevels = 1;
   uncSkillLevel = act(uncSkillLevel, { type: "ROLL_DICE" });
@@ -944,6 +962,7 @@ function runAssertions() {
     "wind",
   );
   let uncShop = act(createInitialState(), { type: "START_RUN", characterId: "unc" });
+  uncShop = act(uncShop, { type: "SKIP_PROLOGUE" });
   uncShop = act(uncShop, { type: "FINISH_TRAIL_CINEMATIC" });
   uncShop.run!.phase = "shop";
   uncShop.run!.gold = 100;

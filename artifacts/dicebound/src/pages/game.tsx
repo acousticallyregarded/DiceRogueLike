@@ -13,6 +13,7 @@ import { useState, useCallback } from 'react';
 import { useEffect, useRef } from 'react';
 import { useAudio } from '../audio/use-audio';
 import { useAudioEvents } from '../audio/use-audio-events';
+import { OpeningPrologue } from '../components/OpeningPrologue';
 
 export default function Game() {
   const {
@@ -75,6 +76,7 @@ export default function Game() {
   const inCombat = r.phase === 'combat' || Boolean(r.heroDeathPending && r.playerCombat);
   const cinematicType = r.trailCinematic;
   const isCinematic = Boolean(cinematicType);
+  const isPrologue = cinematicType === 'prologue';
   const hideControls = isCinematic && r.phase !== 'boss_awakening';
 
   return (
@@ -108,6 +110,15 @@ export default function Game() {
          </div>
 
         <CombatOverlay run={r} dispatch={dispatch} speed={speed} paused={paused} />
+
+        {isPrologue && (
+          <OpeningPrologue
+            characterId={r.characterId}
+            step={r.prologueStep ?? 0}
+            onAdvance={handleSkipCinematic}
+            onSkip={() => dispatch({ type: 'SKIP_PROLOGUE' })}
+          />
+        )}
 
         <div className={`transition-opacity duration-500 ${hideControls ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
            <button
@@ -143,7 +154,7 @@ export default function Game() {
         )}
 
         {/* Skip Cinematic Button */}
-        {isCinematic && (
+         {isCinematic && !isPrologue && (
            <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50">
              <button 
                 onClick={handleSkipCinematic}

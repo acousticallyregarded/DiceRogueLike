@@ -241,7 +241,9 @@ export interface RunState {
    * Trail presentation state is durable so a refresh cannot replay a scene
    * or allow input while a scene is in progress.
    */
-  trailCinematic?: "intro" | "alert" | "awakening" | null;
+  trailCinematic?: "prologue" | "intro" | "alert" | "awakening" | null;
+  /** Current player-paced card in the opening story. */
+  prologueStep?: number;
   trailIntroSeen?: boolean;
   trailAlertSeen?: boolean;
   trailAwakeningSeen?: boolean;
@@ -510,6 +512,7 @@ export type GameAction =
   | { type: "BEGIN_MOVEMENT" }
   | { type: "STEP_MOVE" }
   | { type: "FINISH_TRAIL_CINEMATIC" }
+  | { type: "SKIP_PROLOGUE" }
   | { type: "COMPLETE_BOSS_AWAKENING" }
   | { type: "FIGHT_BOSS" }
   | { type: "SELECT_ATTACK"; damageType: DamageType }
@@ -1143,11 +1146,15 @@ export function validateState(input: any): GameStateV4 {
         || s.run.phase === "boss_ready"
         || (s.run.phase === "combat" && Boolean(s.run.isBossCombat))
         || s.run.phase === "victory";
-    s.run.trailCinematic = s.run.trailCinematic === "intro"
+    s.run.trailCinematic = s.run.trailCinematic === "prologue"
+      || s.run.trailCinematic === "intro"
       || s.run.trailCinematic === "alert"
       || s.run.trailCinematic === "awakening"
       ? s.run.trailCinematic
       : null;
+    s.run.prologueStep = s.run.trailCinematic === "prologue"
+      ? Math.min(3, Math.max(0, Math.floor(Number(s.run.prologueStep) || 0)))
+      : undefined;
     if (s.run.trailCinematic === "intro") s.run.trailIntroSeen = false;
     if (s.run.trailCinematic === "alert") s.run.trailAlertSeen = true;
     if (s.run.trailCinematic === "awakening") s.run.trailAwakeningSeen = true;
@@ -2398,14 +2405,35 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   const cinematic = s.run?.trailCinematic;
   const canFinishCinematic = action.type === "FINISH_TRAIL_CINEMATIC"
+    || (action.type === "SKIP_PROLOGUE" && cinematic === "prologue")
     // Keep the pre-trail hook action as a safe alias for the awakening only.
     || (action.type === "COMPLETE_BOSS_AWAKENING" && cinematic === "awakening");
   if (cinematic && !canFinishCinematic) return s;
+
+  if (action.type === "SKIP_PROLOGUE") {
+    const r = s.run;
+    if (!r || r.trailCinematic !== "prologue") return s;
+    r.prologueStep = undefined;
+    r.trailCinematic = "intro";
+    logMessage(r, "The last forest lantern has chosen its bearer.");
+    return s;
+  }
 
   if (action.type === "FINISH_TRAIL_CINEMATIC") {
     const r = s.run;
     if (!r || !r.trailCinematic) return s;
     const finished = r.trailCinematic;
+    if (finished === "prologue") {
+      const step = Math.min(3, Math.max(0, Math.floor(Number(r.prologueStep) || 0)));
+      if (step < 3) {
+        r.prologueStep = step + 1;
+      } else {
+        r.prologueStep = undefined;
+        r.trailCinematic = "intro";
+        logMessage(r, "The last forest lantern has chosen its bearer.");
+      }
+      return s;
+    }
     r.trailCinematic = null;
     if (finished === "intro") {
       r.trailIntroSeen = true;
@@ -2517,7 +2545,8 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       tiles: generateBoard(),
       lastRolls: null,
       stepsRemaining: 0,
-      trailCinematic: "intro",
+      trailCinematic: "prologue",
+      prologueStep: 0,
       trailIntroSeen: false,
       trailAlertSeen: false,
       trailAwakeningSeen: false,

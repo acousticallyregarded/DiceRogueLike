@@ -11,6 +11,7 @@ import { getBossDeathDurationMs, getBossId, LEVELS } from "./level-content.js";
 
 function bossReady(floor: number): GameStateV4 {
   let state = act(createInitialState(), { type: "START_RUN" });
+  state = act(state, { type: "SKIP_PROLOGUE" });
   state = act(state, { type: "FINISH_TRAIL_CINEMATIC" });
   const run = state.run!;
   run.floor = floor;

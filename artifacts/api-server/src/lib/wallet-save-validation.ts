@@ -351,7 +351,7 @@ function validRun(run: unknown): run is Record<string, unknown> {
   ]) {
     if (run[key] !== undefined && typeof run[key] !== "boolean") return false;
   }
-  for (const key of ["heroHinderedTurns", "settledGold", "settledGems"]) {
+  for (const key of ["heroHinderedTurns", "settledGold", "settledGems", "prologueStep"]) {
     if (run[key] !== undefined && !finiteNumber(run[key], 0, 1_000_000_000)) return false;
   }
   if (run.trailCinematic !== undefined && run.trailCinematic !== null && !string(run.trailCinematic, 50)) return false;

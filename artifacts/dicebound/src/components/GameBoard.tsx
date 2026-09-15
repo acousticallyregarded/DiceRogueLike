@@ -194,6 +194,10 @@ export function GameBoard({ run, visualPosition, speed = 1, paused = false, onCi
       setCinematicPhase(null);
       return;
     }
+    if (cinematicType === 'prologue') {
+      setCinematicPhase('hero');
+      return;
+    }
     setCinematicPhase('statue');
     const timers: number[] = [];
     const duration = reducedMotion ? 1500
