@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startTokenPurchaseWorker } from "./lib/token-purchases";
+import { startTokenPayoutMonitor, startTokenPurchaseWorker } from "./lib/token-purchases";
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +25,8 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
   if (process.env.TOKEN_PURCHASES_ENABLED === "true") {
     startTokenPurchaseWorker();
+    startTokenPayoutMonitor();
     logger.info("Token purchase recovery worker started");
+    logger.info("Token payout health monitor started");
   }
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { after, afterEach, before, beforeEach, test } from "node:test";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
 import {
@@ -35,7 +35,6 @@ class FakeChain {
   balance = 10n ** 30n;
   chainNonce = 40;
   receipt: "success" | "reverted" | "missing" = "success";
-  receipts = new Map<Hex, "success" | "reverted" | "missing">();
   failBroadcast = false;
   broadcasts: Hex[] = [];
 
@@ -48,10 +47,9 @@ class FakeChain {
     if (this.failBroadcast) throw new Error("ambiguous RPC failure");
     return `0x${"ab".repeat(32)}` as Hex;
   };
-  getTransactionReceipt = async ({ hash }: { hash: Hex }) => {
-    const receipt = this.receipts.get(hash) ?? this.receipt;
-    if (receipt === "missing") throw new Error("receipt unavailable");
-    return { status: receipt };
+  getTransactionReceipt = async () => {
+    if (this.receipt === "missing") throw new Error("receipt unavailable");
+    return { status: this.receipt };
   };
 }
 
@@ -78,15 +76,10 @@ async function credit(walletAddress: string, balance = 1_000) {
     });
 }
 
-async function balance(walletAddress = WALLET) {
+async function gemBalance(walletAddress: string) {
   return (await db.select({ balance: redeemableGemAccounts.balance })
     .from(redeemableGemAccounts)
     .where(eq(redeemableGemAccounts.walletAddress, walletAddress)))[0]?.balance ?? 0;
-}
-
-async function rows(walletAddress = WALLET) {
-  return db.select().from(tokenPurchases)
-    .where(eq(tokenPurchases.walletAddress, walletAddress));
 }
 
 before(async () => {
@@ -142,18 +135,9 @@ test("operator grants require bounded integer amounts and audit fields", () => {
     () => validateRedeemableGemGrant({ ...validGrant, amount: MAX_REDEEMABLE_GEM_GRANT + 1 }),
     /grant amount/i,
   );
-  assert.throws(
-    () => validateRedeemableGemGrant({ ...validGrant, amount: 1.5 }),
-    /grant amount/i,
-  );
-  assert.throws(
-    () => validateRedeemableGemGrant({ ...validGrant, reason: "" }),
-    /grant reason/i,
-  );
-  assert.throws(
-    () => validateRedeemableGemGrant({ ...validGrant, operationKey: "" }),
-    /operation key/i,
-  );
+  assert.throws(() => validateRedeemableGemGrant({ ...validGrant, amount: 1.5 }), /grant amount/i);
+  assert.throws(() => validateRedeemableGemGrant({ ...validGrant, reason: "" }), /grant reason/i);
+  assert.throws(() => validateRedeemableGemGrant({ ...validGrant, operationKey: "" }), /operation key/i);
 });
 
 test("operator identity is derived from a signature over the exact grant", () => {
@@ -180,7 +164,7 @@ test("operator identity is derived from a signature over the exact grant", () =>
   }
 });
 
-test("concurrent requests with the same key debit once and reuse one signed transfer", async () => {
+test("concurrent requests with the same key debit and sign exactly once", async () => {
   await credit(WALLET);
   chain.receipt = "missing";
 
@@ -189,51 +173,31 @@ test("concurrent requests with the same key debit once and reuse one signed tran
     purchaseToken(WALLET, "GLD", "same-key"),
   ]);
 
-  const purchases = await rows();
-  assert.deepEqual(
-    purchases.map((row) => row.nonce).sort(),
-    [40n, 41n],
-  );
-  assert.equal(new Set(chain.broadcasts).size, 2);
+  const purchases = await db.select().from(tokenPurchases);
+  assert.equal(first.id, second.id);
+  assert.equal(purchases.length, 1);
+  assert.equal(await gemBalance(WALLET), 900);
+  assert.deepEqual(purchases.map((row) => row.nonce), [40n]);
+  assert.equal(new Set(chain.broadcasts).size, 1);
 });
 
-test("concurrent token reservations cannot exceed chain inventory", async () => {
-  await Promise.all([credit(WALLET), credit(OTHER_WALLET)]);
-  chain.balance = 1_000_000_000_000_000_000n;
-  chain.receipt = "missing";
-
-  const results = await Promise.allSettled([
-    purchaseToken(WALLET, "GLD", "inventory-one"),
-    purchaseToken(OTHER_WALLET, "GLD", "inventory-two"),
-  ]);
-
-  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
-  assert.equal((await rows()).length, 1);
-  assert.equal(await balance(), 0);
-  const nonces = (await rows()).map((row) => row.nonce).filter((nonce) => nonce !== null);
-  assert.equal(new Set(nonces).size, nonces.length);
-});
-
-test("concurrent different keys use distinct nonces and debit each purchase once", async () => {
+test("concurrent different keys debit once each and allocate distinct nonces", async () => {
   await credit(WALLET, GEM_COST * 2);
 
   const results = await Promise.allSettled([
-    purchaseToken(WALLET, "GLD", "inventory-one"),
-    purchaseToken(OTHER_WALLET, "GLD", "inventory-two"),
+    purchaseToken(WALLET, "GLD", "different-one"),
+    purchaseToken(WALLET, "GLD", "different-two"),
   ]);
   await recoverPendingPurchases();
 
-  assert.equal(results.length, 2);
-  assert.equal(await balance(), 0);
-  const purchases = await rows();
-  assert.deepEqual(
-    purchases.map((row) => row.nonce).sort(),
-    [40n, 41n],
-  );
-  assert.equal(new Set(chain.broadcasts).size, 2);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 2);
+  assert.equal(await gemBalance(WALLET), 0);
+  const purchases = await db.select().from(tokenPurchases);
+  assert.equal(purchases.length, 2);
+  assert.deepEqual(purchases.map((row) => row.nonce).sort(), [40n, 41n]);
 });
 
-test("concurrent token reservations cannot exceed chain inventory", async () => {
+test("concurrent reservations cannot exceed chain inventory", async () => {
   await Promise.all([credit(WALLET), credit(OTHER_WALLET)]);
   chain.balance = 1_000_000_000_000_000_000n;
   chain.receipt = "missing";
@@ -245,36 +209,74 @@ test("concurrent token reservations cannot exceed chain inventory", async () => 
 
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal((await db.select().from(tokenPurchases)).length, 1);
-  assert.equal((await balance(WALLET)) + (await balance(OTHER_WALLET)), 1_900);
+  assert.equal((await gemBalance(WALLET)) + (await gemBalance(OTHER_WALLET)), 1_900);
 });
 
 test("restart recovery resumes pending, signed, and submitted intents", async () => {
-  await Promise.all([credit(WALLET), credit(OTHER_WALLET)]);
-  chain.receipt = "missing";
-  const pendingResult = await purchaseToken(WALLET, "GLD", "pending-restart");
-  const pending = (await rows())[0]!;
+  const base = {
+    walletAddress: WALLET,
+    symbol: "GLD",
+    tokenAddress: tokenAddress("GLD"),
+    gemCost: GEM_COST,
+    quotePrice: "10",
+    quoteSource: "test fixture",
+    quoteTimestamp: new Date("2026-09-14T20:00:00.000Z"),
+    quoteDelayed: "previous-close",
+    tokenAmountBaseUnits: "1000000000000000000",
+    updatedAt: new Date(),
+  };
+  await db.insert(tokenPurchases).values([
+    {
+      ...base,
+      id: "submitted-restart",
+      idempotencyKey: "submitted-restart",
+      status: "submitted",
+      rawSignedTransaction: "0x02",
+      transactionHash: `0x${"38".repeat(32)}`,
+      nonce: 40n,
+      createdAt: new Date("2026-09-15T17:00:00.000Z"),
+    },
+    {
+      ...base,
+      id: "signed-restart",
+      idempotencyKey: "signed-restart",
+      status: "signed",
+      rawSignedTransaction: "0x01",
+      transactionHash: `0x${"39".repeat(32)}`,
+      nonce: 41n,
+      createdAt: new Date("2026-09-15T17:01:00.000Z"),
+    },
+    {
+      ...base,
+      id: "pending-restart",
+      idempotencyKey: "pending-restart",
+      status: "pending",
+      createdAt: new Date("2026-09-15T17:02:00.000Z"),
+    },
+  ]);
 
-  const signedHash = `0x${"39".repeat(32)}` as Hex;
+  await recoverPendingPurchases();
+
   const recovered = await db.select().from(tokenPurchases);
   assert.equal(recovered.filter((row) => row.status === "confirmed").length, 3);
-  assert.equal(new Set(recovered.map((row) => row.nonce)).size, 3);
+  assert.deepEqual(recovered.map((row) => row.nonce).sort(), [40n, 41n, 42n]);
 });
 
 test("definitive reverts refund exactly once across repeated recovery", async () => {
   await credit(WALLET);
   chain.receipt = "missing";
   await purchaseToken(WALLET, "GLD", "revert-once");
-  assert.equal(await balance(), 900);
+  assert.equal(await gemBalance(WALLET), 900);
 
   chain.receipt = "reverted";
   await Promise.all([recoverPendingPurchases(), recoverPendingPurchases()]);
   await recoverPendingPurchases();
 
-  assert.equal(await balance(), 1_000);
+  assert.equal(await gemBalance(WALLET), 1_000);
   const refunds = await db.select().from(redeemableGemLedger)
     .where(eq(redeemableGemLedger.reason, "token-purchase-definitive-revert"));
   assert.equal(refunds.length, 1);
-  assert.equal((await rows())[0]?.status, "failed");
+  assert.equal((await db.select().from(tokenPurchases))[0]?.status, "failed");
 });
 
 test("ambiguous RPC failures retain one debit and one signed transfer without refund", async () => {
@@ -287,14 +289,10 @@ test("ambiguous RPC failures retain one debit and one signed transfer without re
   const second = await purchaseToken(WALLET, "GLD", "ambiguous");
 
   assert.equal(first.id, second.id);
-  assert.equal(await balance(), 900);
-  assert.equal((await rows()).length, 1);
+  assert.equal(await gemBalance(WALLET), 900);
+  assert.equal((await db.select().from(tokenPurchases)).length, 1);
   assert.equal(new Set(chain.broadcasts).size, 1);
   const refunds = await db.select().from(redeemableGemLedger)
     .where(eq(redeemableGemLedger.reason, "token-purchase-definitive-revert"));
   assert.equal(refunds.length, 0);
 });
-
-  const submittedHash = `0x${"38".repeat(32)}` as Hex;
-
-  const afterFirstRecovery = await db.select().from(tokenPurchases);

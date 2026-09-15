@@ -1,13 +1,11 @@
 import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
-import pg from "pg";
+import { pool as admin } from "@workspace/db";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required for database-backed tests.");
 
 const schema = `token_purchase_test_${process.pid}_${Date.now()}`;
-const admin = new pg.Client({ connectionString: databaseUrl });
-let connected = false;
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -32,8 +30,6 @@ function schemaUrl() {
 }
 
 try {
-  await admin.connect();
-  connected = true;
   await admin.query(`CREATE SCHEMA "${schema}"`);
   for (const table of [
     "redeemable_gem_accounts",
@@ -53,8 +49,6 @@ try {
     env: { DATABASE_URL: isolatedUrl, NODE_ENV: "test" },
   });
 } finally {
-  if (connected) {
-    await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-    await admin.end();
-  }
+  await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+  await admin.end();
 }

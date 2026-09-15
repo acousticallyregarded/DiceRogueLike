@@ -9,7 +9,7 @@
     "grant-redeemable-gems": "tsx ./src/operator/grant-redeemable-gems.ts",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node scripts/run-tests.mjs"
+    "test": "tsx scripts/run-tests.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

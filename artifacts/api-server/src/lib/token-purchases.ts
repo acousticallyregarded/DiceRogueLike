@@ -4,6 +4,7 @@ import {
   http,
   keccak256,
   parseAbi,
+  parseEther,
   type Address,
   type Hex,
 } from "viem";
@@ -18,7 +19,30 @@ import {
 } from "@workspace/db";
 import { logger } from "./logger";
 import { InvalidTokenPriceError, tokenAmountForPrice } from "./token-purchase-math";
+import {
+  DEFAULT_MIN_INVENTORY_PAYOUTS,
+  DEFAULT_MIN_NATIVE_GAS,
+  evaluateTokenPayoutHealth,
+  TOKEN_ALERT_REPEAT_MS,
+  TOKEN_MONITOR_INTERVAL_MS,
+  type TokenPayoutAlert,
+  type TokenPayoutHealthSnapshot,
+  type TokenSymbol,
+} from "./token-payout-health";
 export { tokenAmountForPrice } from "./token-purchase-math";
+export {
+  DEFAULT_MIN_INVENTORY_PAYOUTS,
+  DEFAULT_MIN_NATIVE_GAS,
+  evaluateTokenPayoutHealth,
+  STALE_RESERVATION_THRESHOLD_MS,
+  TOKEN_ALERT_REPEAT_MS,
+  TOKEN_MONITOR_INTERVAL_MS,
+} from "./token-payout-health";
+export type {
+  TokenPayoutAlert,
+  TokenPayoutHealthSnapshot,
+  TokenSymbol,
+} from "./token-payout-health";
 
 export const ROBINHOOD_MAINNET_CHAIN_ID = 4663;
 export const ROBINHOOD_MAINNET_RPC = "https://rpc.mainnet.chain.robinhood.com";
@@ -28,9 +52,9 @@ export const GEM_COST = 100;
 export const MAX_REDEEMABLE_GEM_GRANT = 10_000;
 /** A signer nonce stuck this long fails closed instead of creating a nonce gap. */
 export const STUCK_NONCE_THRESHOLD_MS = 30 * 60 * 1000;
+
 const UNRESOLVED_STATUSES = ["pending", "signed", "submitted"] as const;
 
-export type TokenSymbol = "GLD" | "SLV";
 export type PurchaseStatus = "pending" | "signed" | "submitted" | "confirmed" | "failed";
 
 const TOKENS: Record<TokenSymbol, Address> = {
@@ -778,6 +802,75 @@ export async function recoverPendingPurchases(): Promise<void> {
   }
 }
 
+export async function inspectTokenPayoutHealth(now = new Date()): Promise<TokenPayoutHealthSnapshot> {
+  const minimumNativeGasBaseUnits = minimumNativeGas();
+  let nativeGasBaseUnits: bigint | null = null;
+  try {
+    nativeGasBaseUnits = await publicClient.getBalance({ address: ESCROW_ADDRESS, blockTag: "pending" });
+  } catch {
+    // The monitor reports the failed read without attaching the RPC error,
+    // which may contain request payloads.
+  }
+
+  const tokens: TokenPayoutHealthSnapshot["tokens"] = [];
+  for (const token of ["GLD", "SLV"] as const) {
+    let quote: Quote | null = null;
+    let availableBaseUnits: bigint | null = null;
+    let unresolvedRows: Array<{ createdAt: Date; updatedAt: Date; nonce: bigint | null }> = [];
+    try {
+      quote = await fetchQuote(token);
+    } catch {
+      // Represent quote failure in the snapshot without logging provider data.
+    }
+    try {
+      const state = await db.transaction(async (tx) => {
+        await tx.execute(tokenLockSql(TOKENS[token]));
+        const rows = await tx.select({
+          createdAt: tokenPurchases.createdAt,
+          updatedAt: tokenPurchases.updatedAt,
+          nonce: tokenPurchases.nonce,
+        }).from(tokenPurchases).where(and(
+          eq(tokenPurchases.tokenAddress, TOKENS[token]),
+          inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
+        ));
+        const reserved = await unresolvedReservation(tx, TOKENS[token]);
+        const chainBalance = await getEscrowBalance(TOKENS[token]);
+        return { rows, available: chainBalance - reserved };
+      });
+      unresolvedRows = state.rows;
+      availableBaseUnits = state.available;
+    } catch {
+      // Represent inventory/RPC failure in the snapshot.
+    }
+    const stuck = unresolvedRows.filter((row) =>
+      row.nonce !== null && now.getTime() - row.updatedAt.getTime() >= STUCK_NONCE_THRESHOLD_MS
+    );
+    tokens.push({
+      symbol: token,
+      quoteHealthy: quote !== null,
+      quoteTimestamp: quote?.timestamp ?? null,
+      availableBaseUnits,
+      payoutAmountBaseUnits: quote ? BigInt(quote.amountBaseUnits) : null,
+      unresolvedCount: unresolvedRows.length,
+      oldestUnresolvedAt: unresolvedRows.reduce<Date | null>(
+        (oldest, row) => !oldest || row.createdAt < oldest ? row.createdAt : oldest,
+        null,
+      ),
+      stuckNonceCount: stuck.length,
+      oldestStuckNonceAt: stuck.reduce<Date | null>(
+        (oldest, row) => !oldest || row.updatedAt < oldest ? row.updatedAt : oldest,
+        null,
+      ),
+    });
+  }
+  return {
+    checkedAt: now,
+    configured: isPayoutConfigured(),
+    nativeGasBaseUnits,
+    minimumNativeGasBaseUnits,
+    tokens,
+  };
+}
 export function startTokenPurchaseWorker(): ReturnType<typeof setInterval> | null {
   if (process.env.TOKEN_PURCHASES_ENABLED !== "true") return null;
   let running = false;
@@ -800,11 +893,38 @@ export function tokenAddress(symbol: TokenSymbol): Address {
   return TOKENS[symbol];
 }
 
+export function startTokenPayoutMonitor(): ReturnType<typeof setInterval> | null {
+  if (process.env.TOKEN_PURCHASES_ENABLED !== "true") return null;
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await monitorTokenPayoutHealth();
+    } catch {
+      logger.error({
+        condition: "monitor_cycle_failed",
+        action: "Check database and Robinhood Chain RPC connectivity; payout health could not be evaluated.",
+      }, "Token payout operator alert");
+    } finally {
+      running = false;
+    }
+  };
+  void tick();
+  return setInterval(() => void tick(), TOKEN_MONITOR_INTERVAL_MS);
+}
+
 interface TokenPurchaseDependencies {
   chainClient: TokenPurchaseChainClient;
   quoteFetcher: (token: TokenSymbol) => Promise<Quote>;
   escrowAccountFactory: () => EscrowAccount;
 }
+
+const productionDependencies: TokenPurchaseDependencies = {
+  chainClient: publicClient as TokenPurchaseChainClient,
+  quoteFetcher: fetchQuoteFromProvider,
+  escrowAccountFactory: configuredEscrowAccount,
+};
 
 let dependencies = productionDependencies;
 
@@ -815,12 +935,6 @@ export function setTokenPurchaseTestDependencies(
   dependencies = overrides ? { ...productionDependencies, ...overrides } : productionDependencies;
 }
 
-const productionDependencies: TokenPurchaseDependencies = {
-  chainClient: publicClient as TokenPurchaseChainClient,
-  quoteFetcher: fetchQuoteFromProvider,
-  escrowAccountFactory: configuredEscrowAccount,
-};
-
 interface TokenPurchaseChainClient {
   readContract(args: Parameters<typeof publicClient.readContract>[0]): Promise<unknown>;
   getTransactionReceipt(args: Parameters<typeof publicClient.getTransactionReceipt>[0]): Promise<{ status: "success" | "reverted" }>;
@@ -828,4 +942,50 @@ interface TokenPurchaseChainClient {
   estimateGas(args: Parameters<typeof publicClient.estimateGas>[0]): Promise<bigint>;
   getGasPrice(): Promise<bigint>;
   sendRawTransaction(args: Parameters<typeof publicClient.sendRawTransaction>[0]): Promise<Hex>;
+}
+
+function minimumNativeGas(): bigint {
+  try {
+    return parseEther(process.env.TOKEN_ESCROW_MIN_NATIVE_GAS ?? DEFAULT_MIN_NATIVE_GAS);
+  } catch {
+    return parseEther(DEFAULT_MIN_NATIVE_GAS);
+  }
+}
+
+const activePayoutAlerts = new Map<string, number>();
+
+function positiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export async function monitorTokenPayoutHealth(now = new Date()): Promise<TokenPayoutAlert[]> {
+  const snapshot = await inspectTokenPayoutHealth(now);
+  const alerts = evaluateTokenPayoutHealth(
+    snapshot,
+    positiveInteger(process.env.TOKEN_ESCROW_MIN_INVENTORY_PAYOUTS, DEFAULT_MIN_INVENTORY_PAYOUTS),
+  );
+  const currentKeys = new Set(alerts.map((alert) => alert.key));
+  for (const key of activePayoutAlerts.keys()) {
+    if (!currentKeys.has(key)) {
+      activePayoutAlerts.delete(key);
+      logger.info({ alertKey: key }, "Token payout operator alert resolved");
+    }
+  }
+  for (const alert of alerts) {
+    const lastEmitted = activePayoutAlerts.get(alert.key) ?? 0;
+    if (now.getTime() - lastEmitted < TOKEN_ALERT_REPEAT_MS) continue;
+    activePayoutAlerts.set(alert.key, now.getTime());
+    logger[alert.severity === "critical" ? "error" : "warn"](
+      {
+        alertKey: alert.key,
+        condition: alert.condition,
+        symbol: alert.symbol,
+        action: alert.action,
+        ...alert.details,
+      },
+      "Token payout operator alert",
+    );
+  }
+  return alerts;
 }
