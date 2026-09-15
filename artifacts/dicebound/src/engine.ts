@@ -838,7 +838,15 @@ export function generateBoss(floor: number): EnemyState {
     silkmaw: "wolf",
     cinder: "skeleton",
   };
-  const hp = 150 + normalizedFloor * 50 + Math.max(0, normalizedFloor - 1) * 20;
+  const hp = normalizedFloor === 1
+    ? 170
+    : 150 + normalizedFloor * 50 + Math.max(0, normalizedFloor - 1) * 20;
+  const attack = normalizedFloor === 1
+    ? 16
+    : 15 + normalizedFloor * 5 + Math.max(0, normalizedFloor - 1) * 2;
+  const defense = normalizedFloor === 1
+    ? 5
+    : 5 + normalizedFloor * 2 + Math.max(0, normalizedFloor - 1);
   return {
     id: uuid(),
     name: definition.boss.name,
@@ -846,8 +854,8 @@ export function generateBoss(floor: number): EnemyState {
     artKey: "boss",
     hp,
     maxHp: hp,
-    attack: 15 + normalizedFloor * 5 + Math.max(0, normalizedFloor - 1) * 2,
-    defense: 5 + normalizedFloor * 2 + Math.max(0, normalizedFloor - 1),
+    attack,
+    defense,
     speed: 50 + normalizedFloor * 5,
     attackTimer: 0,
     boss: true,

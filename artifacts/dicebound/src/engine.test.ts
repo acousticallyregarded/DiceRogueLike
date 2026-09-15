@@ -350,6 +350,14 @@ function runAssertions() {
   assert.equal(finalLanding.run!.phase, "combat");
   assert.equal(finalLanding.run!.isBossCombat, true);
   assert.equal(finalLanding.run!.enemies[0].name, "Skeleton King");
+  assert.deepEqual(
+    {
+      hp: finalLanding.run!.enemies[0].hp,
+      attack: finalLanding.run!.enemies[0].attack,
+      defense: finalLanding.run!.enemies[0].defense,
+    },
+    { hp: 170, attack: 16, defense: 5 },
+  );
   let kingTurns = JSON.parse(JSON.stringify(finalLanding));
   kingTurns.run.hp = 1000;
   kingTurns.run.maxHp = 1000;
