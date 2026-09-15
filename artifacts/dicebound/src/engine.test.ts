@@ -511,6 +511,15 @@ function runAssertions() {
   assert.equal(terminalLegacy.meta.gems, 103);
   assert.equal(act(terminalLegacy, { type: "ADVANCE_FINAL_EPILOGUE" }).meta.gems, 103);
 
+  // Reloaded final epilogues normalize malformed progress before selecting a card.
+  const malformedEpilogue = JSON.parse(JSON.stringify(startedRun()));
+  malformedEpilogue.run.floor = LEVELS.length;
+  malformedEpilogue.run.phase = "victory";
+  malformedEpilogue.run.finalEpilogueStep = -99;
+  assert.equal(validateState(malformedEpilogue).run!.finalEpilogueStep, 0);
+  malformedEpilogue.run.finalEpilogueStep = 99;
+  assert.equal(validateState(malformedEpilogue).run!.finalEpilogueStep, 3);
+
   // Traits are applied after defense: resistance floors, vulnerability doubles,
   // and immunity is exactly zero (never promoted to one).
   assert.equal(calculateDamage(14, 2, "skeleton", "bludgeoning").amount, 24);
