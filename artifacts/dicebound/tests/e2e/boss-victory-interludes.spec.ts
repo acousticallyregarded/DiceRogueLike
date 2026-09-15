@@ -81,6 +81,8 @@ test('the first three boss reports expose keyboard-usable interludes and neutral
     await page.keyboard.press('Tab');
     await expect(skip).toBeFocused();
     await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: `Read Crown Fragment Journal, ${floor} of 3 recovered` })).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(reveal).toBeFocused();
     await skip.click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -94,11 +96,32 @@ test('the first three boss reports expose keyboard-usable interludes and neutral
     const journey = page.getByRole('button', { name: `Journey to ${getLevelDefinition(floor + 1).name}` });
     await expect(journey).toBeFocused();
     await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: `Read Crown Fragment Journal, ${floor} of 3 recovered` })).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(journey).toBeFocused();
     await journey.click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expectRewards(page, rewards);
   }
+});
+
+test('recovered Crown stories can be read from a victory report without changing rewards or progression', async ({ page }) => {
+  const state = await loadVictory(page, 2);
+  const rewards = rewardSnapshot(state);
+
+  await page.getByRole('button', { name: 'Read Crown Fragment Journal, 2 of 3 recovered' }).click();
+  await expect(page.getByRole('heading', { name: 'Fragment Journal' })).toBeVisible();
+  await expect(page.getByText('2 of 3 Crown fragments recovered')).toBeVisible();
+  await expect(page.getByText('Fragment 1 · The Verdant Shard', { exact: true })).toBeVisible();
+  await expect(page.getByText('Fragment 2 · The Mire Shard', { exact: true })).toBeVisible();
+  await expectRewards(page, rewards);
+
+  await page.getByRole('button', { name: 'Close Crown Fragment Journal' }).click();
+  await expect(page.getByRole('heading', {
+    name: `${getLevelDefinition(2).boss.name} Has Fallen`,
+  })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reveal the Crown Fragment' })).toBeVisible();
+  await expectRewards(page, rewards);
 });
 
 test('the fourth boss report continues into the normal finale', async ({ page }) => {
@@ -110,6 +133,8 @@ test('the fourth boss report continues into the normal finale', async ({ page })
   await expect(page.getByRole('button', { name: 'Reveal the Crown Fragment' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Skip story' })).toHaveCount(0);
   await expect(continueButton).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Read Crown Fragment Journal, 3 of 3 recovered' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(continueButton).toBeFocused();
   await continueButton.click();

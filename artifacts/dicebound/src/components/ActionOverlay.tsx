@@ -2,11 +2,20 @@ import { RunState, GameAction, MetaState, getUnsettledRunRewards } from '../engi
 import { Gift, Coins, Shield, Sword, Heart, Wind, Star, Zap, Skull } from 'lucide-react';
 import { VictoryReport } from './VictoryReport';
 import { FinalEpilogue } from './FinalEpilogue';
-import { getLevelDefinition, LEVELS } from '../level-content';
+import { getLevelDefinition, getRecoveredCrownFragments, LEVELS } from '../level-content';
 
 export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch: (a: GameAction) => void, meta: MetaState }) {
   const level = getLevelDefinition(run.floor);
-  if (run.victoryReport) return <VictoryReport key={run.victoryReport.id} report={run.victoryReport} dispatch={dispatch} />;
+  if (run.victoryReport) {
+    return (
+      <VictoryReport
+        key={run.victoryReport.id}
+        report={run.victoryReport}
+        recoveredFragments={getRecoveredCrownFragments(run)}
+        dispatch={dispatch}
+      />
+    );
+  }
   if (run.phase === 'victory' && run.floor >= LEVELS.length) {
     const rewards = getUnsettledRunRewards(run);
     return (
