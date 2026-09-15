@@ -8,7 +8,7 @@ The user has explicitly replaced the reference's square loop with a forward fore
 
 **Why:** On 2026-09-13, the user wanted progression toward the Skeleton King with staged statue cutaways rather than circling a walled courtyard. This is an intentional departure from the supplied reference.
 
-**How to apply:** Preserve dice-and-tile gameplay and the uploaded art, but do not restore the square loop or walls when comparing against older screenshots. The second biome is a separate future design, not part of polishing the first forest.
+**How to apply:** Preserve dice-and-tile gameplay and the uploaded art, but do not restore the square loop or walls when comparing against older screenshots. New biomes may have distinct scenery; do not change the original forest to match them.
 
 **Why:** The initial YouTube footage was inaccessible. The user subsequently rejected the generic approximation and supplied screenshots and a short recording on 2026-09-12. Sampled recording frames confirm the bright portrait presentation, square isometric perimeter, two dice totaling 11 in the observed roll, camera-follow movement, and upper-screen combat over a dimmed board.
 

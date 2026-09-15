@@ -219,6 +219,14 @@ body {
   100% { opacity: 0; transform: translateY(4px); }
 }
 
+/* New boss placeholder exits have an explicit short duration so replacing
+   their temporary GIF cannot leave the combat layer waiting on the old king's
+   long death hold. */
+@keyframes dicebound-boss-placeholder-death-exit {
+  0%, 65% { opacity: 1; transform: translateY(0) scale(1); filter: saturate(1); }
+  100% { opacity: 0; transform: translateY(18px) scale(.68); filter: saturate(.2); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .board-tile-surface {
     transition: none !important;

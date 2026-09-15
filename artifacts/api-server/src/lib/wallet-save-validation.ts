@@ -51,6 +51,19 @@ const damageTypes = new Set([
   "wind",
   "psychic",
 ]);
+const bossMoves = new Set([
+  "sword",
+  "fireball",
+  "club",
+  "poison_belch",
+  "regen",
+  "venom_bite",
+  "web",
+  "summon_brood",
+  "slash",
+  "fire_wave",
+  "rage",
+]);
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -168,6 +181,8 @@ function validEnemy(value: unknown): boolean {
     "attackTimer",
     "poisonTimerMs",
     "sleepTurns",
+    "bossTurnCounter",
+    "bossSummonsUsed",
   ]) {
     if (value[key] !== undefined && !finiteNumber(value[key], -1_000_000, 1_000_000)) {
       return false;
@@ -181,6 +196,14 @@ function validEnemy(value: unknown): boolean {
   }
   if (value.lastBossAttack !== undefined && value.lastBossAttack !== "sword" && value.lastBossAttack !== "fireball") {
     return false;
+  }
+  if (value.bossMove !== undefined && (
+    typeof value.bossMove !== "string" || !bossMoves.has(value.bossMove)
+  )) {
+    return false;
+  }
+  for (const key of ["bossRegenSuppressed", "bossRageActive"]) {
+    if (value[key] !== undefined && typeof value[key] !== "boolean") return false;
   }
   return true;
 }
@@ -244,6 +267,13 @@ function validPlayerCombat(value: unknown): boolean {
     ) {
       return false;
     }
+  }
+  if (value.pendingBossDeath !== undefined && (
+    !record(value.pendingBossDeath) ||
+    value.pendingBossDeath.boss !== true ||
+    !string(value.pendingBossDeath.name, 200)
+  )) {
+    return false;
   }
   return true;
 }
@@ -311,8 +341,18 @@ function validRun(run: unknown): run is Record<string, unknown> {
   for (const key of ["combatSpeed"]) {
     if (run[key] !== undefined && finiteNumber(run[key], 0.01, 100) === false) return false;
   }
-  for (const key of ["trailIntroSeen", "trailAlertSeen", "trailAwakeningSeen", "pendingTileTrigger", "rollAnimating", "heroDeathPending"]) {
+  for (const key of [
+    "trailIntroSeen",
+    "trailAlertSeen",
+    "trailAwakeningSeen",
+    "pendingTileTrigger",
+    "rollAnimating",
+    "heroDeathPending",
+  ]) {
     if (run[key] !== undefined && typeof run[key] !== "boolean") return false;
+  }
+  for (const key of ["heroHinderedTurns", "settledGold", "settledGems"]) {
+    if (run[key] !== undefined && !finiteNumber(run[key], 0, 1_000_000_000)) return false;
   }
   if (run.trailCinematic !== undefined && run.trailCinematic !== null && !string(run.trailCinematic, 50)) return false;
   if (run.characterId !== undefined && !string(run.characterId, 100)) return false;

@@ -2,6 +2,7 @@ import { RunState, COMBAT_SPEED_BASELINE, MAX_COMBAT_SPEED_DAMAGE, getCombatSpee
 import { Heart, Sword, Gem, ShieldAlert, Coins, Wind, Skull } from 'lucide-react';
 import { AudioSettingsButton } from './AudioSettings';
 import { getCharacter } from '../characters';
+import { getLevelDefinition } from '../level-content';
 
 function getNextLevelXp(level: number): number {
   return Math.floor(100 * Math.pow(1.5, level - 1));
@@ -10,17 +11,18 @@ function getNextLevelXp(level: number): number {
 export function TopBar({ run }: { run: RunState }) {
   const nextXp = getNextLevelXp(run.level);
   const heroDef = getCharacter(run.characterId);
+  const level = getLevelDefinition(run.floor);
   
   // Use bossCountdown if available (new paces logic), else fallback to bossRollsLeft
   const countdown = run.bossCountdown ?? run.bossRollsLeft;
   
   const bossStatus = run.phase === 'boss_awakening'
-    ? 'STATUE AWAKENING'
+    ? `${level.boss.name.toUpperCase()} AWAKENING`
     : run.phase === 'boss_ready'
-      ? `FLOOR ${run.floor} BOSS READY`
+      ? `${level.boss.name.toUpperCase()} READY`
       : run.isBossCombat
-        ? 'BOSS BATTLE'
-        : `BOSS IN ${Math.max(0, countdown)} PACES`;
+        ? `${level.boss.name.toUpperCase()} BATTLE`
+        : `${level.boss.name.toUpperCase()} IN ${Math.max(0, countdown)} PACES`;
   
   return (
     <div className="absolute top-4 left-4 right-4 flex flex-col gap-2 z-30 pointer-events-none">

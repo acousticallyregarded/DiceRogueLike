@@ -19,6 +19,14 @@ import type { CharacterId } from "./characters";
 import { BARD_DURATIONS, BARD_MOVES, type BardAttackKind, type BardMove } from "./bard-moves";
 import { JOHN_ATTACK_DURATIONS } from "./john-moves";
 import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
+import {
+  LEVELS,
+  getBossDeathDurationMs,
+  getBossId,
+  getBossMovePresentation,
+  getLevelDefinition,
+  type BossId,
+} from "./level-content";
 
 export { CHARACTERS, getCharacter };
 export { JOHN_ATTACK_DURATIONS };
@@ -81,7 +89,38 @@ export interface EnemyState {
   attackDisadvantage?: boolean;
   boss?: boolean;
   lastBossAttack?: "sword" | "fireball";
+  /**
+   * Descriptive boss action for presenters. lastBossAttack remains the
+   * two-category animation contract used by legacy visual components.
+   */
+  bossMove?: BossMove;
+  /** Number of boss responses completed; used by deterministic mechanics. */
+  bossTurnCounter?: number;
+  /** Grubgut's next regeneration is skipped after a fire hit. */
+  bossRegenSuppressed?: boolean;
+  /** Silkmaw's total brood summons for this encounter (maximum two). */
+  bossSummonsUsed?: number;
+  /** Sir Cinder has already applied his one-time rage attack buff. */
+  bossRageActive?: boolean;
 }
+
+/**
+ * Boss moves are intentionally descriptive and independent from the existing
+ * sword/fireball presentation categories. Unknown/legacy bosses continue to
+ * use the old categories without requiring one of these values.
+ */
+export type BossMove =
+  | "sword"
+  | "fireball"
+  | "club"
+  | "poison_belch"
+  | "regen"
+  | "venom_bite"
+  | "web"
+  | "summon_brood"
+  | "slash"
+  | "fire_wave"
+  | "rage";
 
 export type ConsumableType = "health_potion" | "fire_bomb" | "guard_tonic";
 
@@ -100,6 +139,8 @@ export interface CombatFeedback {
   amount: number;
   targetName: string;
   message: string;
+  /** Optional authored duration for a non-damaging boss response presenter. */
+  durationMs?: number;
 }
 
 export interface PlayerCombatState {
@@ -132,6 +173,8 @@ export interface PlayerCombatState {
   };
   /** The committed hero impact has landed and is waiting for enemy response. */
   heroImpactResolved?: boolean;
+  /** Poison may remove a boss before the delayed impact/response filters enemies. */
+  pendingBossDeath?: Pick<EnemyState, "boss" | "name">;
 }
 
 export interface Skill {
@@ -219,6 +262,8 @@ export interface RunState {
   combatFeedback?: CombatFeedback | null;
   /** Bard-only outcome text, consumed by the combat presenter on the next attack. */
   bardSpellFeedback?: string;
+  /** Silkmaw's web hinders the next committed hero attack. */
+  heroHinderedTurns?: number;
   
   skills: Skill[];
   skillOptions: Skill[] | null;
@@ -227,6 +272,13 @@ export interface RunState {
   
   log: { id: string, msg: string }[];
   settled: boolean;
+  /**
+   * Cumulative reward totals already transferred to the wallet. These are
+   * optional so old V4 saves retain their original settlement semantics while
+   * multi-floor campaigns can settle each boss exactly once.
+   */
+  settledGold?: number;
+  settledGems?: number;
   /**
    * The dice result is committed before the movement animation starts. This
    * marker lets the hook hold the first step until the result has been shown,
@@ -570,16 +622,42 @@ export function getCombatSpeedBonus(speed: number): number {
   );
 }
 
-export function generateBoard(): Tile[] {
+/**
+ * Every floor has a finite 64-tile, forward-only trail. Floor one keeps its
+ * authored distribution; later floors use a different deterministic mix so a
+ * fresh board is not just a renamed copy of the previous one.
+ */
+export function generateBoard(floor = 1): Tile[] {
+  const normalizedFloor = Math.max(1, Math.min(LEVELS.length, Math.floor(floor || 1)));
   return Array.from({ length: TRAIL_TILE_COUNT }).map((_, i) => {
     if (i === 0) return { id: i, type: "start" };
     if (i === TRAIL_TILE_COUNT - 1) return { id: i, type: "boss" };
-    // Distribute varied tiles
-    if (i % 6 === 0) return { id: i, type: "rest" };
-    if (i % 5 === 0) return { id: i, type: "shop" };
-    if (i % 8 === 0) return { id: i, type: "event" };
-    if (i % 7 === 0) return { id: i, type: "elite" };
-    if (i % 11 === 0) return { id: i, type: "minigame" };
+    if (normalizedFloor === 1) {
+      // Preserve the original Forest Trail tile schedule.
+      if (i % 6 === 0) return { id: i, type: "rest" };
+      if (i % 5 === 0) return { id: i, type: "shop" };
+      if (i % 8 === 0) return { id: i, type: "event" };
+      if (i % 7 === 0) return { id: i, type: "elite" };
+      if (i % 11 === 0) return { id: i, type: "minigame" };
+    } else if (normalizedFloor === 2) {
+      if (i % 4 === 0) return { id: i, type: "rest" };
+      if (i % 5 === 0) return { id: i, type: "shop" };
+      if (i % 7 === 0) return { id: i, type: "elite" };
+      if (i % 9 === 0) return { id: i, type: "event" };
+      if (i % 13 === 0) return { id: i, type: "minigame" };
+    } else if (normalizedFloor === 3) {
+      if (i % 6 === 0) return { id: i, type: "shop" };
+      if (i % 7 === 0) return { id: i, type: "rest" };
+      if (i % 8 === 0) return { id: i, type: "elite" };
+      if (i % 10 === 0) return { id: i, type: "minigame" };
+      if (i % 11 === 0) return { id: i, type: "event" };
+    } else {
+      if (i % 5 === 0) return { id: i, type: "elite" };
+      if (i % 6 === 0) return { id: i, type: "rest" };
+      if (i % 8 === 0) return { id: i, type: "event" };
+      if (i % 9 === 0) return { id: i, type: "shop" };
+      if (i % 12 === 0) return { id: i, type: "minigame" };
+    }
     return { id: i, type: "enemy" };
   });
 }
@@ -652,6 +730,45 @@ function generateShop(characterId?: CharacterId): ShopItem[] {
 export const NORMAL_ROSTER: readonly MonsterSpeciesKey[] = ["wolf", "goblin", "skeleton", "ochre_jelly"];
 export const ELITE_ROSTER: readonly MonsterSpeciesKey[] = ["ogre", "winter_wolf", "mummy"];
 
+const FLOOR_ENCOUNTER_NAMES: Record<number, Record<MonsterSpeciesKey, string>> = {
+  1: {
+    wolf: "Wolf",
+    goblin: "Goblin",
+    skeleton: "Skeleton",
+    ochre_jelly: "Ochre Jelly",
+    ogre: "Ogre",
+    winter_wolf: "Winter Wolf",
+    mummy: "Mummy",
+  },
+  2: {
+    wolf: "Marsh Wolf",
+    goblin: "Bog Goblin",
+    skeleton: "Fen Skeleton",
+    ochre_jelly: "Mire Jelly",
+    ogre: "Marsh Ogre",
+    winter_wolf: "Frost Fen Wolf",
+    mummy: "Mire Mummy",
+  },
+  3: {
+    wolf: "Webwood Wolf",
+    goblin: "Silk Goblin",
+    skeleton: "Webbound Skeleton",
+    ochre_jelly: "Silk Jelly",
+    ogre: "Brood Ogre",
+    winter_wolf: "Webwood Winter Wolf",
+    mummy: "Silk Mummy",
+  },
+  4: {
+    wolf: "Cinder Wolf",
+    goblin: "Ash Goblin",
+    skeleton: "Ash Skeleton",
+    ochre_jelly: "Ember Jelly",
+    ogre: "Ash Ogre",
+    winter_wolf: "Charred Winter Wolf",
+    mummy: "Ash Mummy",
+  },
+};
+
 export function getEncounterCount(level: number, isElite: boolean, roll = Math.random()): number {
   if (isElite) return level >= 8 && roll >= 0.8 ? 2 : 1;
   if (level <= 2) return 1;
@@ -659,14 +776,23 @@ export function getEncounterCount(level: number, isElite: boolean, roll = Math.r
   return roll >= 0.9 ? 3 : roll >= 0.35 ? 2 : 1;
 }
 
-export function generateEnemies(count: number, scale: number, isElite: boolean = false, level: number = 1): EnemyState[] {
+export function generateEnemies(
+  count: number,
+  scale: number,
+  isElite: boolean = false,
+  level: number = 1,
+  floor: number = scale,
+): EnemyState[] {
   // Floors raise difficulty, but cannot outpace an under-levelled hero.
   const tier = Math.max(1, Math.min(scale, 1 + (level - 1) / 3));
   const roster = isElite ? ELITE_ROSTER : NORMAL_ROSTER;
+  const names = FLOOR_ENCOUNTER_NAMES[
+    Math.max(1, Math.min(LEVELS.length, Math.floor(floor || 1)))
+  ] ?? FLOOR_ENCOUNTER_NAMES[1];
   return Array.from({ length: count }).map(() => {
     const speciesKey = roster[Math.floor(Math.random() * roster.length)];
     const entry = getBestiaryEntry(speciesKey);
-    const name = entry?.name ?? "Unknown Monster";
+    const name = names[speciesKey] ?? entry?.name ?? "Unknown Monster";
     const hp = Math.floor((16 + tier * 8) * (isElite ? 1.5 : 1));
     return {
       id: uuid(),
@@ -684,19 +810,31 @@ export function generateEnemies(count: number, scale: number, isElite: boolean =
 }
 
 export function generateBoss(floor: number): EnemyState {
-  const hp = 150 + floor * 50;
+  const normalizedFloor = Math.max(1, Math.min(LEVELS.length, Math.floor(floor || 1)));
+  const definition = getLevelDefinition(normalizedFloor);
+  const bossSpecies: Record<BossId, MonsterSpeciesKey> = {
+    "skeleton-king": "skeleton",
+    grubgut: "ogre",
+    silkmaw: "wolf",
+    cinder: "skeleton",
+  };
+  const hp = 150 + normalizedFloor * 50 + Math.max(0, normalizedFloor - 1) * 20;
   return {
     id: uuid(),
-    name: "Skeleton King",
-    speciesKey: "skeleton",
+    name: definition.boss.name,
+    speciesKey: bossSpecies[definition.boss.id],
     artKey: "boss",
     hp,
     maxHp: hp,
-    attack: 15 + floor * 5,
-    defense: 5 + floor * 2,
-    speed: 50 + floor * 5,
+    attack: 15 + normalizedFloor * 5 + Math.max(0, normalizedFloor - 1) * 2,
+    defense: 5 + normalizedFloor * 2 + Math.max(0, normalizedFloor - 1),
+    speed: 50 + normalizedFloor * 5,
     attackTimer: 0,
-    boss: true
+    boss: true,
+    bossTurnCounter: 0,
+    bossRegenSuppressed: false,
+    bossSummonsUsed: 0,
+    bossRageActive: false,
   } as EnemyState;
 }
 
@@ -725,6 +863,7 @@ function initializeBossCombat(r: RunState) {
   r.guardActive = false;
   r.combatFeedback = null;
   r.bardSpellFeedback = undefined;
+  r.heroHinderedTurns = 0;
   r.phase = "combat";
   logMessage(r, "The Boss has arrived!");
 }
@@ -755,14 +894,24 @@ function stageTrailAwakening(r: RunState) {
   r.stepsRemaining = 0;
   r.phase = "boss_awakening";
   syncTrailCountdown(r);
-  logMessage(r, "Blue fire gathers around the ancient boss statue...");
+  logMessage(
+    r,
+    r.floor === 1
+      ? "Blue fire gathers around the ancient boss statue..."
+      : `A strange light gathers around ${getLevelDefinition(r.floor).boss.name}...`,
+  );
 }
 
 function stageTrailAlert(r: RunState): boolean {
   if (r.trailAlertSeen) return false;
   r.trailAlertSeen = true;
   r.trailCinematic = "alert";
-  logMessage(r, "A warning bell echoes through the forest. The boss trail draws near.");
+  logMessage(
+    r,
+    r.floor === 1
+      ? "A warning bell echoes through the forest. The boss trail draws near."
+      : `A warning echoes through ${getLevelDefinition(r.floor).name}. The boss trail draws near.`,
+  );
   return true;
 }
 
@@ -783,7 +932,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     r.hp = Math.min(r.maxHp, r.hp + 20);
   } else if (tile?.type === "enemy" || tile?.type === "elite") {
     const count = getEncounterCount(r.level, tile.type === "elite");
-    r.enemies = generateEnemies(count, r.floor, tile.type === "elite", r.level);
+    r.enemies = generateEnemies(count, r.floor, tile.type === "elite", r.level, r.floor);
     r.playerCombat = {
       attackTimer: 0,
       roundCounter: 0,
@@ -801,6 +950,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     r.guardActive = false;
     r.combatFeedback = null;
     r.bardSpellFeedback = undefined;
+    r.heroHinderedTurns = 0;
     r.phase = "combat";
     r.isBossCombat = false;
     logMessage(r, `Encountered ${count} ${tile.type === "elite" ? "Elite " : ""}enemies!`);
@@ -862,6 +1012,22 @@ function migrateEnemy(enemy: any): EnemyState {
     stunned: enemy?.stunned === true,
     attackDisadvantage: enemy?.attackDisadvantage === true,
   };
+  if (isBossMove(enemy?.bossMove)) migrated.bossMove = enemy.bossMove;
+  else delete migrated.bossMove;
+  if (typeof enemy?.bossTurnCounter === "number" && Number.isFinite(enemy.bossTurnCounter)) {
+    migrated.bossTurnCounter = Math.max(0, Math.floor(enemy.bossTurnCounter));
+  } else {
+    delete migrated.bossTurnCounter;
+  }
+  if (enemy?.bossRegenSuppressed === true) migrated.bossRegenSuppressed = true;
+  else delete migrated.bossRegenSuppressed;
+  if (typeof enemy?.bossSummonsUsed === "number" && Number.isFinite(enemy.bossSummonsUsed)) {
+    migrated.bossSummonsUsed = Math.max(0, Math.min(2, Math.floor(enemy.bossSummonsUsed)));
+  } else {
+    delete migrated.bossSummonsUsed;
+  }
+  if (enemy?.bossRageActive === true) migrated.bossRageActive = true;
+  else delete migrated.bossRageActive;
   if (hasSleepTurns) migrated.sleepTurns = sleepTurns;
   else delete migrated.sleepTurns;
   return migrated;
@@ -869,6 +1035,20 @@ function migrateEnemy(enemy: any): EnemyState {
 
 function isConsumableType(value: unknown): value is ConsumableType {
   return value === "health_potion" || value === "fire_bomb" || value === "guard_tonic";
+}
+
+function isBossMove(value: unknown): value is BossMove {
+  return value === "sword"
+    || value === "fireball"
+    || value === "club"
+    || value === "poison_belch"
+    || value === "regen"
+    || value === "venom_bite"
+    || value === "web"
+    || value === "summon_brood"
+    || value === "slash"
+    || value === "fire_wave"
+    || value === "rage";
 }
 
 function isHeroAttackKind(value: unknown): value is NonNullable<PlayerCombatState["pendingHeroAttack"]>["kind"] {
@@ -908,9 +1088,9 @@ function isTileType(value: unknown): value is TileType {
     || value === "boss";
 }
 
-function migrateTrailTiles(tiles: unknown): Tile[] {
+function migrateTrailTiles(tiles: unknown, floor = 1): Tile[] {
   const legacyTiles = Array.isArray(tiles) ? tiles : [];
-  const generated = generateBoard();
+  const generated = generateBoard(floor);
   return generated.map((fallback, index) => {
     const legacy = legacyTiles[index];
     if (legacy && isTileType(legacy.type) && index < TRAIL_TILE_COUNT - 1) {
@@ -943,7 +1123,7 @@ export function validateState(input: any): GameStateV4 {
     const legacyTiles = s.run.tiles;
     const legacyTileCount = Array.isArray(legacyTiles) ? legacyTiles.length : 0;
     const legacyBossRollsLeft = s.run.bossRollsLeft;
-    s.run.tiles = migrateTrailTiles(legacyTiles);
+    s.run.tiles = migrateTrailTiles(legacyTiles, s.run.floor);
     s.run.position = Number.isFinite(s.run.position)
       ? Math.min(s.run.tiles.length - 1, Math.max(0, Math.floor(s.run.position)))
       : 0;
@@ -988,6 +1168,21 @@ export function validateState(input: any): GameStateV4 {
     s.run.log = Array.isArray(s.run.log) ? s.run.log : [];
     s.run.shopRerollCost = typeof s.run.shopRerollCost === "number" ? s.run.shopRerollCost : 10;
     s.run.settled = Boolean(s.run.settled);
+    // Pre-campaign V4 saves only carry the settled flag, not a reward ledger.
+    // Baseline their current totals rather than inventing historical records;
+    // only later positive progress can be credited and wallet gems are never
+    // reduced to reconcile the ambiguity.
+    const legacySettledGold = Math.max(0, Math.floor(Number(s.run.settledGold ?? (
+      s.run.settled ? Math.floor(Math.max(0, s.run.gold) / 10) : 0
+    ))));
+    const legacySettledGems = Math.max(0, Math.floor(Number(s.run.settledGems ?? (
+      s.run.settled ? Math.max(0, s.run.gemsEarned) : 0
+    ))));
+    s.run.settledGold = Number.isFinite(legacySettledGold) ? legacySettledGold : 0;
+    s.run.settledGems = Number.isFinite(legacySettledGems) ? legacySettledGems : 0;
+    s.run.heroHinderedTurns = Number.isFinite(s.run.heroHinderedTurns)
+      ? Math.max(0, Math.min(3, Math.floor(s.run.heroHinderedTurns!)))
+      : 0;
     // Old defeated saves did not have a death-presentation marker. Preserve a
     // genuinely pending Unc presentation while defaulting missing markers to
     // the completed state.
@@ -1102,6 +1297,14 @@ export function validateState(input: any): GameStateV4 {
                 kind: pending.kind,
               },
             }
+            : {};
+        })(),
+        ...(() => {
+          const pendingBoss = s.run!.playerCombat!.pendingBossDeath;
+          return pendingBoss?.boss === true
+            && typeof pendingBoss.name === "string"
+            && pendingBoss.name.length > 0
+            ? { pendingBossDeath: { boss: true, name: pendingBoss.name } }
             : {};
         })(),
         heroImpactResolved: s.run.playerCombat.heroImpactResolved === true
@@ -1257,16 +1460,39 @@ function gainXp(r: RunState, amount: number) {
   }
 }
 
+/**
+ * Transfer only the cumulative quest reward earned since the previous
+ * checkpoint. `settled` remains the legacy boolean, while the totals make
+ * every floor transition and the terminal campaign exit idempotent.
+ */
+function settleRunRewards(s: GameStateV4, r: RunState) {
+  // `settledGold`/`settledGems` are a high-water baseline only for legacy
+  // saves that already received a pre-campaign settlement. New campaigns
+  // remain unsettled until defeat, explicit Return to Lobby, or the terminal
+  // fourth-floor Continue. We never deduct meta gems to repair ambiguity.
+  const cumulativeGold = Math.max(0, Math.floor(r.gold / 10));
+  const cumulativeGems = Math.max(0, Math.floor(r.gemsEarned));
+  const settledGold = Math.max(0, Math.floor(r.settledGold ?? (
+    r.settled ? cumulativeGold : 0
+  )));
+  const settledGems = Math.max(0, Math.floor(r.settledGems ?? (
+    r.settled ? cumulativeGems : 0
+  )));
+  const goldReward = Math.max(0, cumulativeGold - settledGold);
+  const gemReward = Math.max(0, cumulativeGems - settledGems);
+  if (goldReward || gemReward) s.meta.gems += goldReward + gemReward;
+  r.settledGold = Math.max(settledGold, cumulativeGold);
+  r.settledGems = Math.max(settledGems, cumulativeGems);
+  r.settled = true;
+}
+
 function settleDefeat(s: GameStateV4, r: RunState) {
   r.phase = "defeat";
   r.combatTurn = "player";
   if (r.characterId === "unc" || r.characterId === "alan-a-dale") {
     r.heroDeathPending = true;
   }
-  if (!r.settled) {
-    s.meta.gems += r.gemsEarned + Math.floor(r.gold / 10);
-    r.settled = true;
-  }
+  settleRunRewards(s, r);
   logMessage(r, "You have been defeated...");
 }
 
@@ -1274,13 +1500,26 @@ function finishVictory(
   r: RunState,
   attackDurationMs = getPlayerAttackDurationMs(r),
   presentationDurationMs?: number,
+  defeatedBoss?: Pick<EnemyState, "boss" | "name">,
 ) {
+  if (r.playerCombat) delete r.playerCombat.pendingBossDeath;
+  const bossDeathDuration = r.isBossCombat
+    ? getBossDeathDurationMs(defeatedBoss ?? { boss: true, name: "Skeleton King" })
+    : 0;
+  // The hero impact has already completed before this report is created.
+  // Boss corpse timing therefore follows the killed boss's death sheet, not a
+  // legacy Skeleton King minimum that would leave new bosses blank on screen.
   const authoredPresentationDuration = presentationDurationMs ?? (r.isBossCombat
-    ? Math.max(5200, attackDurationMs)
+    ? bossDeathDuration
     : attackDurationMs);
-  const playbackSpeed = r.characterId === "unc" && Number.isFinite(r.combatSpeed)
-    ? Math.max(1, r.combatSpeed!)
-    : 1;
+  // Boss corpse sheets are scaled by the same combat speed as every boss
+  // sprite, regardless of hero. Ordinary encounter report timing preserves
+  // the historical Unc-only playback rule.
+  const playbackSpeed = r.isBossCombat
+    ? combatPlaybackSpeed(r)
+    : r.characterId === "unc" && Number.isFinite(r.combatSpeed)
+      ? Math.max(1, r.combatSpeed!)
+      : 1;
   const report = {
     id: uuid(), boss: r.isBossCombat, floor: r.floor,
     xp: r.isBossCombat ? 0 : 40 + r.floor * 10,
@@ -1288,10 +1527,9 @@ function finishVictory(
     gems: r.isBossCombat ? 50 * r.floor : 0,
     healing: 0, equipment: [] as string[],
     // The report must not replace an authored Unc attack sheet while it is
-    // still playing. Boss reports retain their established presentation
-    // minimum, while ordinary encounters use the committed attack duration.
-    // Unc's authored presentation is paced by the committed combat speed.
-    // John and Alan-a-Dale deliberately retain their existing report timing.
+    // still playing. Boss reports use the killed boss's death sheet, while
+    // ordinary encounters use the committed attack duration. Ordinary Unc
+    // presentation remains paced by its existing combat speed rule.
     showAt: Date.now() + authoredPresentationDuration / playbackSpeed,
   };
   if (r.isBossCombat) {
@@ -1314,8 +1552,12 @@ function finishVictory(
   r.victoryReport = report;
 }
 
-function applyPoisonTicks(r: RunState): Set<string> {
+function applyPoisonTicks(r: RunState): {
+  damagedSleepingEnemies: Set<string>;
+  defeatedBoss?: Pick<EnemyState, "boss" | "name">;
+} {
   const damagedSleepingEnemies = new Set<string>();
+  let defeatedBoss: Pick<EnemyState, "boss" | "name"> | undefined;
   for (const enemy of r.enemies) {
     if (enemy.hp <= 0 || !enemy.poisoned) continue;
     const wasSleeping = Boolean(enemy.sleepTurns && enemy.sleepTurns > 0);
@@ -1325,6 +1567,7 @@ function applyPoisonTicks(r: RunState): Set<string> {
     enemy.poisonTimerMs = 0;
     const poison = calculateDamage(1, 0, enemySpecies(enemy), "poison");
     enemy.hp = Math.max(0, enemy.hp - poison.amount);
+    if (enemy.boss && enemy.hp <= 0) defeatedBoss ??= enemy;
     setCombatFeedback(r, poison, enemy.name);
     if (poison.amount > 0) {
       logMessage(r, `Poison deals ${poison.amount} damage to ${enemy.name}.`);
@@ -1335,7 +1578,7 @@ function applyPoisonTicks(r: RunState): Set<string> {
     }
   }
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
-  return damagedSleepingEnemies;
+  return { damagedSleepingEnemies, defeatedBoss };
 }
 
 function activeStyle(r: RunState) {
@@ -1352,6 +1595,48 @@ function bardAttackStyle(kind: BardAttackKind): AttackStyle {
     damageType: move.damageType,
     description: "An authored bard ability.",
     magical: move.magical,
+  };
+}
+
+function setBossMechanicFeedback(
+  r: RunState,
+  boss: EnemyState,
+  message: string,
+  damageType: DamageType = "fire",
+) {
+  r.combatFeedback = {
+    id: uuid(),
+    kind: "normal",
+    damageType,
+    amount: 0,
+    targetName: boss.name,
+    message,
+    durationMs: getBossMovePresentation(boss).durationMs,
+  };
+  logMessage(r, message);
+}
+
+function markBossFireHit(r: RunState, enemy: EnemyState, damageType: DamageType) {
+  if (damageType !== "fire" || getBossId(enemy) !== "grubgut") return;
+  enemy.bossRegenSuppressed = true;
+  logMessage(r, `${enemy.name}'s next regeneration is suppressed by fire.`);
+}
+
+function createSilkmawBroodling(r: RunState, index: number): EnemyState {
+  const hp = 20 + r.floor * 5;
+  return {
+    id: uuid(),
+    // These use the existing goblin placeholder art while keeping a
+    // biome-specific identity in the combat log.
+    name: `Silkmaw Broodling ${index}`,
+    speciesKey: "goblin",
+    artKey: "goblin",
+    hp,
+    maxHp: hp,
+    attack: 5 + r.floor * 2,
+    defense: 1 + Math.floor(r.floor / 2),
+    speed: 35 + r.floor * 3,
+    attackTimer: 0,
   };
 }
 
@@ -1395,6 +1680,7 @@ function applyPlayerAttackHit(
   style: AttackStyle,
   attackSequence: number,
   baseDamage = r.attack,
+  damageMultiplier = 1,
 ) {
   const pc = r.playerCombat!;
   const resolution = calculateDamage(
@@ -1404,7 +1690,7 @@ function applyPlayerAttackHit(
     style.damageType,
     style.magical,
   );
-  let damage = resolution.amount;
+  let damage = Math.floor(resolution.amount * damageMultiplier);
   if (damage > 0) damage += getCombatSpeedBonus(r.speed);
   if (r.skills.some(skill => skill.type === "speed_boost")) damage = Math.floor(damage * 1.2);
   if (pc.firstAttackPending) {
@@ -1423,6 +1709,7 @@ function applyPlayerAttackHit(
   const finalResolution = { ...resolution, amount: Math.floor(damage) };
   setCombatFeedback(r, finalResolution, target.name);
   logMessage(r, feedbackMessage(finalResolution, target.name));
+  markBossFireHit(r, target, style.damageType);
   wakeSleepingEnemyAfterDamage(r, target, finalResolution.amount);
 
   if (r.skills.some(skill => skill.type === "poison") && target.hp > 0) {
@@ -1602,13 +1889,17 @@ function finishHeroAttack(s: GameStateV4) {
   // Clear the durable commit before doing any outcome work. This makes the
   // action idempotent even if a presenter dispatches the finish twice.
   delete pc.pendingHeroAttack;
+  const heroHindered = (r.heroHinderedTurns ?? 0) > 0;
+  if (heroHindered) r.heroHinderedTurns = Math.max(0, (r.heroHinderedTurns ?? 0) - 1);
   // Bard saving throws are rolled exactly once when the authored impact
   // finishes. Keep this before poison feedback IDs so a pre-existing poison
   // cannot consume or reorder the spell's outcome roll.
   const bardSaveRoll = pending.kind === "bard_sleep" || pending.kind === "bard_cutting_words"
     ? rollD20()
     : undefined;
-  const damagedSleepingEnemies = applyPoisonTicks(r);
+  const poisonTick = applyPoisonTicks(r);
+  if (poisonTick.defeatedBoss) pc.pendingBossDeath = poisonTick.defeatedBoss;
+  const damagedSleepingEnemies = poisonTick.damagedSleepingEnemies;
 
   const target = r.enemies.find(enemy => enemy.id === pending.targetId && enemy.hp > 0);
 
@@ -1655,13 +1946,14 @@ function finishHeroAttack(s: GameStateV4) {
         // pipeline. It does not inherit outgoing-damage skill multipliers.
         const baseDamage = Math.max(1, Math.ceil(r.attack / 2));
         const resolution = calculateDamage(
-          baseDamage,
+          Math.floor(baseDamage * (heroHindered ? 0.75 : 1)),
           target.defense,
           enemySpecies(target),
           "psychic",
           true,
         );
         target.hp = Math.max(0, target.hp - resolution.amount);
+        markBossFireHit(r, target, "psychic");
         wakeSleepingEnemyAfterDamage(r, target, resolution.amount);
         setCombatFeedback(r, resolution, target.name);
         cuttingWordsMessage = `${saveMessage} Cutting Words hits ${target.name} for ${resolution.amount} psychic damage; its next attack has disadvantage.`;
@@ -1684,11 +1976,16 @@ function finishHeroAttack(s: GameStateV4) {
           style,
           pc.heroAttackSequence ?? 0,
           pending.kind === "takedown" ? r.attack * 2 : r.attack,
+          heroHindered ? 0.75 : 1,
         );
       }
     }
   }
 
+  const defeatedBoss = r.isBossCombat
+    ? pc.pendingBossDeath ?? r.enemies.find(enemy => enemy.boss && enemy.hp <= 0)
+    : undefined;
+  if (defeatedBoss) pc.pendingBossDeath = { boss: true, name: defeatedBoss.name };
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
   if (r.enemies.length === 0) {
     // The hit has already landed. A final kill needs only the corpse window,
@@ -1703,7 +2000,8 @@ function finishHeroAttack(s: GameStateV4) {
           lastAttackKind: pending.kind,
         },
       }),
-      r.isBossCombat ? 5200 : HERO_SWORD_ANIMATION_DURATION_MS,
+      r.isBossCombat ? undefined : HERO_SWORD_ANIMATION_DURATION_MS,
+      defeatedBoss,
     );
     pc.heroImpactResolved = false;
   } else {
@@ -1725,7 +2023,8 @@ function resolveConsumable(s: GameStateV4, consumable: ConsumableType) {
   r.playerCombat.heroImpactResolved = false;
   delete r.playerCombat.attackDamageType;
   r.playerCombat.heroConsumableSequence = (r.playerCombat.heroConsumableSequence ?? 0) + 1;
-  applyPoisonTicks(r);
+  const poisonTick = applyPoisonTicks(r);
+  if (poisonTick.defeatedBoss) r.playerCombat.pendingBossDeath = poisonTick.defeatedBoss;
 
   if (consumable === "health_potion") {
     const healed = Math.max(1, Math.floor(r.maxHp * 0.4));
@@ -1760,10 +2059,146 @@ function resolveFireBomb(r: RunState) {
     );
     enemy.hp = Math.max(0, enemy.hp - resolution.amount);
     setCombatFeedback(r, resolution, enemy.name);
+    markBossFireHit(r, enemy, "fire");
     wakeSleepingEnemyAfterDamage(r, enemy, resolution.amount);
     logMessage(r, `Fire Bomb: ${feedbackMessage(resolution, enemy.name)}`);
   }
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
+}
+
+/**
+ * Pick and apply a boss's deterministic special move. The old Skeleton King
+ * alternation remains untouched; the new floors only add descriptive moves
+ * while reusing sword/fireball as the two presentation categories.
+ *
+ * Returns true when the move consumed the response without damaging the hero.
+ */
+function prepareBossResponse(r: RunState, enemy: EnemyState): boolean {
+  if (!enemy.boss) return false;
+  const bossId = getBossId(enemy);
+  const turn = (enemy.bossTurnCounter ?? 0) + 1;
+  enemy.bossTurnCounter = turn;
+
+  if (bossId === "skeleton-king") {
+    enemy.lastBossAttack = enemy.lastBossAttack === "sword" ? "fireball" : "sword";
+    enemy.bossMove = enemy.lastBossAttack;
+    enemy.damageType = enemy.lastBossAttack === "fireball" ? "fire" : "slashing";
+    return false;
+  }
+
+  if (bossId === "grubgut") {
+    if (turn % 3 === 0) {
+      enemy.bossMove = "regen";
+      enemy.lastBossAttack = "fireball";
+      enemy.damageType = "fire";
+      if (enemy.bossRegenSuppressed) {
+        enemy.bossRegenSuppressed = false;
+        setBossMechanicFeedback(
+          r,
+          enemy,
+          `${enemy.name}'s regeneration is suppressed by fire.`,
+          "fire",
+        );
+      } else {
+        const restored = Math.max(1, Math.floor(enemy.maxHp * 0.12));
+        const before = enemy.hp;
+        enemy.hp = Math.min(enemy.maxHp, enemy.hp + restored);
+        setBossMechanicFeedback(
+          r,
+          enemy,
+          `${enemy.name} regenerates ${enemy.hp - before} HP.`,
+          "fire",
+        );
+      }
+      return true;
+    }
+    if (turn % 2 === 1) {
+      enemy.bossMove = "club";
+      enemy.lastBossAttack = "sword";
+      enemy.damageType = "bludgeoning";
+    } else {
+      enemy.bossMove = "poison_belch";
+      enemy.lastBossAttack = "fireball";
+      enemy.damageType = "poison";
+    }
+    return false;
+  }
+
+  if (bossId === "silkmaw") {
+    const broodlings = r.enemies.filter(candidate => (
+      candidate.name.startsWith("Silkmaw Broodling") && candidate.hp > 0
+    )).length;
+    const summonsUsed = Math.max(0, Math.min(2, enemy.bossSummonsUsed ?? broodlings));
+    if (turn % 3 === 0 && summonsUsed < 2) {
+      enemy.bossMove = "summon_brood";
+      enemy.lastBossAttack = "fireball";
+      enemy.damageType = "poison";
+      const toSummon = Math.min(2 - summonsUsed, 2);
+      for (let index = 0; index < toSummon; index++) {
+        r.enemies.push(createSilkmawBroodling(r, summonsUsed + index + 1));
+      }
+      enemy.bossSummonsUsed = summonsUsed + toSummon;
+      setBossMechanicFeedback(
+        r,
+        enemy,
+        `${enemy.name} summons ${toSummon} broodling${toSummon === 1 ? "" : "s"}.`,
+        "poison",
+      );
+      return true;
+    }
+    if (turn % 2 === 1) {
+      enemy.bossMove = "venom_bite";
+      enemy.lastBossAttack = "sword";
+      enemy.damageType = "poison";
+    } else {
+      enemy.bossMove = "web";
+      enemy.lastBossAttack = "fireball";
+      enemy.damageType = "poison";
+    }
+    return false;
+  }
+
+  // Cinder's rage is a one-time attack buff, checked before selecting this
+  // response's slash/fire wave so the same action can visibly announce it.
+  const rageStarted = !enemy.bossRageActive && enemy.hp < enemy.maxHp / 2;
+  if (rageStarted) {
+    enemy.bossRageActive = true;
+    const bonus = Math.max(4, Math.floor(enemy.attack * 0.35));
+    enemy.attack += bonus;
+    enemy.bossMove = "rage";
+    setBossMechanicFeedback(
+      r,
+      enemy,
+      `${enemy.name} enters a rage and gains +${bonus} attack.`,
+      "slashing",
+    );
+  }
+  if (turn % 2 === 1) {
+    enemy.lastBossAttack = "sword";
+    enemy.damageType = "slashing";
+    if (!rageStarted) enemy.bossMove = "slash";
+  } else {
+    enemy.lastBossAttack = "fireball";
+    enemy.damageType = "fire";
+    if (!rageStarted) enemy.bossMove = "fire_wave";
+  }
+  return false;
+}
+
+function bossAttackDescription(enemy: EnemyState): string {
+  const presentation = getBossMovePresentation(enemy);
+  switch (enemy.bossMove) {
+    case "club": return "swings its club";
+    case "poison_belch": return "belches a cloud of poison";
+    case "venom_bite": return "strikes with a venomous bite";
+    case "web": return "casts a hindering web";
+    case "slash": return "slashes with its burning blade";
+    case "fire_wave": return "unleashes a fire wave";
+    case "rage": return "attacks in a raging fury";
+    case "sword": return "strikes with his sword";
+    case "fireball": return "casts a fireball";
+    default: return `uses ${presentation.label.toLowerCase()}`;
+  }
 }
 
 function resolveEnemyTurn(s: GameStateV4) {
@@ -1780,9 +2215,21 @@ function resolveEnemyTurn(s: GameStateV4) {
   // second impact from that legacy marker.
   if (r.playerCombat.pendingFireBomb) {
     r.playerCombat.pendingFireBomb = false;
+    const defeatedBoss = r.isBossCombat
+      ? r.playerCombat.pendingBossDeath
+        ?? r.enemies.find(enemy => enemy.boss && enemy.hp > 0)
+      : undefined;
     resolveFireBomb(r);
+    if (defeatedBoss && !r.enemies.some(enemy => enemy.boss)) {
+      r.playerCombat.pendingBossDeath = { boss: true, name: defeatedBoss.name };
+    }
     if (r.enemies.length === 0) {
-      finishVictory(r, Math.max(FIRE_BOMB_ANIMATION_DURATION_MS, getPlayerAttackDurationMs(r)));
+      finishVictory(
+        r,
+        Math.max(FIRE_BOMB_ANIMATION_DURATION_MS, getPlayerAttackDurationMs(r)),
+        undefined,
+        defeatedBoss,
+      );
       r.playerCombat.lastConsumable = null;
       r.playerCombat.heroImpactResolved = false;
       return;
@@ -1810,7 +2257,9 @@ function resolveEnemyTurn(s: GameStateV4) {
 
   // Iterate the living roster once. A counter can kill a later enemy, in
   // which case that enemy is no longer living and does not retaliate.
-  for (const enemy of r.enemies) {
+  // A Silkmaw summon joins the roster after this response and must not attack
+  // until the next turn.
+  for (const enemy of [...r.enemies]) {
     if (enemy.hp <= 0) continue;
     if (enemy.sleepTurns && enemy.sleepTurns > 0) {
       // Sleep is consumed by responses, not renders or reducer reads. The
@@ -1828,11 +2277,9 @@ function resolveEnemyTurn(s: GameStateV4) {
       logMessage(r, `${enemy.name} is stunned and skips this response.`);
       continue;
     }
-    if (enemy.boss) {
-      enemy.lastBossAttack = enemy.lastBossAttack === "sword" ? "fireball" : "sword";
-      enemy.damageType = enemy.lastBossAttack === "fireball" ? "fire" : "slashing";
-    }
+    const bossMoveConsumedResponse = prepareBossResponse(r, enemy);
     r.playerCombat.enemyAttackSequence = (r.playerCombat.enemyAttackSequence ?? 0) + 1;
+    if (bossMoveConsumedResponse) continue;
     const disadvantaged = enemy.attackDisadvantage === true;
     let attackHit = true;
     let disadvantageMessage: string | undefined;
@@ -1859,7 +2306,23 @@ function resolveEnemyTurn(s: GameStateV4) {
       damage = Math.max(1, Math.floor(enemy.attack - playerDefense));
       damage = Math.floor(damage * guardMultiplier);
       r.hp = Math.max(0, r.hp - damage);
-      logMessage(r, `${enemy.name}${enemy.boss ? enemy.lastBossAttack === "fireball" ? " casts a fireball" : " strikes with his sword" : " hits you"} for ${damage} ${enemy.damageType ?? "slashing"} damage.`);
+      const attackDescription = enemy.boss
+        ? ` ${bossAttackDescription(enemy)}`
+        : " hits you";
+      logMessage(r, `${enemy.name}${attackDescription} for ${damage} ${enemy.damageType ?? "slashing"} damage.`);
+      if (enemy.boss && enemy.bossMove === "web") {
+        r.heroHinderedTurns = Math.max(1, r.heroHinderedTurns ?? 0);
+        logMessage(r, `${enemy.name}'s web hinders your next attack.`);
+        r.combatFeedback = {
+          id: uuid(),
+          kind: "normal",
+          damageType: "poison",
+          amount: 0,
+          targetName: enemy.name,
+          message: `${enemy.name}'s web hinders your next attack.`,
+          durationMs: getBossMovePresentation(enemy).durationMs,
+        };
+      }
     } else if (!disadvantaged) {
       // This branch is defensive only; ordinary responses are always hits.
       logMessage(r, `${enemy.name} misses.`);
@@ -1885,12 +2348,17 @@ function resolveEnemyTurn(s: GameStateV4) {
     }
   }
 
+  const defeatedBoss = r.isBossCombat
+    ? r.playerCombat.pendingBossDeath
+      ?? r.enemies.find(enemy => enemy.boss && enemy.hp <= 0)
+    : undefined;
+  if (defeatedBoss) r.playerCombat.pendingBossDeath = { boss: true, name: defeatedBoss.name };
   r.guardActive = false;
   r.enemies = r.enemies.filter(enemy => enemy.hp > 0);
   if (r.hp <= 0) {
     settleDefeat(s, r);
   } else if (r.enemies.length === 0) {
-    finishVictory(r);
+    finishVictory(r, undefined, undefined, defeatedBoss);
   } else {
     r.combatTurn = "player";
     r.phase = "combat";
@@ -1941,10 +2409,20 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
     r.trailCinematic = null;
     if (finished === "intro") {
       r.trailIntroSeen = true;
-      logMessage(r, "The forest trail opens before you.");
+      logMessage(
+        r,
+        r.floor === 1
+          ? "The forest trail opens before you."
+          : `The ${getLevelDefinition(r.floor).name} opens before you.`,
+      );
     } else if (finished === "alert") {
       r.trailAlertSeen = true;
-      logMessage(r, "You press onward toward the heart of the forest.");
+      logMessage(
+        r,
+        r.floor === 1
+          ? "You press onward toward the heart of the forest."
+          : `You press onward through ${getLevelDefinition(r.floor).name}.`,
+      );
       // If the alert was staged on the final step of a roll, do not lose the
       // landing encounter while the cinematic was on screen.
       if (
@@ -2053,6 +2531,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       isBossCombat: false,
       selectedDamageType: character.startingDamageType,
       combatFeedback: null,
+      heroHinderedTurns: 0,
       // Skills belong to the run, so clone definitions rather than allowing a
       // reducer action or save migration to mutate the character catalogue.
       skills: character.startingSkills.map(skill => ({ ...skill })),
@@ -2061,6 +2540,8 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       shopRerollCost: 10,
       log: [{ id: uuid(), msg: "You enter the realm. The adventure begins!" }],
       settled: false,
+      settledGold: 0,
+      settledGems: 0,
       rollAnimating: false,
       heroDeathPending: false,
     };
@@ -2219,7 +2700,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   if (action.type === "TEST_OF_MIGHT_ENTER") {
     const r = s.run;
     if (r && r.phase === "event_test_of_might") {
-      r.enemies = generateEnemies(2, r.floor + 1, true); // 2 elites
+      r.enemies = generateEnemies(2, r.floor + 1, true, r.level, r.floor); // 2 elites
       r.playerCombat = {
         attackTimer: 0,
         roundCounter: 0,
@@ -2237,6 +2718,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       r.guardActive = false;
       r.combatFeedback = null;
       r.bardSpellFeedback = undefined;
+      r.heroHinderedTurns = 0;
       r.phase = "combat";
       logMessage(r, "You accepted the test! Elite enemies appear.");
     }
@@ -2350,16 +2832,19 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "CONTINUE_RUN") {
     if (s.run && s.run.phase === "victory") {
-      if (!s.run.settled) {
-        s.meta.gems += s.run.gemsEarned + Math.floor(s.run.gold / 10);
-        s.run.settled = true;
+      if (s.run.floor >= LEVELS.length) {
+        // The fourth boss ends the campaign. Settle once before discarding
+        // the run; a repeated Continue has no run to reward.
+        settleRunRewards(s, s.run);
+        s.run = null;
+        return s;
       }
       s.run.floor++;
-      // Level two reuses the same finite forest trail for now. Restart at its
-      // first pace while keeping the generated tile identities stable.
+      // Each floor starts a fresh finite trail and replays only its own intro.
       s.run.position = 0;
-      s.run.bossCountdown = s.run.tiles.length - 1;
-      s.run.bossRollsLeft = s.run.tiles.length - 1;
+      s.run.tiles = generateBoard(s.run.floor);
+      s.run.bossCountdown = TRAIL_TILE_COUNT - 1;
+      s.run.bossRollsLeft = TRAIL_TILE_COUNT - 1;
       s.run.phase = "explore";
       s.run.isBossCombat = false;
       s.run.enemies = [];
@@ -2368,10 +2853,12 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       s.run.guardActive = false;
       s.run.combatFeedback = null;
       s.run.bardSpellFeedback = undefined;
+      s.run.heroHinderedTurns = 0;
       s.run.stepsRemaining = 0;
+      s.run.lastRolls = null;
       s.run.rollAnimating = false;
-      s.run.trailCinematic = null;
-      s.run.trailIntroSeen = true;
+      s.run.trailCinematic = "intro";
+      s.run.trailIntroSeen = false;
       s.run.trailAlertSeen = false;
       s.run.trailAwakeningSeen = false;
       s.run.pendingTileTrigger = false;
@@ -2381,10 +2868,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "RETURN_TO_LOBBY") {
     if (s.run && (s.run.phase === "victory" || s.run.phase === "defeat")) {
-      if (!s.run.settled) {
-        s.meta.gems += s.run.gemsEarned + Math.floor(s.run.gold / 10);
-        s.run.settled = true;
-      }
+      settleRunRewards(s, s.run);
       s.run = null;
     }
   }

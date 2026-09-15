@@ -1,0 +1,349 @@
+.level-scenery {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+  background: #2d5b35;
+}
+
+.level-scenery__forest-texture {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: .18;
+  mix-blend-mode: multiply;
+  filter: saturate(.8);
+}
+
+.level-scenery--forest .level-scenery__forest-texture {
+  z-index: 0;
+  opacity: .8;
+  mix-blend-mode: normal;
+  filter: none;
+}
+
+.level-scenery__mist {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: .5;
+}
+
+.level-scenery__landmark {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.level-scenery__landmark-detail {
+  position: absolute;
+  display: block;
+}
+
+.level-scenery__caption {
+  position: absolute;
+  left: 16px;
+  top: 104px;
+  display: grid;
+  gap: 2px;
+  max-width: 215px;
+  color: rgb(255 249 216 / 76%);
+  text-shadow: 0 2px 4px rgb(3 10 6 / 75%);
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.level-scenery__caption strong {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+.level-scenery__caption span {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.level-cinematic-banner {
+  position: absolute;
+  z-index: 12;
+  top: 31%;
+  left: 50%;
+  width: min(94%, 350px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 4px;
+  padding: 12px 18px 13px;
+  border: 2px solid rgb(255 230 157 / 72%);
+  border-radius: 14px;
+  background: linear-gradient(110deg, rgb(12 22 17 / 80%), rgb(27 14 29 / 80%));
+  box-shadow: 0 9px 25px rgb(2 5 4 / 43%), inset 0 0 0 1px rgb(255 255 255 / 10%);
+  color: #fff5d5;
+  text-align: center;
+  text-shadow: 0 2px 3px rgb(0 0 0 / 80%);
+  animation: dicebound-level-banner-in 340ms ease-out both;
+  pointer-events: none;
+}
+
+.level-cinematic-banner--intro {
+  background: linear-gradient(110deg, rgb(14 47 26 / 82%), rgb(26 53 35 / 78%));
+}
+
+.level-cinematic-banner--alert {
+  border-color: rgb(255 125 81 / 78%);
+  background: linear-gradient(110deg, rgb(47 15 17 / 84%), rgb(37 17 48 / 82%));
+}
+
+.level-cinematic-banner--awakening {
+  border-color: rgb(255 211 101 / 85%);
+  box-shadow: 0 0 24px rgb(236 133 50 / 31%), 0 9px 25px rgb(2 5 4 / 43%);
+}
+
+.level-cinematic-banner__eyebrow {
+  color: #f5ce72;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+.level-cinematic-banner strong {
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  line-height: 1.05;
+}
+
+.level-cinematic-banner > span:last-child {
+  color: rgb(255 244 214 / 82%);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* The board keeps floor one as its original forest clearing with no old river. */
+.level-scenery--forest {
+  background: #2d5b35;
+}
+
+.level-scenery--forest .level-scenery__mist,
+.level-scenery--forest .level-scenery__landmark,
+.level-scenery--forest .level-scenery__caption {
+  display: none;
+}
+
+/* Mirebridge Marsh: mossy water, a low broken bridge and cool rolling mist. */
+.level-scenery--swamp {
+  background:
+    radial-gradient(ellipse at 62% 72%, rgb(109 155 100 / 42%), transparent 38%),
+    linear-gradient(180deg, #244f49 0%, #52816b 46%, #8aa878 100%);
+}
+
+.level-scenery--swamp .level-scenery__forest-texture {
+  opacity: .12;
+  filter: hue-rotate(45deg) saturate(.85);
+}
+
+.level-scenery--swamp .level-scenery__mist {
+  background:
+    radial-gradient(ellipse at 18% 65%, rgb(221 246 207 / 34%) 0 13%, transparent 38%),
+    radial-gradient(ellipse at 78% 52%, rgb(211 239 206 / 28%) 0 15%, transparent 40%),
+    linear-gradient(180deg, transparent 45%, rgb(201 231 189 / 20%) 68%, transparent 81%);
+  filter: blur(8px);
+}
+
+.level-scenery--swamp .level-scenery__landmark {
+  left: 13%;
+  right: 11%;
+  bottom: 19%;
+  height: 66px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #8e9a7c 0 22%, #536961 23% 65%, #273f3b 66%);
+  box-shadow: 0 19px 0 rgb(25 50 41 / 45%), 0 25px 22px rgb(17 34 28 / 55%);
+  transform: perspective(190px) rotateX(47deg) rotateZ(-4deg);
+}
+
+.level-scenery--swamp .level-scenery__landmark::before,
+.level-scenery--swamp .level-scenery__landmark::after {
+  content: '';
+  position: absolute;
+  top: 28px;
+  width: 22px;
+  height: 80px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #324d46, #82937b 48%, #263d38);
+}
+
+.level-scenery--swamp .level-scenery__landmark::before { left: 12%; }
+.level-scenery--swamp .level-scenery__landmark::after { right: 12%; }
+
+.level-scenery--swamp .level-scenery__landmark-detail {
+  top: 9px;
+  width: 28%;
+  height: 9px;
+  border-radius: 99px;
+  background: #b5c196;
+  box-shadow: 0 2px 0 #48665d;
+}
+
+.level-scenery--swamp .level-scenery__landmark-detail:nth-child(1) { left: 11%; transform: rotate(-3deg); }
+.level-scenery--swamp .level-scenery__landmark-detail:nth-child(2) { left: 38%; transform: rotate(2deg); }
+.level-scenery--swamp .level-scenery__landmark-detail:nth-child(3) { right: 9%; transform: rotate(-2deg); }
+
+/* Silkmaw's Hollow: violet canopy, web glints and one unmistakable hollow tree. */
+.level-scenery--webwood {
+  background:
+    radial-gradient(circle at 51% 60%, rgb(123 74 142 / 42%), transparent 24%),
+    linear-gradient(180deg, #20152f 0%, #432455 52%, #1e172c 100%);
+}
+
+.level-scenery--webwood .level-scenery__forest-texture {
+  opacity: .1;
+  filter: hue-rotate(245deg) saturate(1.7) brightness(.6);
+}
+
+.level-scenery--webwood .level-scenery__mist {
+  inset: 2% 0 10%;
+  background:
+    repeating-radial-gradient(ellipse at 51% 43%, transparent 0 26px, rgb(238 183 237 / 23%) 27px 29px, transparent 30px 56px),
+    repeating-linear-gradient(25deg, transparent 0 44px, rgb(225 162 225 / 15%) 45px 47px, transparent 48px 76px);
+  mask-image: linear-gradient(180deg, #000, transparent 88%);
+  opacity: .48;
+}
+
+.level-scenery--webwood .level-scenery__landmark {
+  left: 35%;
+  bottom: 7%;
+  width: 31%;
+  height: 72%;
+  border-radius: 49% 49% 14% 14%;
+  background:
+    radial-gradient(ellipse at 50% 24%, #100b1b 0 20%, transparent 21%),
+    linear-gradient(90deg, #271733, #633562 44%, #2c1b39 82%);
+  box-shadow: inset 12px 0 15px rgb(143 70 139 / 42%), inset -13px 0 18px rgb(8 5 15 / 65%), 0 18px 22px rgb(10 5 15 / 65%);
+}
+
+.level-scenery--webwood .level-scenery__landmark::before {
+  content: '';
+  position: absolute;
+  inset: 5% -80% auto;
+  height: 21%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #724076 0 30%, transparent 72%);
+  filter: blur(5px);
+}
+
+.level-scenery--webwood .level-scenery__landmark-detail {
+  width: 130%;
+  height: 1px;
+  left: -15%;
+  top: 28%;
+  background: rgb(249 201 246 / 62%);
+  transform: rotate(14deg);
+  box-shadow: 0 34px 0 rgb(249 201 246 / 45%), 0 72px 0 rgb(249 201 246 / 35%);
+}
+
+.level-scenery--webwood .level-scenery__landmark-detail:nth-child(2) {
+  transform: rotate(-24deg);
+}
+
+.level-scenery--webwood .level-scenery__landmark-detail:nth-child(3) {
+  width: 1px;
+  height: 120%;
+  left: 50%;
+  top: -7%;
+  transform: rotate(8deg);
+  box-shadow: 31px 0 0 rgb(249 201 246 / 28%), -28px 0 0 rgb(249 201 246 / 24%);
+}
+
+/* Cinder March: red ember haze and a black fortress gate beyond charred trunks. */
+.level-scenery--ashlands {
+  background:
+    radial-gradient(ellipse at 50% 61%, rgb(187 58 32 / 38%), transparent 32%),
+    linear-gradient(180deg, #261b20 0%, #592a2a 55%, #1b1319 100%);
+}
+
+.level-scenery--ashlands .level-scenery__forest-texture {
+  opacity: .1;
+  filter: grayscale(1) sepia(1) hue-rotate(300deg) saturate(2.2) brightness(.45);
+}
+
+.level-scenery--ashlands .level-scenery__mist {
+  background:
+    radial-gradient(circle at 30% 61%, #e17a3b 0 1px, transparent 3px),
+    radial-gradient(circle at 60% 43%, #ffad4d 0 1px, transparent 3px),
+    radial-gradient(circle at 77% 68%, #e45b30 0 1px, transparent 3px),
+    linear-gradient(180deg, transparent 54%, rgb(252 104 42 / 13%) 66%, transparent 83%);
+  background-size: 97px 83px, 149px 127px, 113px 101px, auto;
+  filter: blur(.2px);
+}
+
+.level-scenery--ashlands .level-scenery__landmark {
+  left: 22%;
+  right: 22%;
+  bottom: 18%;
+  height: 53%;
+  border: 17px solid #17151d;
+  border-bottom-width: 25px;
+  border-radius: 80px 80px 0 0;
+  background: radial-gradient(ellipse at 50% 70%, #c34b2a 0 9%, #311a25 10% 48%, #0c0c12 49%);
+  box-shadow: inset 0 0 0 5px #69302c, 0 20px 20px rgb(5 4 7 / 66%);
+}
+
+.level-scenery--ashlands .level-scenery__landmark::before,
+.level-scenery--ashlands .level-scenery__landmark::after {
+  content: '';
+  position: absolute;
+  bottom: -24px;
+  width: 25px;
+  height: 120%;
+  background: #15141a;
+  box-shadow: 0 0 0 4px #4b2528;
+}
+
+.level-scenery--ashlands .level-scenery__landmark::before { left: -36px; transform: rotate(4deg); }
+.level-scenery--ashlands .level-scenery__landmark::after { right: -36px; transform: rotate(-4deg); }
+
+.level-scenery--ashlands .level-scenery__landmark-detail {
+  top: 24%;
+  left: 9%;
+  width: 82%;
+  height: 2px;
+  background: rgb(244 112 56 / 65%);
+  box-shadow: 0 41px 0 rgb(214 66 39 / 42%);
+}
+
+.level-scenery--ashlands .level-scenery__landmark-detail:nth-child(2) {
+  top: 38%;
+  transform: rotate(90deg);
+}
+
+.level-scenery--ashlands .level-scenery__landmark-detail:nth-child(3) {
+  top: auto;
+  bottom: 11%;
+  height: 5px;
+  background: #d85a2c;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .level-scenery__caption {
+    transition: none;
+  }
+
+  .level-cinematic-banner {
+    animation: none;
+  }
+}
+
+@keyframes dicebound-level-banner-in {
+  from { opacity: 0; transform: translate(-50%, -43%) scale(.94); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}

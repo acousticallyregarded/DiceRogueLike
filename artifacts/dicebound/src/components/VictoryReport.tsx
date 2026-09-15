@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameAction, RunState } from '../engine';
+import { getLevelDefinition } from '../level-content';
 import './victory-report.css';
 
 export function VictoryReport({ report, dispatch }: {
@@ -7,21 +8,24 @@ export function VictoryReport({ report, dispatch }: {
   dispatch: (action: GameAction) => void;
 }) {
   const [ready, setReady] = useState(Date.now() >= report.showAt);
+  const level = getLevelDefinition(report.floor);
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => setReady(true), Math.max(0, report.showAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [report.showAt]);
   useEffect(() => { if (ready) button.current?.focus(); }, [ready]);
+  // Do not mount a transparent modal while the combat death exit is still
+  // settling: even an empty pointer-events layer blocks the board controls.
+  if (!ready) return null;
   return (
     <div className="absolute inset-0 z-[80] flex items-center justify-center p-5 pointer-events-auto"
-      style={{ background: ready ? 'rgb(10 8 5 / 55%)' : 'transparent' }}>
-      {ready && (
-        <section role="dialog" aria-modal="true" aria-labelledby="victory-report-title"
-          className="victory-parchment w-full max-w-sm max-h-[85%] overflow-y-auto p-7">
+      style={{ background: 'rgb(10 8 5 / 55%)' }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="victory-report-title"
+        className="victory-parchment w-full max-w-sm max-h-[85%] overflow-y-auto p-7">
           <p className="text-center text-xs tracking-[0.2em] uppercase">Floor {report.floor} · Battle record</p>
           <h2 id="victory-report-title" className="my-3 text-center text-4xl italic">
-            {report.boss ? 'The King Has Fallen' : 'Victory!'}
+             {report.boss ? `${level.boss.name} Has Fallen` : 'Victory!'}
           </h2>
           <p className="text-center italic mb-5">The spoils of your triumph</p>
           <dl className="space-y-3 border-y border-[#78512b]/40 py-4 text-lg">
@@ -40,8 +44,7 @@ export function VictoryReport({ report, dispatch }: {
             className="mt-6 w-full border-2 border-[#624323] rounded-sm bg-[#624323] py-3 text-[#fff1cf] text-lg italic shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#624323]">
             Continue
           </button>
-        </section>
-      )}
+      </section>
     </div>
   );
 }

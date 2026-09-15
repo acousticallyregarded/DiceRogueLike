@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 
 import { CenterStatue } from './CenterStatue';
 import { ForestOaks } from './ForestOaks';
-import forestClearingUrl from '../assets/forest-clearing.webp';
+import { LevelScenery } from './LevelScenery';
+import { BossPlatform } from './BossPlatform';
+import { getLevelDefinition } from '../level-content';
 import customWalkSouthEastUrl from '../assets/custom-walk-south-east.png';
 import customWalkSouthWestUrl from '../assets/custom-walk-south-west.png';
 import customWalkNorthWestUrl from '../assets/custom-walk-north-west.png';
@@ -210,6 +212,21 @@ export function GameBoard({ run, visualPosition, speed = 1, paused = false, onCi
 
   const isAwakening = run.phase === 'boss_awakening' || cinematicType === 'awakening';
   const isBossActive = isAwakening || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat) || run.phase === 'victory' || cinematicType === 'alert';
+  const level = getLevelDefinition(run.floor);
+  const bossCinematicTitle = cinematicType === 'intro'
+    ? level.name
+    : cinematicType === 'alert'
+      ? `${level.boss.name} approaches`
+      : cinematicType === 'awakening'
+        ? `${level.boss.name} awakens`
+        : null;
+  const bossCinematicSubtitle = cinematicType === 'intro'
+    ? level.description
+    : cinematicType === 'alert'
+      ? `${level.boss.arena} · ${level.boss.description}`
+      : cinematicType === 'awakening'
+        ? `Prepare for the guardian of ${level.boss.arena}.`
+        : null;
 
   // Statue is at the end of the trail
   const statuePos = getTilePosition(trailLength - 1, trailLength);
@@ -263,18 +280,17 @@ export function GameBoard({ run, visualPosition, speed = 1, paused = false, onCi
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-      {/* One full-screen painting stays behind the moving trail and camera. */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `url(${forestClearingUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          opacity: 0.8,
-        }}
-      />
+      {/* One environment painting stays behind the moving trail and camera. */}
+      <LevelScenery floor={run.floor} />
+      {bossCinematicTitle && (
+        <div className={`level-cinematic-banner level-cinematic-banner--${cinematicType}`} role="status" aria-live="polite">
+          <span className="level-cinematic-banner__eyebrow">
+            {cinematicType === 'intro' ? `Floor ${run.floor}` : cinematicType === 'alert' ? 'Boss alert' : 'Boss awakening'}
+          </span>
+          <strong>{bossCinematicTitle}</strong>
+          <span>{bossCinematicSubtitle}</span>
+        </div>
+      )}
       <div 
         className="relative w-0 h-0"
         style={{ 
@@ -302,11 +318,20 @@ export function GameBoard({ run, visualPosition, speed = 1, paused = false, onCi
             }}
           >
             <div className="absolute left-1/2 bottom-0">
-              <CenterStatue 
-                  rollsLeft={run.bossRollsLeft} 
-                  ready={statueRisen || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat)} 
-                  alert={cinematicType === 'alert' || (run.bossCountdown !== undefined && run.bossCountdown <= 15)} 
-              />
+               {run.floor === 1 ? (
+                 <CenterStatue
+                   rollsLeft={run.bossRollsLeft}
+                   ready={statueRisen || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat)}
+                   alert={cinematicType === 'alert' || (run.bossCountdown !== undefined && run.bossCountdown <= 15)}
+                 />
+               ) : (
+                 <BossPlatform
+                   floor={run.floor}
+                   rollsLeft={run.bossRollsLeft}
+                   ready={statueRisen || run.phase === 'boss_ready' || (run.phase === 'combat' && run.isBossCombat)}
+                   alert={cinematicType === 'alert' || (run.bossCountdown !== undefined && run.bossCountdown <= 15)}
+                 />
+               )}
             </div>
             {isAwakening && platformStage === 'rising' && !reducedMotion && (
                <div className="absolute inset-0 bg-stone-900 rounded-full animate-ping opacity-20 filter blur-xl" style={{ animationDuration: '1s' }} />

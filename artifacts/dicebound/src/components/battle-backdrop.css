@@ -13,3 +13,137 @@
   background-position: center;
   box-shadow: inset 0 -28px 28px #07100cb3, inset 0 15px 30px #0005;
 }
+
+.battle-backdrop--swamp {
+  background: #52746b;
+}
+
+.battle-backdrop--swamp .battle-backdrop__scene {
+  background:
+    radial-gradient(ellipse at 24% 66%, rgb(194 225 176 / 38%), transparent 28%),
+    linear-gradient(180deg, #315c59 0%, #587e6a 56%, #91a276 100%);
+}
+
+.battle-backdrop--webwood {
+  background: #4b2c54;
+}
+
+.battle-backdrop--webwood .battle-backdrop__scene {
+  background:
+    radial-gradient(ellipse at 52% 52%, rgb(121 65 137 / 54%), transparent 28%),
+    linear-gradient(180deg, #24152f 0%, #57305d 58%, #211729 100%);
+}
+
+.battle-backdrop--ashlands {
+  background: #662c2a;
+}
+
+.battle-backdrop--ashlands .battle-backdrop__scene {
+  background:
+    radial-gradient(ellipse at 50% 65%, rgb(207 71 37 / 38%), transparent 30%),
+    linear-gradient(180deg, #291b21 0%, #69312d 59%, #1e141b 100%);
+}
+
+.battle-backdrop__bridge {
+  position: absolute;
+  left: 11%;
+  right: 10%;
+  bottom: 17%;
+  height: 22%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #9ba084 0 20%, #596d62 21% 64%, #273d3b 65%);
+  box-shadow: 0 14px 11px rgb(15 34 28 / 52%);
+  transform: perspective(130px) rotateX(43deg) rotateZ(-2deg);
+}
+
+.battle-backdrop__bridge::before,
+.battle-backdrop__bridge::after {
+  content: '';
+  position: absolute;
+  top: 30%;
+  width: 15px;
+  height: 95px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #314e49, #a2aa8d 48%, #243b39);
+}
+
+.battle-backdrop__bridge::before { left: 14%; }
+.battle-backdrop__bridge::after { right: 14%; }
+
+.battle-backdrop__hollow-tree {
+  position: absolute;
+  left: 32%;
+  bottom: 5%;
+  width: 36%;
+  height: 78%;
+  border-radius: 48% 48% 8% 8%;
+  background:
+    radial-gradient(ellipse at 50% 26%, #100a17 0 22%, transparent 23%),
+    linear-gradient(90deg, #2d1938, #754170 45%, #2d1939 84%);
+  box-shadow: inset 9px 0 13px rgb(170 76 161 / 35%), inset -11px 0 16px rgb(12 6 17 / 60%), 0 15px 14px rgb(15 7 18 / 62%);
+}
+
+.battle-backdrop__hollow-tree::after {
+  content: '';
+  position: absolute;
+  inset: 4% -75% 28%;
+  background: repeating-radial-gradient(ellipse at 50% 50%, transparent 0 14px, rgb(244 191 239 / 29%) 15px 16px, transparent 17px 31px);
+  opacity: .6;
+}
+
+.battle-backdrop__fortress-gate {
+  position: absolute;
+  left: 23%;
+  right: 23%;
+  bottom: 14%;
+  height: 64%;
+  border: 13px solid #17131a;
+  border-bottom-width: 20px;
+  border-radius: 70px 70px 0 0;
+  background: radial-gradient(ellipse at 50% 70%, #c84e2a 0 8%, #331a25 9% 50%, #0b0b11 51%);
+  box-shadow: inset 0 0 0 4px #7a312b, 0 16px 14px rgb(10 5 9 / 65%);
+}
+
+.battle-backdrop__particles {
+  position: absolute;
+  inset: 0;
+  opacity: .55;
+  background-image:
+    radial-gradient(circle at 17% 43%, #e9ad5c 0 1px, transparent 2px),
+    radial-gradient(circle at 66% 27%, #f3c36f 0 1px, transparent 2px),
+    radial-gradient(circle at 80% 66%, #d96d44 0 1px, transparent 2px);
+  background-size: 91px 83px, 137px 101px, 113px 97px;
+}
+
+.battle-backdrop--swamp .battle-backdrop__particles {
+  opacity: .7;
+  background-image:
+    radial-gradient(ellipse at 15% 67%, rgb(221 246 207 / 25%) 0 9%, transparent 24%),
+    radial-gradient(ellipse at 78% 54%, rgb(211 239 206 / 24%) 0 12%, transparent 30%);
+  filter: blur(5px);
+}
+
+.battle-backdrop--webwood .battle-backdrop__particles {
+  opacity: .7;
+  background-image:
+    repeating-linear-gradient(26deg, transparent 0 32px, rgb(239 190 238 / 17%) 33px 35px, transparent 36px 60px);
+}
+
+.battle-backdrop--ashlands .battle-backdrop__particles {
+  animation: dicebound-ember-drift 2500ms linear infinite;
+}
+
+.battle-backdrop--boss .battle-backdrop__scene {
+  box-shadow: inset 0 -34px 32px #07100cd9, inset 0 15px 30px #0006;
+}
+
+@keyframes dicebound-ember-drift {
+  from { transform: translateY(10px); }
+  to { transform: translateY(-14px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-backdrop--ashlands .battle-backdrop__particles {
+    animation: none;
+  }
+}

@@ -1,8 +1,10 @@
 import { RunState, GameAction, MetaState } from '../engine';
 import { Gift, Coins, Shield, Sword, Heart, Wind, Star, Zap, Skull } from 'lucide-react';
 import { VictoryReport } from './VictoryReport';
+import { getLevelDefinition } from '../level-content';
 
 export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch: (a: GameAction) => void, meta: MetaState }) {
+  const level = getLevelDefinition(run.floor);
   if (run.victoryReport) return <VictoryReport key={run.victoryReport.id} report={run.victoryReport} dispatch={dispatch} />;
   if (run.phase === 'boss_awakening') {
     return (
@@ -12,7 +14,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
         aria-live="polite"
       >
         <div className="rounded-full border-2 border-[#1c1c1c] bg-black/75 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wide text-amber-100 shadow-lg">
-          The ancient statue rises...
+           {level.boss.name} stirs beyond {level.boss.arena}...
         </div>
       </div>
     );
@@ -23,17 +25,17 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
       <div className="absolute bottom-4 left-3 right-3 z-50 pointer-events-auto">
         <div className="rounded-2xl border-4 border-[#1c1c1c] bg-slate-950/90 p-3 text-center text-white shadow-2xl">
           <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-amber-200">
-            The statue is awake
+             {level.boss.name} is awake
           </p>
           <p className="mb-3 text-xs font-bold text-slate-200">
-            Its seal breaks. Activate the statue to challenge the Floor {run.floor} Boss.
+             The seal breaks at {level.boss.arena}. Challenge the Floor {run.floor} guardian.
           </p>
           <button
             type="button"
             onClick={() => dispatch({ type: 'FIGHT_BOSS' })}
             className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-400 py-2.5 text-sm font-black uppercase text-slate-950 transition-all active:translate-y-1 active:border-b-0"
           >
-            Fight Floor {run.floor} Boss
+             Fight {level.boss.name}
           </button>
         </div>
       </div>
@@ -210,7 +212,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
               onClick={() => dispatch({ type: 'CONTINUE_RUN' })}
               className="w-full py-4 bg-green-500 text-white rounded-2xl font-black text-xl border-b-4 border-green-700 active:border-b-0 active:translate-y-1 transition-all"
             >
-              Continue to Floor {run.floor + 1}
+               {run.floor < 4 ? `Continue to Floor ${run.floor + 1}` : 'Complete Adventure'}
             </button>
             <button 
               onClick={() => dispatch({ type: 'RETURN_TO_LOBBY' })}

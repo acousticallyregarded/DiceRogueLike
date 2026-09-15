@@ -40,9 +40,12 @@ import { SpriteAnimator, SpriteName, usePrefersReducedMotion } from './SpriteAni
 import { HeroSprite } from './HeroSprite';
 import { AttackStyleSelector } from './AttackStyleSelector';
 import { SkeletonKingSprite } from './SkeletonKingSprite';
+import { NewBossPlaceholder } from './NewBossPlaceholder';
+import { MeleeCombatApproach } from './MeleeCombatApproach';
 import kingUrl from '../assets/skeleton-king.png';
 import { BattleBackdrop } from './BattleBackdrop';
 import { getCombatActorSize } from './combat-actor-size';
+import { getBossId, getBossDeathDurationMs, getBossMovePresentation } from '../level-content';
 
 interface EnemySnapshot {
   id: string;
@@ -164,7 +167,9 @@ function isCustomOgreEnemy(enemy: RunState['enemies'][number]) {
 }
 
 function deathExitDurationMs(enemy: RunState['enemies'][number] | undefined, speed: number) {
-  const duration = enemy?.boss ? 5200 : enemy && isCustomWolfEnemy(enemy)
+  const duration = enemy?.boss
+    ? getBossDeathDurationMs(enemy)
+    : enemy && isCustomWolfEnemy(enemy)
     ? CUSTOM_WOLF_DEATH_EXIT_MS
     : enemy && isCustomGoblinEnemy(enemy) ? CUSTOM_GOBLIN_DEATH_EXIT_MS
     : enemy && isCustomOchreEnemy(enemy) ? CUSTOM_OCHRE_DEATH_EXIT_MS
@@ -243,7 +248,8 @@ export function CombatOverlay({
     };
   }
   const [bossAnimating, setBossAnimating] = useState(false);
-  const bossSequence = run.playerCombat?.enemyAttackSequence ?? 0;
+  const bossSequence = run.enemies.find(enemy => enemy.boss)?.bossTurnCounter
+    ?? run.playerCombat?.enemyAttackSequence ?? 0;
   const priorBossSequence = useRef(bossSequence);
   useEffect(() => {
     const changed = bossSequence > priorBossSequence.current;
@@ -254,8 +260,9 @@ export function CombatOverlay({
       return;
     }
     setBossAnimating(true);
+    const movePresentation = getBossMovePresentation(boss);
     const timer = window.setTimeout(() => setBossAnimating(false),
-      (boss.lastBossAttack === 'fireball' ? 4200 : 1800) / Math.max(1, speed));
+      movePresentation.durationMs / Math.max(1, speed));
     return () => window.clearTimeout(timer);
   }, [bossSequence, reducedMotion, speed]);
 
@@ -379,7 +386,11 @@ export function CombatOverlay({
       Object.values(current.enemies).forEach(enemy => {
         // Use the pre-response countdown: the last skipped turn decrements
         // it to zero, but must still not animate an attack.
-        if (enemy.hp > 0 && !(previous.enemies[enemy.id]?.sleepTurns > 0)) {
+        const previousEnemy = previous.enemies[enemy.id];
+        // A support move can summon a new broodling. It did not attack in the
+        // response that created it, so never synthesize an attack event for a
+        // roster member absent from the previous snapshot.
+        if (previousEnemy && enemy.hp > 0 && !(previousEnemy.sleepTurns > 0)) {
           enemyUpdates.push({ id: enemy.id, kind: 'attack' });
         }
       });
@@ -519,6 +530,16 @@ export function CombatOverlay({
   const inspectedEntry = inspectedEnemy
     ? getBestiaryEntry(inspectedEnemy.speciesKey ?? speciesKeyForName(inspectedEnemy.name))
     : undefined;
+  const inspectedBossId = inspectedEnemy?.boss ? getBossId(inspectedEnemy) : null;
+  const inspectedBossMechanic = inspectedBossId === 'grubgut'
+    ? 'Melee club blows alternate with poisonous breath; watch for regeneration.'
+    : inspectedBossId === 'silkmaw'
+      ? 'Melee strikes alternate with venomous web magic; her brood follows the queen.'
+      : inspectedBossId === 'cinder'
+        ? 'His ember sword alternates with a fireball; the gate burns hotter as armor cracks.'
+        : inspectedBossId === 'skeleton-king'
+          ? 'Sword strikes alternate with a fireball, just as in the original king encounter.'
+          : null;
 
   const playerAttackTrigger = visualEvents.heroAttack;
   const playerHitTrigger = visualEvents.heroHit;
@@ -603,6 +624,11 @@ export function CombatOverlay({
               <div className="text-[9px] font-bold uppercase tracking-wider text-purple-600">
                 {inspectedEntry?.family ?? 'Unknown creature'}
               </div>
+              {inspectedBossId && inspectedBossId !== 'skeleton-king' && (
+                <div className="mt-1 inline-flex rounded-full border border-fuchsia-300 bg-fuchsia-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-fuchsia-800">
+                  Art placeholder · final GIF slot
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -624,6 +650,11 @@ export function CombatOverlay({
             </p>
             {inspectedEntry?.conditionImmunities?.includes('sleep') && <p>Immune to Sleep.</p>}
           </div>
+          {inspectedBossMechanic && (
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold text-amber-950">
+              Boss mechanic: {inspectedBossMechanic}
+            </p>
+          )}
           {inspectedEntry ? (
             <>
               <p className="mt-1 text-[10px] font-semibold text-slate-600">{inspectedEntry.blurb}</p>
@@ -649,7 +680,7 @@ export function CombatOverlay({
       )}
 
       <div data-combat-arena className="flex-1 relative flex items-end justify-between px-3 pb-12">
-        <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} />
+         <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} floor={renderedRun.floor} />
         <div className={`relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
           <CombatApproach actorId="hero" {...heroApproach.current} paused={paused}>
           <div
@@ -705,6 +736,10 @@ export function CombatOverlay({
             const enemyEvent = visualEvents.enemies[enemy.id] ?? { attackTrigger: 0, hitTrigger: 0, deathTrigger: 0 };
             const isDying = enemyEvent.deathTrigger > 0;
             const customWolf = isCustomWolfEnemy(enemy);
+             const bossId = enemy.boss ? getBossId(enemy) : null;
+             const placeholderBoss = bossId && bossId !== 'skeleton-king' ? bossId : null;
+             const bossMove = enemy.boss ? getBossMovePresentation(enemy) : null;
+             const Approach = placeholderBoss && bossMove?.kind === 'melee' ? MeleeCombatApproach : CombatApproach;
             const enemySprite = getAttackSprite(enemy);
             const actorSize = getCombatActorSize(enemy);
             return (
@@ -712,7 +747,9 @@ export function CombatOverlay({
                 key={enemy.id}
                 className={`relative flex flex-col items-center rounded-lg ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : 'cursor-pointer'}`}
                 style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms`,
-                  ...(isDying && enemy.boss ? { animationName: 'dicebound-king-death-exit' } : {}),
+                   ...(isDying && enemy.boss
+                     ? { animationName: bossId === 'skeleton-king' ? 'dicebound-king-death-exit' : 'dicebound-boss-placeholder-death-exit' }
+                     : {}),
                 } as CSSProperties}
                 onClick={() => !isDying && selectEnemy(enemy.id)}
                 role="button"
@@ -727,9 +764,12 @@ export function CombatOverlay({
                   }
                 }}
               >
-                <CombatApproach actorId={enemy.id} targetId="hero" attackId={enemyEvent.attackTrigger}
-                  durationMs={enemy.boss || actorSize || enemySprite === 'slime-attack' ? 1800 / Math.max(1, speed) : combatDuration}
-                  enabled={!isDying && (!enemy.boss || enemy.lastBossAttack !== 'fireball')} paused={paused}>
+                <Approach actorId={enemy.id} targetId="hero" attackId={enemyEvent.attackTrigger}
+                  durationMs={enemy.boss
+                    ? (bossMove?.durationMs ?? 1800) / Math.max(1, speed)
+                    : combatDuration}
+                  enabled={!isDying && (!enemy.boss || bossMove?.kind === 'melee')}
+                  paused={paused}>
                 <div key={`${enemyEvent.attackTrigger}-${enemyEvent.hitTrigger}-${enemyEvent.deathTrigger}`} className={`combat-actor combat-actor--enemy ${actorSize ? '' : 'w-20 h-20'}`}
                   style={actorSize ? { width: actorSize.slotWidth, height: actorSize.bodyHeight, flexShrink: 0 } : undefined}>
                   <div className={`combat-actor__hit w-full h-full ${enemyEvent.hitTrigger > 0 ? 'combat-actor__hit--flashing' : ''}`} style={{
@@ -740,7 +780,17 @@ export function CombatOverlay({
                       bottom: actorSize.bottomOffset, pointerEvents: 'none',
                     } : {}),
                   } as CSSProperties}>
-                    {enemy.boss ? (
+                    {placeholderBoss ? (
+                      <NewBossPlaceholder
+                        bossId={placeholderBoss}
+                        attackTrigger={enemyEvent.attackTrigger}
+                        hitTrigger={enemyEvent.hitTrigger}
+                        dying={isDying}
+                        speed={speed}
+                        movePresentation={bossMove ?? undefined}
+                        showPlaceholderLabel
+                      />
+                    ) : enemy.boss ? (
                       <SkeletonKingSprite attackTrigger={enemyEvent.attackTrigger}
                         hitTrigger={enemyEvent.hitTrigger} dying={isDying}
                         speed={speed} attack={enemy.lastBossAttack} />
@@ -820,8 +870,18 @@ export function CombatOverlay({
                     />}
                   </div>
                 </div>
-                </CombatApproach>
+                 </Approach>
                 <div className="text-[9px] font-black text-white bg-black/60 px-1 rounded absolute -top-4">{enemy.name}</div>
+                {enemy.boss && bossId === 'cinder' && enemy.bossRageActive && (
+                  <div role="status" className="mt-1 rounded-full border border-orange-300 bg-orange-950 px-2 py-0.5 text-[9px] font-black text-orange-100">
+                    Furnace Rage active
+                  </div>
+                )}
+                {enemy.boss && bossId === 'grubgut' && (
+                  <div role="status" className="mt-1 rounded-full border border-lime-300 bg-lime-950 px-2 py-0.5 text-[9px] font-black text-lime-100">
+                    Regeneration {enemy.bossRegenSuppressed ? 'suppressed · fire counter' : 'ready · counter with fire'}
+                  </div>
+                )}
                 {damagePopups.filter(popup => popup.target === 'enemy' && popup.enemyId === enemy.id).map(popup => (
                   <span className="damage-popup" key={popup.id}>-{popup.amount}</span>
                 ))}

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 320" fill="none">
+  <title>Grubgut troll boss art placeholder silhouette</title>
+  <path d="M78 287c-6-21 0-43 13-58l-8-51c-20-13-27-34-21-55 7-25 30-42 57-42h20c29 0 53 18 59 43 5 22-4 42-24 54l-5 51c18 13 26 34 20 58H78Z" fill="#122f2a"/>
+  <path d="m76 103-26-18c-8-6-7-18 2-22l31-13 20 31-27 22Zm103 0 27-19c8-6 7-18-2-22l-32-12-19 31 26 22Z" fill="#1c4e42"/>
+  <path d="M92 101c11-22 59-24 72 0l-9 41c-17 13-43 13-58 0l-5-41Z" fill="#1b6651"/>
+  <path d="M102 110c7-8 14-10 21-6l-5 15-18 3-6-7 8-5Zm52 0c-7-8-14-10-21-6l5 15 18 3 6-7-8-5Z" fill="#8fdf91" opacity=".8"/>
+  <path d="M111 130c11 8 25 8 36 0-3 18-31 21-36 0Z" fill="#081d1a"/>
+  <path d="M110 129h8m6 2h8m6-2h8" stroke="#b8f3a6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M83 174c28 16 63 17 91-1l-1 48c-27 15-62 15-89-1l-1-46Z" fill="#2d7556"/>
+  <path d="M89 190c24 9 48 10 78 0M90 207c26 8 49 8 75 0" stroke="#0f332a" stroke-width="5" opacity=".8"/>
+  <path d="M83 171c-17 2-32 12-42 27l21 24c11-8 23-12 35-12l-14-39Zm92 0c18 3 31 13 41 28l-20 23c-11-8-23-12-35-12l14-39Z" fill="#1b5946"/>
+  <path d="M43 205 20 154l17-8 30 57-24 2Zm170 0 23-51-17-8-30 57 24 2Z" fill="#234b3c"/>
+  <path d="M16 150c-5-8-3-16 4-21l4-3 8 9-4 20-12-5Zm220 0c5-8 3-16-4-21l-4-3-8 9 4 20 12-5Z" fill="#3b8460"/>
+  <path d="M65 251c-10 9-17 22-16 36h35l5-40-24 4Zm126 0c10 9 17 22 16 36h-35l-5-40 24 4Z" fill="#0c2924"/>
+  <path d="M36 289h55m74 0h55" stroke="#7ebf79" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+  <path d="M194 177c16-2 31-11 43-27" stroke="#91d67c" stroke-width="4" stroke-linecap="round" opacity=".65"/>
+  <path d="m215 150 18-1-11 14" stroke="#d7f7a4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

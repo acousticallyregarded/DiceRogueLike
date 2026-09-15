@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 300" fill="none">
+  <title>Lady Silkmaw spider queen boss art placeholder silhouette</title>
+  <path d="M159 92c-20-30-11-59 9-71 20 12 29 41 9 71" fill="#24143c"/>
+  <path d="M158 100c-16-20-37-31-58-25-18 5-32 20-32 38 0 23 21 39 48 38h84c27 1 48-15 48-38 0-18-14-33-32-38-21-6-42 5-58 25Z" fill="#3b205c"/>
+  <ellipse cx="160" cy="154" rx="52" ry="56" fill="#542476"/>
+  <ellipse cx="160" cy="156" rx="28" ry="38" fill="#1c102e"/>
+  <path d="M145 148c0-8 6-15 15-15s15 7 15 15v17c0 8-6 14-15 14s-15-6-15-14v-17Z" fill="#a64bba"/>
+  <path d="M151 150h5m8 0h5M151 159h5m8 0h5" stroke="#f1b2e4" stroke-width="4" stroke-linecap="round"/>
+  <path d="M120 127c8-8 16-11 25-9m30 0c9-2 17 1 25 9" stroke="#d08ad0" stroke-width="4" stroke-linecap="round"/>
+  <g stroke="#28143e" stroke-width="11" stroke-linecap="round">
+    <path d="M120 128 39 72 17 25"/><path d="M111 144 28 132 5 105"/>
+    <path d="M111 166 31 188 7 221"/><path d="M122 183 58 248 47 282"/>
+    <path d="M200 128 281 72 303 25"/><path d="M209 144 292 132 315 105"/>
+    <path d="M209 166 289 188 313 221"/><path d="M198 183 262 248 273 282"/>
+  </g>
+  <g stroke="#9d4fb1" stroke-width="3" stroke-linecap="round" opacity=".85">
+    <path d="M120 128 39 72 17 25"/><path d="M111 144 28 132 5 105"/>
+    <path d="M111 166 31 188 7 221"/><path d="M122 183 58 248 47 282"/>
+    <path d="M200 128 281 72 303 25"/><path d="M209 144 292 132 315 105"/>
+    <path d="M209 166 289 188 313 221"/><path d="M198 183 262 248 273 282"/>
+  </g>
+  <path d="M126 203c20 15 48 15 68 0l-6 42c-16 14-46 14-62 0l-6-42Z" fill="#32184e"/>
+  <path d="m138 247-16 33m60-33 16 33" stroke="#5f2b77" stroke-width="10" stroke-linecap="round"/>
+  <path d="m143 64 17-30 17 30" stroke="#e49dda" stroke-width="4" stroke-linejoin="round" opacity=".75"/>
+</svg>

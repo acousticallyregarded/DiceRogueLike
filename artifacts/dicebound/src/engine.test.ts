@@ -39,6 +39,7 @@ import { CHARACTERS, getCharacter } from "./characters.js";
 import { BARD_DURATIONS } from "./bard-moves.js";
 import { JOHN_ATTACK_DURATIONS } from "./john-moves.js";
 import { UNC_ACTION_DURATIONS } from "./unc-moves.js";
+import { LEVELS } from "./level-content.js";
 
 const authenticRandom = Math.random;
 
@@ -382,8 +383,8 @@ function runAssertions() {
   assert.equal(migratedTrail.meta.inventory[0].id, "kept");
   assert.equal(migratedTrail.run!.trailIntroSeen, true);
 
-  // Boss victory settles once; continuing starts the next floor with a fresh
-  // statue schedule and no stale boss combat state.
+  // Non-terminal Continue starts the next floor without crediting the wallet;
+  // terminal settlement converts only the remaining cumulative run rewards.
   let bossVictory = startedRun();
   bossVictory.run!.phase = "combat";
   bossVictory.run!.isBossCombat = true;
@@ -417,9 +418,9 @@ function runAssertions() {
   assert.equal(JSON.stringify(act(bossVictory, { type: "CONTINUE_RUN" })), pendingReport);
   assert.deepEqual(validateState(bossVictory).run!.victoryReport, bossVictory.run!.victoryReport);
   bossVictory = act(bossVictory, { type: "DISMISS_VICTORY_REPORT" });
-  const beforeSettlement = bossVictory.meta.gems;
+  const beforeInterimSettlement = bossVictory.meta.gems;
   bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
-  assert.equal(bossVictory.meta.gems, beforeSettlement + 62);
+  assert.equal(bossVictory.meta.gems, beforeInterimSettlement);
   assert.equal(bossVictory.run!.floor, 2);
   assert.equal(bossVictory.run!.bossCountdown, TRAIL_TILE_COUNT - 1);
   assert.equal(bossVictory.run!.bossRollsLeft, TRAIL_TILE_COUNT - 1);
@@ -428,9 +429,45 @@ function runAssertions() {
   assert.equal(bossVictory.run!.isBossCombat, false);
   assert.deepEqual(bossVictory.run!.enemies, []);
   assert.equal(bossVictory.run!.playerCombat, null);
+
+  // A spend followed by new earnings is settled from the terminal balance,
+  // while the earlier floor remains uncredited. The old 120 gold becomes
+  // 70, then 30 is earned, so 100 gold + 50 gems => 60 wallet gems.
+  bossVictory.run!.gold -= 50;
+  bossVictory.run!.gold += 30;
+  bossVictory.run!.floor = LEVELS.length;
+  bossVictory.run!.phase = "victory";
+  bossVictory.run!.trailCinematic = null;
+  bossVictory.run!.victoryReport = null;
+  const beforeTerminalSettlement = bossVictory.meta.gems;
+  bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
+  assert.equal(bossVictory.run, null);
+  assert.equal(bossVictory.meta.gems, beforeTerminalSettlement + 60);
   const settledState = JSON.stringify(bossVictory);
   bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
   assert.equal(JSON.stringify(bossVictory), settledState);
+
+  // A legacy settled:true save has no historical ledger. Loading it records
+  // the current totals as a conservative baseline, never replays old credit,
+  // and never deducts wallet gems when gold fell before a future earning.
+  const legacySettled = JSON.parse(JSON.stringify(startedRun()));
+  legacySettled.meta.gems = 100;
+  legacySettled.run.settled = true;
+  delete legacySettled.run.settledGold;
+  delete legacySettled.run.settledGems;
+  legacySettled.run.gold = 80;
+  const migratedSettled = validateState(legacySettled);
+  assert.equal(migratedSettled.run!.settledGold, 8);
+  assert.equal(migratedSettled.run!.settledGems, migratedSettled.run!.gemsEarned);
+  migratedSettled.run!.gold += 30;
+  migratedSettled.run!.floor = LEVELS.length;
+  migratedSettled.run!.phase = "victory";
+  migratedSettled.run!.trailCinematic = null;
+  migratedSettled.run!.victoryReport = null;
+  const terminalLegacy = act(migratedSettled, { type: "CONTINUE_RUN" });
+  assert.equal(terminalLegacy.run, null);
+  assert.equal(terminalLegacy.meta.gems, 103);
+  assert.equal(act(terminalLegacy, { type: "CONTINUE_RUN" }).meta.gems, 103);
 
   // Traits are applied after defense: resistance floors, vulnerability doubles,
   // and immunity is exactly zero (never promoted to one).

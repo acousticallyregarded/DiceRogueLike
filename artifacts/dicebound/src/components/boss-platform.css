@@ -1,0 +1,116 @@
+.boss-platform {
+  position: absolute;
+  width: 250px;
+  height: 280px;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: end center;
+  filter: drop-shadow(0 15px 10px rgb(3 7 5 / 52%));
+}
+
+.boss-platform__landmark {
+  position: absolute;
+  inset: 2px 15px 57px;
+  border-radius: 50% 50% 18% 18%;
+  opacity: .75;
+}
+
+.boss-platform__pedestal {
+  position: absolute;
+  width: 200px;
+  bottom: 0;
+  left: 25px;
+  z-index: 2;
+}
+
+.boss-platform__boss {
+  position: absolute;
+  width: 170px;
+  height: 215px;
+  bottom: 54px;
+  left: 40px;
+  z-index: 3;
+  opacity: .2;
+  transform: translateY(30px) scale(.95);
+  transform-origin: 50% 100%;
+  transition: opacity 900ms ease, transform 900ms ease;
+}
+
+.boss-platform__boss--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.boss-platform__name {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 12px;
+  width: 190px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 1px;
+  text-align: center;
+  color: #fff6ce;
+  text-shadow: 0 2px 2px #17120e, 0 0 8px rgb(0 0 0 / 75%);
+}
+
+.boss-platform__name strong {
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.boss-platform__name span {
+  font-size: 8px;
+  font-weight: 700;
+  opacity: .85;
+}
+
+.boss-platform__runes {
+  position: absolute;
+  z-index: 4;
+  left: 48px;
+  right: 48px;
+  bottom: 33px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.boss-platform__runes span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e8c878;
+  box-shadow: 0 0 9px #f0ac4e;
+}
+
+.boss-platform--swamp .boss-platform__landmark {
+  background:
+    linear-gradient(170deg, transparent 0 30%, rgb(114 155 119 / 80%) 31% 38%, transparent 39%),
+    radial-gradient(ellipse, rgb(81 126 100 / 80%), transparent 68%);
+  border: 8px solid rgb(75 106 85 / 70%);
+}
+
+.boss-platform--webwood .boss-platform__landmark {
+  background:
+    repeating-radial-gradient(ellipse, transparent 0 19px, rgb(221 147 212 / 25%) 20px 22px, transparent 23px 37px),
+    radial-gradient(ellipse, rgb(84 42 94 / 88%), transparent 70%);
+  border: 7px solid rgb(100 56 115 / 75%);
+}
+
+.boss-platform--ashlands .boss-platform__landmark {
+  background:
+    linear-gradient(90deg, rgb(94 39 36 / 80%), transparent 17% 83%, rgb(94 39 36 / 80%)),
+    radial-gradient(ellipse, rgb(123 48 34 / 88%), transparent 70%);
+  border: 9px solid rgb(53 28 31 / 90%);
+  box-shadow: inset 0 -18px 18px rgb(235 74 32 / 28%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boss-platform__boss {
+    transition: none;
+  }
+}
