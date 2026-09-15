@@ -27,6 +27,47 @@ button:disabled {
   pointer-events: none;
 }
 
+/* On phones, keep stance selection compact so the battlefield remains the
+   visual focus and actors have clear space above their heads. */
+@media (max-width: 767px) {
+  .combat-overlay {
+    padding-bottom: 10px !important;
+  }
+
+  .combat-overlay__hud {
+    gap: 6px !important;
+  }
+
+  .combat-attack-selector {
+    padding: 6px 8px !important;
+    border-radius: 14px;
+  }
+
+  .combat-attack-grid {
+    margin-top: 6px !important;
+  }
+
+  .combat-overlay__arena {
+    min-height: 225px;
+    margin: 6px 8px 0;
+    padding-inline: 12px !important;
+    padding-bottom: 26px !important;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 5px 0 #1c1c1c, 0 8px 18px rgb(0 0 0 / 28%);
+  }
+}
+
+@media (max-width: 380px), (max-height: 760px) {
+  .combat-attack-help {
+    display: none;
+  }
+
+  .combat-overlay__arena {
+    min-height: 205px;
+  }
+}
+
 @media (min-width: 768px) {
   .dicebound-desktop-shell {
     max-width: 1180px !important;

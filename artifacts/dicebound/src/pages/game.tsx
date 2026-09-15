@@ -205,7 +205,12 @@ export default function Game() {
 
          {/* A low edge slot keeps wallet access clear of TopBar stats and
              combat/action controls. */}
-         <div className="absolute bottom-[6.5rem] left-3 z-30">
+         <div
+           aria-hidden={inCombat}
+           className={`absolute bottom-[6.5rem] left-3 z-30 transition-opacity ${
+             inCombat ? 'pointer-events-none opacity-0' : 'opacity-100'
+           }`}
+         >
            <WalletButton wallet={wallet} compact />
          </div>
 
