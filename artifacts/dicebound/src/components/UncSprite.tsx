@@ -4,6 +4,7 @@ import { UNC_ACTION_DURATIONS, UNC_MOVES, type UncDamageType } from '../unc-move
 import { SpriteAnimator, type SpriteAnimatorProps, type SpriteName } from './SpriteAnimator';
 import { getUncSpeech } from './unc-speech';
 import './unc-speech.css';
+import uncFireBombGif from '../assets/characters/consumables/unc-fire-bomb.gif';
 
 const fallbacks = import.meta.glob('../assets/characters/unc-*.png', {
   eager: true, query: '?url', import: 'default',
@@ -31,6 +32,7 @@ export function UncSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAni
     : props.sprite === 'unc-death' ? 'death'
     : null;
   const idle = !walking && !attacking && !support;
+  const consumableGif = props.sprite === 'custom-throw-firebomb' ? uncFireBombGif : null;
   const speech = props.active ? getUncSpeech(props.sprite, damageType) : null;
   const action = attacks[damageType as keyof typeof attacks] ?? attacks.bludgeoning;
   const metadata = UNC_MOVES[damageType as UncDamageType] ?? UNC_MOVES.bludgeoning;
@@ -44,13 +46,24 @@ export function UncSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAni
     : UNC_ACTION_DURATIONS[support ?? 'idle'] / Math.max(1, playbackSpeed);
   const callback = useRef(props.onAnimationEnd);
   callback.current = props.onAnimationEnd;
-  // The fire-bomb consumable has no dedicated supplied clip; keep idle art
-  // while its existing throw effect completes, without reusing a wrong potion.
   useEffect(() => {
-    if (!idle || !props.active || !props.trigger) return;
+    if ((!idle && !consumableGif) || !props.active || !props.trigger) return;
     const timer = window.setTimeout(() => callback.current?.(), props.durationMs ?? duration);
     return () => window.clearTimeout(timer);
-  }, [idle, props.active, props.trigger, duration, props.durationMs]);
+  }, [consumableGif, idle, props.active, props.trigger, duration, props.durationMs]);
+  if (consumableGif) {
+    return (
+      <div className={`relative ${props.className ?? ''}`} style={props.style}>
+        <img
+          key={`${props.sprite}-${props.trigger ?? 0}`}
+          src={consumableGif}
+          alt={props.alt === 'Hero' ? 'Unc' : props.alt}
+          className="absolute object-contain"
+          style={{ width: '160%', height: '160%', left: '-30%', bottom: '-24%' }}
+        />
+      </div>
+    );
+  }
   return (
     <div className={`relative ${props.className ?? ''}`} style={props.style}>
       <SpriteAnimator {...props}

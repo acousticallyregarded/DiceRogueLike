@@ -568,6 +568,9 @@ export function CombatOverlay({
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
+  const fireBombDuration = run.characterId === 'unc' || run.characterId === 'alan-a-dale' ? 4200 : 2600;
+  const potionDuration = run.characterId === 'unc' ? 4200 : run.characterId === 'alan-a-dale' ? 3400 : 1800;
+  const guardDuration = run.characterId === 'unc' ? 5000 : run.characterId === 'alan-a-dale' ? 3400 : 2600;
   const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit;
   const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack
     && !drinkingPotion && !guardingHero && !leaving && !bossAnimating && !uncRecovering;
@@ -710,7 +713,10 @@ export function CombatOverlay({
                 active
                 loop={!swingingSword && !reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
                 frameCount={swingingSword ? 13 : reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
-                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? 1800 : (throwingFireBomb ? 2600 : (drinkingPotion ? 1800 : (guardingHero ? 2600 : 1800)))}
+                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? 1800
+                  : (throwingFireBomb ? fireBombDuration / Math.max(1, speed)
+                    : (drinkingPotion ? potionDuration / Math.max(1, speed)
+                      : (guardingHero ? guardDuration / Math.max(1, speed) : 1800)))}
                 trigger={swingingSword ? playerAttackTrigger : reactingToHit ? playerHitTrigger : throwingFireBomb
                   ? playerFireBombTrigger
                   : (drinkingPotion ? playerDrinkTrigger : (guardingHero ? playerGuardTrigger : 0))}

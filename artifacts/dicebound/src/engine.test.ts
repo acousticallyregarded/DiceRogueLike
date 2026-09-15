@@ -793,6 +793,12 @@ function runAssertions() {
   assert.equal(bomb.run!.consumables.fire_bomb, 1);
   assert.equal(bomb.run!.playerCombat!.pendingFireBomb, true);
   assert.equal(getEnemyResponseDelayMs(bomb.run!), FIRE_BOMB_ANIMATION_DURATION_MS);
+  const bardBomb = validateState(JSON.parse(JSON.stringify(bomb)));
+  bardBomb.run!.characterId = "alan-a-dale";
+  assert.equal(getEnemyResponseDelayMs(bardBomb.run!), 4200);
+  const uncBomb = validateState(JSON.parse(JSON.stringify(bomb)));
+  uncBomb.run!.characterId = "unc";
+  assert.equal(getEnemyResponseDelayMs(uncBomb.run!), 4200);
   assert.equal(bomb.run!.enemies[0].hp, 20);
   assert.equal(bomb.run!.enemies[1].hp, 20);
   bomb = act(bomb, { type: "RESOLVE_ENEMY_TURN" });

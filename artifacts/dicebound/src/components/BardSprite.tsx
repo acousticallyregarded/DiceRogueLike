@@ -3,6 +3,9 @@ import type { DamageType } from '../bestiary';
 import { BARD_DURATIONS } from '../bard-moves';
 import { SpriteAnimator, type SpriteAnimatorProps, type SpriteName } from './SpriteAnimator';
 import './unc-speech.css';
+import bardGuardGif from '../assets/characters/consumables/bard-guard.gif';
+import bardHealthGif from '../assets/characters/consumables/bard-health.gif';
+import bardFireBombGif from '../assets/characters/consumables/bard-fire-bomb.gif';
 
 const fallbacks = import.meta.glob('../assets/characters/bard-*.png', {
   eager: true, query: '?url', import: 'default',
@@ -24,17 +27,32 @@ export function BardSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAn
     : `bard-${action}`;
   const duration = BARD_DURATIONS[walking ? 'walk' : action];
   const idle = !walking && action === 'idle';
+  const consumableGif = props.sprite === 'custom-guard-tonic' ? bardGuardGif
+    : props.sprite === 'custom-drink-potion' ? bardHealthGif
+      : props.sprite === 'custom-throw-firebomb' ? bardFireBombGif
+        : null;
   const speech = props.sprite === 'bard-cutting-words' ? 'COCK'
     : props.sprite === 'custom-hero-sword' && damageType === 'bludgeoning' ? 'KABOOOONG!' : null;
   const callback = useRef(props.onAnimationEnd);
   callback.current = props.onAnimationEnd;
-  // No potion/throw clips were supplied: keep the real idle artwork while
-  // the existing consumable effects and completion callbacks run.
   useEffect(() => {
-    if (!idle || !props.active || !props.trigger || !props.durationMs) return;
+    if ((!idle && !consumableGif) || !props.active || !props.trigger || !props.durationMs) return;
     const timer = window.setTimeout(() => callback.current?.(), props.durationMs);
     return () => window.clearTimeout(timer);
-  }, [idle, props.active, props.trigger, props.durationMs]);
+  }, [consumableGif, idle, props.active, props.trigger, props.durationMs]);
+  if (consumableGif) {
+    return (
+      <div className={`relative ${props.className ?? ''}`} style={props.style}>
+        <img
+          key={`${props.sprite}-${props.trigger ?? 0}`}
+          src={consumableGif}
+          alt={props.alt === 'Hero' ? 'Alan-a-Dale' : props.alt}
+          className="absolute object-contain"
+          style={{ width: '145%', height: '145%', left: '-22.5%', bottom: '-22%' }}
+        />
+      </div>
+    );
+  }
   return (
     <div className={`relative ${props.className ?? ''}`} style={props.style}>
       <SpriteAnimator {...props}

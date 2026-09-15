@@ -471,7 +471,12 @@ export function getEnemyResponseDelayMs(run: AttackTimingRun): number {
   if (run.playerCombat?.heroImpactResolved) {
     return 500 / combatPlaybackSpeed(run);
   }
-  if (run.playerCombat?.pendingFireBomb) return FIRE_BOMB_ANIMATION_DURATION_MS;
+  if (run.playerCombat?.pendingFireBomb) {
+    const authoredDuration = run.characterId === "unc" || run.characterId === "alan-a-dale"
+      ? 4200
+      : FIRE_BOMB_ANIMATION_DURATION_MS;
+    return authoredDuration / combatPlaybackSpeed(run);
+  }
   if (run.playerCombat?.lastConsumable === "health_potion") {
     return run.characterId === "unc"
       ? UNC_ACTION_DURATIONS.health / combatPlaybackSpeed(run)
