@@ -93,6 +93,7 @@ export function getBossDeathDurationMs(enemy: { boss?: boolean; name: string }):
   const bossId = getBossId(enemy);
   if (bossId === "skeleton-king") return 5200;
   if (bossId === "grubgut") return 2600;
+  if (bossId === "silkmaw") return 4200;
   return 1800;
 }
 
@@ -100,11 +101,11 @@ export function getBossMovePresentation(enemy: {
   boss?: boolean; name: string; bossMove?: string; lastBossAttack?: string;
 }): { label: string; kind: "melee" | "ranged" | "support"; durationMs: number } {
   switch (enemy.bossMove) {
-    case "club": return { label: "Bridgebreaker", kind: "melee", durationMs: 1800 };
-    case "poison_belch": return { label: "Swamp Belch", kind: "ranged", durationMs: 4200 };
+    case "club": return { label: "Bridgebreaker", kind: "melee", durationMs: 2600 };
+    case "poison_belch": return { label: "Swamp Belch", kind: "ranged", durationMs: 3400 };
     case "regen": return { label: "Troll Regeneration", kind: "support", durationMs: 2200 };
-    case "venom_bite": return { label: "Venom Lunge", kind: "melee", durationMs: 1800 };
-    case "web": return { label: "Royal Web", kind: "ranged", durationMs: 2200 };
+    case "venom_bite": return { label: "Venom Lunge", kind: "melee", durationMs: 3400 };
+    case "web": return { label: "Royal Web", kind: "ranged", durationMs: 2600 };
     case "summon_brood": return { label: "Brood Call", kind: "support", durationMs: 2400 };
     case "slash": return { label: "Executioner's Slash", kind: "melee", durationMs: 1800 };
     case "fire_wave": return { label: "Cinder Wave", kind: "ranged", durationMs: 4200 };

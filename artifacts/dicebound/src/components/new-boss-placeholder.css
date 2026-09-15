@@ -43,7 +43,7 @@
 }
 
 .new-boss-placeholder--hit .new-boss-placeholder__art {
-  animation: dicebound-placeholder-hit calc(360ms / var(--boss-animation-speed)) ease-out both;
+  animation: dicebound-placeholder-hit calc(var(--boss-hit-duration, 360ms) / var(--boss-animation-speed)) ease-out both;
 }
 
 .new-boss-placeholder--death .new-boss-placeholder__art {

@@ -791,7 +791,7 @@ export function CombatOverlay({
                         dying={isDying}
                         speed={speed}
                         movePresentation={bossMove ?? undefined}
-                        showPlaceholderLabel={placeholderBoss !== 'grubgut'}
+                        showPlaceholderLabel={placeholderBoss === 'cinder'}
                       />
                     ) : enemy.boss ? (
                       <SkeletonKingSprite attackTrigger={enemyEvent.attackTrigger}
