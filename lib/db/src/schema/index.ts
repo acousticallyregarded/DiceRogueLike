@@ -73,10 +73,7 @@ export const redeemableGemAccounts = pgTable("redeemable_gem_accounts", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
 
-/**
- * Append-only accounting entries. Credits are intentionally not exposed by
- * the public API; trusted server/admin jobs will add them later.
- */
+/** Append-only accounting entries for debits, refunds, and operator grants. */
 export const redeemableGemLedger = pgTable(
   "redeemable_gem_ledger",
   {
@@ -85,6 +82,7 @@ export const redeemableGemLedger = pgTable(
     operationKey: text("operation_key").notNull(),
     delta: integer("delta").notNull(),
     reason: text("reason").notNull(),
+    operatorId: text("operator_id"),
     purchaseId: text("purchase_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },

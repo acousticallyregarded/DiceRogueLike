@@ -7,6 +7,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { createPublicKey, verify } from "node:crypto";
 import { privateKeyToAccount } from "viem/accounts";
 import { and, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import {
@@ -24,6 +25,7 @@ export const ROBINHOOD_MAINNET_RPC = "https://rpc.mainnet.chain.robinhood.com";
 export const ESCROW_ADDRESS = "0x6efDa0f76c9B5D23a0dD777A773FAa876fc10C95" as Address;
 export const TOKEN_DECIMALS = 18;
 export const GEM_COST = 100;
+export const MAX_REDEEMABLE_GEM_GRANT = 10_000;
 /** A signer nonce stuck this long fails closed instead of creating a nonce gap. */
 export const STUCK_NONCE_THRESHOLD_MS = 30 * 60 * 1000;
 const UNRESOLVED_STATUSES = ["pending", "signed", "submitted"] as const;
@@ -73,6 +75,139 @@ export class TokenPurchaseError extends Error {
   ) {
     super(message);
   }
+}
+
+export interface RedeemableGemGrantInput {
+  walletAddress: string;
+  amount: number;
+  reason: string;
+  operationKey: string;
+  authorization: string;
+}
+
+function requiredPrintableText(value: string, maxLength: number): boolean {
+  return value === value.trim() &&
+    value.length > 0 &&
+    value.length <= maxLength &&
+    /^[\x20-\x7e]+$/.test(value);
+}
+
+export function validateRedeemableGemGrant(input: RedeemableGemGrantInput): void {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(input.walletAddress)) {
+    throw new TokenPurchaseError("invalid_grant_wallet", "A valid wallet address is required.", 400);
+  }
+  if (!Number.isSafeInteger(input.amount) || input.amount < 1 || input.amount > MAX_REDEEMABLE_GEM_GRANT) {
+    throw new TokenPurchaseError(
+      "invalid_grant_amount",
+      `Grant amount must be an integer from 1 to ${MAX_REDEEMABLE_GEM_GRANT}.`,
+      400,
+    );
+  }
+  if (!requiredPrintableText(input.reason, 500)) {
+    throw new TokenPurchaseError("invalid_grant_reason", "A grant reason is required.", 400);
+  }
+  if (!requiredPrintableText(input.operationKey, 200)) {
+    throw new TokenPurchaseError("invalid_grant_operation_key", "A valid operation key is required.", 400);
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(input.authorization) || input.authorization.length > 200) {
+    throw new TokenPurchaseError("invalid_grant_authorization", "A valid grant authorization is required.", 400);
+  }
+}
+
+export function redeemableGemGrantSigningPayload(
+  input: Pick<RedeemableGemGrantInput, "walletAddress" | "amount" | "reason" | "operationKey">,
+): string {
+  return JSON.stringify([
+    "dicebound-redeemable-gem-grant-v1",
+    input.walletAddress.toLowerCase(),
+    input.amount,
+    input.reason,
+    input.operationKey,
+  ]);
+}
+
+export function authenticateRedeemableGemGrant(input: RedeemableGemGrantInput): string {
+  let configured: unknown;
+  try {
+    configured = JSON.parse(process.env.REDEEMABLE_GEM_OPERATOR_PUBLIC_KEYS ?? "{}");
+  } catch {
+    throw new TokenPurchaseError("grant_operators_unconfigured", "Grant operators are not configured.", 503);
+  }
+  if (!configured || Array.isArray(configured) || typeof configured !== "object") {
+    throw new TokenPurchaseError("grant_operators_unconfigured", "Grant operators are not configured.", 503);
+  }
+  const signature = Buffer.from(input.authorization, "base64");
+  const payload = Buffer.from(redeemableGemGrantSigningPayload(input), "utf8");
+  for (const [operatorId, publicKey] of Object.entries(configured)) {
+    if (!requiredPrintableText(operatorId, 100) || typeof publicKey !== "string") continue;
+    try {
+      if (verify(null, payload, createPublicKey(publicKey), signature)) return operatorId;
+    } catch {
+      continue;
+    }
+  }
+  throw new TokenPurchaseError("unauthorized_grant_operator", "Grant authorization is invalid.", 403);
+}
+
+export async function grantRedeemableGems(input: RedeemableGemGrantInput) {
+  validateRedeemableGemGrant(input);
+  const operatorId = authenticateRedeemableGemGrant(input);
+  const walletAddress = input.walletAddress.toLowerCase();
+
+  const result = await db.transaction(async (tx) => {
+    await ensureRedeemableAccount(tx, walletAddress);
+    const [entry] = await tx.insert(redeemableGemLedger).values({
+      id: crypto.randomUUID(),
+      walletAddress,
+      operationKey: input.operationKey,
+      delta: input.amount,
+      reason: input.reason,
+      operatorId,
+    }).onConflictDoNothing().returning();
+
+    if (!entry) {
+      const [existing] = await tx.select().from(redeemableGemLedger)
+        .where(eq(redeemableGemLedger.operationKey, input.operationKey))
+        .limit(1);
+      if (
+        !existing ||
+        existing.walletAddress !== walletAddress ||
+        existing.delta !== input.amount ||
+        existing.reason !== input.reason ||
+        existing.operatorId !== operatorId ||
+        existing.purchaseId !== null
+      ) {
+        throw new TokenPurchaseError(
+          "grant_operation_conflict",
+          "Operation key belongs to a different ledger entry.",
+          409,
+        );
+      }
+      const [account] = await tx.select({ balance: redeemableGemAccounts.balance })
+        .from(redeemableGemAccounts)
+        .where(eq(redeemableGemAccounts.walletAddress, walletAddress))
+        .limit(1);
+      return { ledgerEntryId: existing.id, balance: account?.balance ?? 0, created: false };
+    }
+
+    const [account] = await tx.update(redeemableGemAccounts).set({
+      balance: sql`${redeemableGemAccounts.balance} + ${input.amount}`,
+      updatedAt: new Date(),
+    }).where(eq(redeemableGemAccounts.walletAddress, walletAddress))
+      .returning({ balance: redeemableGemAccounts.balance });
+    if (!account) throw new Error("Redeemable gem account update failed.");
+    return { ledgerEntryId: entry.id, balance: account.balance, created: true };
+  });
+
+  logger.info({
+    operatorId,
+    walletAddress,
+    amount: input.amount,
+    operationKey: input.operationKey,
+    ledgerEntryId: result.ledgerEntryId,
+    created: result.created,
+  }, "Redeemable gem grant processed");
+  return result;
 }
 
 function assertPurchasesEnabled(): void {
