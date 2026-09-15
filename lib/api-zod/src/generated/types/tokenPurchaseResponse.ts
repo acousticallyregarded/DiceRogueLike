@@ -19,6 +19,8 @@ export interface TokenPurchaseResponse {
   quoteTimestamp: Date;
   quoteDelayed: 'previous-close';
   delayed: true;
+  /** @minimum 0 */
+  redeemableGemBalance: number;
   /** @nullable */
   transactionHash?: string | null;
 }

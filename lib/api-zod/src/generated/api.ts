@@ -71,7 +71,9 @@ export const GetTokenInventoryResponse = zod.object({
   "available": zod.boolean()
 }).and(zod.object({
   "escrowBalance": zod.string(),
-  "escrowBalanceBaseUnits": zod.string()
+  "escrowBalanceBaseUnits": zod.string(),
+  "reservedBaseUnits": zod.string(),
+  "availableBalanceBaseUnits": zod.string()
 })))
 })
 
@@ -94,6 +96,10 @@ export const PurchaseTokenBody = zod.object({
   "symbol": zod.enum(['GLD', 'SLV'])
 })
 
+export const purchaseTokenResponseRedeemableGemBalanceMin = 0;
+
+
+
 export const PurchaseTokenResponse = zod.object({
   "id": zod.string(),
   "symbol": zod.enum(['GLD', 'SLV']),
@@ -105,5 +111,95 @@ export const PurchaseTokenResponse = zod.object({
   "quoteTimestamp": zod.coerce.date(),
   "quoteDelayed": zod.literal("previous-close"),
   "delayed": zod.literal(true),
+  "redeemableGemBalance": zod.number().int().min(purchaseTokenResponseRedeemableGemBalanceMin),
   "transactionHash": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get the server-authoritative token-redeemable gem balance
+ */
+export const getRedeemableGemBalanceHeaderXWalletAddressRegExp = new RegExp('^0x[0-9a-fA-F]{40}$');
+
+
+export const GetRedeemableGemBalanceHeader = zod.object({
+  "X-Wallet-Address": zod.string().regex(getRedeemableGemBalanceHeaderXWalletAddressRegExp)
+})
+
+export const getRedeemableGemBalanceResponseBalanceMin = 0;
+
+
+
+export const GetRedeemableGemBalanceResponse = zod.object({
+  "balance": zod.number().int().min(getRedeemableGemBalanceResponseBalanceMin)
+})
+
+
+/**
+ * @summary Get a purchase status
+ */
+export const getTokenPurchasePathIdMax = 100;
+
+
+
+export const GetTokenPurchaseParams = zod.object({
+  "id": zod.coerce.string().min(1).max(getTokenPurchasePathIdMax)
+})
+
+export const getTokenPurchaseHeaderXWalletAddressRegExp = new RegExp('^0x[0-9a-fA-F]{40}$');
+
+
+export const GetTokenPurchaseHeader = zod.object({
+  "X-Wallet-Address": zod.string().regex(getTokenPurchaseHeaderXWalletAddressRegExp)
+})
+
+export const getTokenPurchaseResponseRedeemableGemBalanceMin = 0;
+
+
+
+export const GetTokenPurchaseResponse = zod.object({
+  "id": zod.string(),
+  "symbol": zod.enum(['GLD', 'SLV']),
+  "status": zod.enum(['pending', 'signed', 'submitted', 'confirmed', 'failed']),
+  "gemCost": zod.literal(100),
+  "tokenAmount": zod.string(),
+  "quotePrice": zod.string(),
+  "quoteSource": zod.string(),
+  "quoteTimestamp": zod.coerce.date(),
+  "quoteDelayed": zod.literal("previous-close"),
+  "delayed": zod.literal(true),
+  "redeemableGemBalance": zod.number().int().min(getTokenPurchaseResponseRedeemableGemBalanceMin),
+  "transactionHash": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get pending purchases for the authenticated wallet
+ */
+export const getPendingTokenPurchasesHeaderXWalletAddressRegExp = new RegExp('^0x[0-9a-fA-F]{40}$');
+
+
+export const GetPendingTokenPurchasesHeader = zod.object({
+  "X-Wallet-Address": zod.string().regex(getPendingTokenPurchasesHeaderXWalletAddressRegExp)
+})
+
+export const getPendingTokenPurchasesResponseItemsItemRedeemableGemBalanceMin = 0;
+
+
+
+export const GetPendingTokenPurchasesResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "symbol": zod.enum(['GLD', 'SLV']),
+  "status": zod.enum(['pending', 'signed', 'submitted', 'confirmed', 'failed']),
+  "gemCost": zod.literal(100),
+  "tokenAmount": zod.string(),
+  "quotePrice": zod.string(),
+  "quoteSource": zod.string(),
+  "quoteTimestamp": zod.coerce.date(),
+  "quoteDelayed": zod.literal("previous-close"),
+  "delayed": zod.literal(true),
+  "redeemableGemBalance": zod.number().int().min(getPendingTokenPurchasesResponseItemsItemRedeemableGemBalanceMin),
+  "transactionHash": zod.string().nullish()
+}))
 })

@@ -30,12 +30,18 @@ import { validateGameStateV4 } from "../lib/wallet-save-validation";
 import {
   GetTokenCatalogResponse,
   GetTokenInventoryResponse,
+  GetPendingTokenPurchasesResponse,
+  GetRedeemableGemBalanceResponse,
+  GetTokenPurchaseResponse,
   PurchaseTokenBody,
   PurchaseTokenResponse,
 } from "@workspace/api-zod";
 import {
   catalogItem,
   getInventory,
+  getPendingTokenPurchases,
+  getRedeemableGemBalance,
+  getTokenPurchase,
   getTokenQuote,
   isPayoutConfigured,
   purchaseToken,
@@ -628,6 +634,62 @@ router.post(
       }
       throw error;
     }
+  }),
+);
+
+router.get(
+  "/wallet/redeemable-gems",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    res.json(GetRedeemableGemBalanceResponse.parse({
+      balance: await getRedeemableGemBalance(session.address),
+    }));
+  }),
+);
+
+router.get(
+  "/wallet/purchase/:id",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!id || id.length > 100) {
+      sendJsonError(res, 400, "invalid_purchase_id");
+      return;
+    }
+    const purchase = await getTokenPurchase(session.address, id);
+    if (!purchase) {
+      sendJsonError(res, 404, "purchase_not_found");
+      return;
+    }
+    res.json(GetTokenPurchaseResponse.parse(purchase));
+  }),
+);
+
+router.get(
+  "/wallet/purchases/pending",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    res.json(GetPendingTokenPurchasesResponse.parse({
+      items: await getPendingTokenPurchases(session.address),
+    }));
   }),
 );
 

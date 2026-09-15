@@ -10,4 +10,6 @@ import type { TokenCatalogItem } from './tokenCatalogItem';
 export type TokenInventoryItem = TokenCatalogItem & {
   escrowBalance: string;
   escrowBalanceBaseUnits: string;
+  reservedBaseUnits: string;
+  availableBalanceBaseUnits: string;
 };

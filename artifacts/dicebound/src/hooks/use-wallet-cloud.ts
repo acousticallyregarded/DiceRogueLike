@@ -22,6 +22,43 @@ const WALLET_SESSION_EVENT_KEY = "dicebound-wallet-session-event-v1";
 const WALLET_LOGOUT_PENDING_KEY = "dicebound-wallet-logout-pending-v1";
 const WALLET_ENVELOPE_VERSION = 1;
 
+const WALLET_PURCHASE_INTENT_KEY = "dicebound-wallet-purchase-intent-v1:";
+
+function purchaseIntentKey(address: string): string {
+  return `${WALLET_PURCHASE_INTENT_KEY}${normalizeAddress(address)}`;
+}
+
+interface PurchaseIntent {
+  symbol: string;
+  idempotencyKey: string;
+  purchaseId?: string;
+}
+
+function readPurchaseIntent(address: string): { intent: PurchaseIntent | null; error: string | null } {
+  const read = readLocalValue(purchaseIntentKey(address));
+  if (read.error || !read.value) return { intent: null, error: read.error };
+  try {
+    const parsed = JSON.parse(read.value) as PurchaseIntent;
+    if (typeof parsed?.symbol === "string" && typeof parsed?.idempotencyKey === "string") {
+      return { intent: parsed, error: null };
+    }
+    return { intent: null, error: "Invalid intent format." };
+  } catch {
+    return { intent: null, error: "Could not read intent." };
+  }
+}
+
+function writePurchaseIntent(address: string, symbol: string, idempotencyKey: string, purchaseId?: string): string | null {
+  return writeLocalValue(
+    purchaseIntentKey(address),
+    JSON.stringify({ symbol, idempotencyKey, purchaseId } satisfies PurchaseIntent)
+  );
+}
+
+function clearPurchaseIntent(address: string): string | null {
+  return removeLocalValue(purchaseIntentKey(address));
+}
+
 export type CloudStatus =
   | "guest"
   | "connecting"
@@ -93,6 +130,7 @@ export interface TokenPurchaseResponse {
   quoteDelayed: string;
   delayed: boolean;
   transactionHash?: string | null;
+  redeemableGemBalance?: number;
 }
 
 export interface WalletCloudController {
@@ -121,6 +159,13 @@ export interface WalletCloudController {
   lastPurchase: TokenPurchaseResponse | null;
   buyToken: (symbol: string) => Promise<void>;
   clearPurchaseState: () => void;
+  redeemableGemBalance: number | null;
+  redeemableGemsLoading: boolean;
+  redeemableGemsError: string | null;
+  pendingPurchases: TokenPurchaseResponse[];
+  pendingIntent: { symbol: string; idempotencyKey: string } | null;
+  refreshRedeemableGems: () => Promise<void>;
+  refreshPendingPurchases: () => Promise<void>;
 }
 
 interface UseWalletCloudArgs {
@@ -407,7 +452,12 @@ export function useWalletCloud({
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   const [lastPurchase, setLastPurchase] = useState<TokenPurchaseResponse | null>(null);
-  const pendingPurchaseRef = useRef<{ symbol: string; key: string } | null>(null);
+
+  const [redeemableGemBalance, setRedeemableGemBalance] = useState<number | null>(null);
+  const [redeemableGemsLoading, setRedeemableGemsLoading] = useState(false);
+  const [redeemableGemsError, setRedeemableGemsError] = useState<string | null>(null);
+  const [pendingPurchases, setPendingPurchases] = useState<TokenPurchaseResponse[]>([]);
+  const [pendingIntent, setPendingIntent] = useState<{ symbol: string; idempotencyKey: string } | null>(null);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -438,11 +488,122 @@ export function useWalletCloud({
   const autoRestoreSessionRef = useRef(false);
   const observedSaveRef = useRef<string | null>(null);
 
+  const refreshPendingPurchasesRef = useRef<(() => Promise<void>) | null>(null);
+
   const clearPurchaseState = useCallback(() => {
     setPurchaseError(null);
     setLastTxHash(null);
     setLastPurchase(null);
   }, []);
+
+  const refreshRedeemableGems = useCallback(async () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    setRedeemableGemsLoading(true);
+    setRedeemableGemsError(null);
+    try {
+      const body = await requestJson("/wallet/redeemable-gems", {
+        method: "GET",
+        headers: { "x-wallet-address": s.address },
+      });
+      if (body && typeof body.balance === "number") {
+        setRedeemableGemBalance(body.balance);
+      }
+    } catch (e) {
+      const err = e as HttpError;
+      setRedeemableGemsError(err.message || "Failed to fetch redeemable gems");
+    } finally {
+      setRedeemableGemsLoading(false);
+    }
+  }, []);
+
+  const refreshPendingPurchases = useCallback(async () => {
+    const s = sessionRef.current;
+    if (!s) return;
+
+    let items: TokenPurchaseResponse[] = [];
+    try {
+      const body = await requestJson("/wallet/purchases/pending", {
+        method: "GET",
+        headers: { "x-wallet-address": s.address },
+      });
+      if (body && Array.isArray(body.items)) {
+        items = body.items;
+        setPendingPurchases(items);
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const read = readPurchaseIntent(s.address);
+    if (read.intent) {
+      let currentIntent = read.intent;
+
+      const matchedItem = currentIntent.purchaseId
+        ? items.find(i => i.id === currentIntent.purchaseId)
+        : items.find(i => i.symbol === currentIntent.symbol);
+
+      if (matchedItem) {
+        if (!currentIntent.purchaseId) {
+          currentIntent = { ...currentIntent, purchaseId: matchedItem.id };
+          writePurchaseIntent(s.address, currentIntent.symbol, currentIntent.idempotencyKey, currentIntent.purchaseId);
+        }
+
+        if (matchedItem.status === "confirmed" || matchedItem.status === "failed") {
+          setLastPurchase(matchedItem);
+          if (typeof matchedItem.redeemableGemBalance === 'number') {
+            setRedeemableGemBalance(matchedItem.redeemableGemBalance);
+          }
+          clearPurchaseIntent(s.address);
+          setPendingIntent(null);
+          return;
+        }
+      }
+
+      if (currentIntent.purchaseId && !items.find(i => i.id === currentIntent.purchaseId)) {
+        try {
+          const body = await requestJson(`/wallet/purchase/${currentIntent.purchaseId}`, {
+            method: "GET",
+            headers: { "x-wallet-address": s.address },
+          }) as TokenPurchaseResponse;
+
+          setLastPurchase(body);
+          if (typeof body.redeemableGemBalance === 'number') {
+            setRedeemableGemBalance(body.redeemableGemBalance);
+          }
+
+          if (body.status === "confirmed" || body.status === "failed") {
+            clearPurchaseIntent(s.address);
+            setPendingIntent(null);
+            return;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      setPendingIntent(currentIntent);
+    } else {
+      setPendingIntent(null);
+    }
+  }, []);
+
+  refreshPendingPurchasesRef.current = refreshPendingPurchases;
+
+  useEffect(() => {
+    if (pendingPurchases.length === 0 && pendingIntent === null) return;
+
+    let timer: number;
+    const poll = async () => {
+      if (refreshPendingPurchasesRef.current) {
+        await refreshPendingPurchasesRef.current();
+      }
+      timer = window.setTimeout(poll, 5000);
+    };
+    timer = window.setTimeout(poll, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [pendingPurchases.length, pendingIntent !== null, session?.address]);
 
   const refreshInventory = useCallback(async () => {
     const s = sessionRef.current;
@@ -524,7 +685,10 @@ export function useWalletCloud({
       setError(eventStorageError);
     }
     setPausedRef.current(false);
-  }, [markStateReplacement, writeCache]);
+
+    void refreshRedeemableGems();
+    void refreshPendingPurchases();
+  }, [markStateReplacement, writeCache, refreshRedeemableGems, refreshPendingPurchases]);
 
   const setConflictState = useCallback((
     nextConflict: WalletConflict,
@@ -548,17 +712,23 @@ export function useWalletCloud({
   const buyToken = useCallback(async (symbol: string) => {
     const s = sessionRef.current;
     if (!s || !activeRef.current) return;
-    const pending = pendingPurchaseRef.current;
-    if (pending && pending.symbol !== symbol) {
-      setPurchaseError(`Finish checking the pending ${pending.symbol} purchase before buying ${symbol}.`);
-      return;
+
+    // Create or reuse intent
+    let activeIntent = pendingIntent;
+    if (!activeIntent || activeIntent.symbol !== symbol) {
+      if (activeIntent) {
+        setPurchaseError(`Finish checking the pending ${activeIntent.symbol} purchase before buying ${symbol}.`);
+        return;
+      }
+      activeIntent = { symbol, idempotencyKey: crypto.randomUUID() };
+      writePurchaseIntent(s.address, symbol, activeIntent.idempotencyKey);
+      setPendingIntent(activeIntent);
     }
+
     setIsPurchasing(true);
     setPurchaseError(null);
     setLastTxHash(null);
     setLastPurchase(null);
-    const intent = pending ?? { symbol, key: crypto.randomUUID() };
-    pendingPurchaseRef.current = intent;
 
     try {
       const body = await requestJson("/wallet/purchase", {
@@ -567,39 +737,51 @@ export function useWalletCloud({
           "Content-Type": "application/json",
           "x-wallet-address": s.address,
           "x-csrf-token": s.csrfToken,
-          "Idempotency-Key": intent.key,
+          "Idempotency-Key": activeIntent.idempotencyKey,
         },
         body: JSON.stringify({ symbol }),
       }) as TokenPurchaseResponse;
 
       const txHash = body?.transactionHash || null;
       setLastPurchase(body);
+
+      if (typeof body?.redeemableGemBalance === "number") {
+        setRedeemableGemBalance(body.redeemableGemBalance);
+      }
+
       if (body?.status === "failed") {
-        setPurchaseError("The on-chain transfer failed. The 100 gems remain reserved; do not create another purchase for this payout.");
+        setPurchaseError("The on-chain transfer failed.");
         setIsPurchasing(false);
-        pendingPurchaseRef.current = null;
+        clearPurchaseIntent(s.address);
+        setPendingIntent(null);
+        void refreshPendingPurchases();
         return;
       }
 
-      setLastTxHash(txHash);
-      if (body?.status === "confirmed") pendingPurchaseRef.current = null;
-
-      try {
-        const cloud = await fetchCloud(s.address);
-        if (cloud.save) {
-          activate(cloud.save, s.address, cloud.revision, cloud.updatedAt);
-        }
-      } catch {
-        setPurchaseError("Purchase accepted, but the updated gem balance could not be refreshed yet. Reconnect before spending more gems.");
+      if (body?.id) {
+        writePurchaseIntent(s.address, activeIntent.symbol, activeIntent.idempotencyKey, body.id);
+        setPendingIntent(prev => prev ? { ...prev, purchaseId: body.id } : null);
       }
+
+      setLastTxHash(txHash);
+      if (body?.status === "confirmed") {
+        clearPurchaseIntent(s.address);
+        setPendingIntent(null);
+      }
+
       setIsPurchasing(false);
       void refreshInventory();
+      void refreshPendingPurchases();
     } catch (rawError) {
       const requestError = rawError as HttpError;
+      if (requestError.status && requestError.status >= 400 && requestError.status < 500) {
+        clearPurchaseIntent(s.address);
+        setPendingIntent(null);
+      }
       setPurchaseError(requestError.body?.error || requestError.message || "Purchase failed.");
       setIsPurchasing(false);
     }
-  }, [activate, fetchCloud, refreshInventory]);
+  }, [refreshInventory, pendingIntent, refreshPendingPurchases]);
 
   const putCloud = useCallback(async (
     walletSession: WalletSession,
@@ -1322,6 +1504,13 @@ export function useWalletCloud({
     lastPurchase,
     buyToken,
     clearPurchaseState,
+    redeemableGemBalance,
+    redeemableGemsLoading,
+    redeemableGemsError,
+    pendingPurchases,
+    pendingIntent,
+    refreshRedeemableGems,
+    refreshPendingPurchases,
   };
 }
 

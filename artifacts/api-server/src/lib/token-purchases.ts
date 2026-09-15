@@ -8,8 +8,13 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { desc, eq, isNotNull, sql } from "drizzle-orm";
-import { db, tokenPurchases, walletSaves } from "@workspace/db";
+import { and, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import {
+  db,
+  redeemableGemAccounts,
+  redeemableGemLedger,
+  tokenPurchases,
+} from "@workspace/db";
 import { logger } from "./logger";
 import { InvalidTokenPriceError, tokenAmountForPrice } from "./token-purchase-math";
 export { tokenAmountForPrice } from "./token-purchase-math";
@@ -19,6 +24,9 @@ export const ROBINHOOD_MAINNET_RPC = "https://rpc.mainnet.chain.robinhood.com";
 export const ESCROW_ADDRESS = "0x6efDa0f76c9B5D23a0dD777A773FAa876fc10C95" as Address;
 export const TOKEN_DECIMALS = 18;
 export const GEM_COST = 100;
+/** A signer nonce stuck this long fails closed instead of creating a nonce gap. */
+export const STUCK_NONCE_THRESHOLD_MS = 30 * 60 * 1000;
+const UNRESOLVED_STATUSES = ["pending", "signed", "submitted"] as const;
 
 export type TokenSymbol = "GLD" | "SLV";
 export type PurchaseStatus = "pending" | "signed" | "submitted" | "confirmed" | "failed";
@@ -52,6 +60,8 @@ export interface Quote {
 export interface InventoryItem extends Quote {
   escrowBalanceBaseUnits: string;
   escrowBalance: string;
+  reservedBaseUnits: string;
+  availableBalanceBaseUnits: string;
   available: boolean;
 }
 
@@ -111,11 +121,13 @@ function symbol(value: unknown): TokenSymbol | null {
   return value === "GLD" || value === "SLV" ? value : null;
 }
 
-function quoteAgeIsAllowed(timestamp: Date): boolean {
-  const now = new Date();
+export function quoteAgeIsAllowed(timestamp: Date, now = new Date()): boolean {
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const quotedDay = Date.UTC(timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate());
-  return today - quotedDay >= 0 && today - quotedDay <= 7 * 86_400_000;
+  // The /prev aggregate must belong to a completed prior UTC calendar day,
+  // never today's in-progress data. Four days covers a normal weekend plus an
+  // observed US market holiday without accepting a full trading week-old quote.
+  return today - quotedDay >= 86_400_000 && today - quotedDay <= 4 * 86_400_000;
 }
 
 async function fetchQuote(token: TokenSymbol): Promise<Quote> {
@@ -136,8 +148,9 @@ async function fetchQuote(token: TokenSymbol): Promise<Quote> {
   } catch {
     throw new TokenPurchaseError("quote_unavailable", "Approved token pricing is unavailable.");
   }
-  const result = (body as { results?: Array<{ c?: number; t?: number }> })?.results?.[0];
-  if (!result || typeof result.c !== "number" || !Number.isFinite(result.c) || result.c <= 0 || typeof result.t !== "number") {
+  const results = (body as { results?: Array<{ c?: number; t?: number }> })?.results;
+  const result = results?.[0];
+  if (!results || results.length !== 1 || !result || typeof result.c !== "number" || !Number.isFinite(result.c) || result.c <= 0 || typeof result.t !== "number" || result.t > Date.now()) {
     throw new TokenPurchaseError("quote_unavailable", "Approved token pricing is unavailable.");
   }
   const timestamp = new Date(result.t);
@@ -176,12 +189,22 @@ export async function getInventory(): Promise<InventoryItem[]> {
   for (const token of ["GLD", "SLV"] as const) {
     try {
       const quote = await fetchQuote(token);
-      const balanceBaseUnits = await getEscrowBalance(quote.tokenAddress);
+      const { balanceBaseUnits, reservedBaseUnits } = await db.transaction(async (tx) => {
+        await tx.execute(tokenLockSql(quote.tokenAddress));
+        const chainBalance = await getEscrowBalance(quote.tokenAddress);
+        return {
+          balanceBaseUnits: chainBalance,
+          reservedBaseUnits: await unresolvedReservation(tx, quote.tokenAddress),
+        };
+      });
+      const availableBalanceBaseUnits = balanceBaseUnits - reservedBaseUnits;
       items.push({
         ...quote,
         escrowBalanceBaseUnits: balanceBaseUnits.toString(),
         escrowBalance: decimalFromBaseUnits(balanceBaseUnits),
-        available: configured && balanceBaseUnits >= BigInt(quote.amountBaseUnits),
+        reservedBaseUnits: reservedBaseUnits.toString(),
+        availableBalanceBaseUnits: availableBalanceBaseUnits.toString(),
+        available: configured && availableBalanceBaseUnits >= BigInt(quote.amountBaseUnits),
       });
     } catch {
       // Inventory is fail-closed: a missing quote, RPC failure, or bad config
@@ -197,6 +220,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
         delayed: true,
         escrowBalanceBaseUnits: "0",
         escrowBalance: "0",
+        reservedBaseUnits: "0",
+        availableBalanceBaseUnits: "0",
         available: false,
       });
     }
@@ -212,6 +237,113 @@ async function getEscrowBalance(tokenAddress: Address): Promise<bigint> {
     args: [ESCROW_ADDRESS],
   });
   return BigInt(balance as bigint);
+}
+
+function tokenLockSql(tokenAddress: Address) {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${"dicebound-token-reservation:" + tokenAddress.toLowerCase()}))`;
+}
+
+function signerLockSql() {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${"dicebound-token-signer-nonce"}))`;
+}
+
+async function unresolvedReservation(
+  tx: any,
+  tokenAddress: Address,
+): Promise<bigint> {
+  const rows = await tx
+    .select({ amount: tokenPurchases.tokenAmountBaseUnits })
+    .from(tokenPurchases)
+    .where(and(
+      eq(tokenPurchases.tokenAddress, tokenAddress),
+      inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
+    ));
+  return rows.reduce((total: bigint, row: { amount: string }) => total + BigInt(row.amount), 0n);
+}
+
+async function ensureRedeemableAccount(tx: any, walletAddress: string): Promise<void> {
+  await tx.insert(redeemableGemAccounts).values({
+    walletAddress,
+    balance: 0,
+    updatedAt: new Date(),
+  }).onConflictDoNothing();
+}
+
+async function debitRedeemableGems(
+  tx: any,
+  walletAddress: string,
+  purchaseId: string,
+): Promise<void> {
+  await ensureRedeemableAccount(tx, walletAddress);
+  const [debit] = await tx.insert(redeemableGemLedger).values({
+    id: crypto.randomUUID(),
+    walletAddress,
+    operationKey: `purchase:${purchaseId}:debit`,
+    delta: -GEM_COST,
+    reason: "token-purchase",
+    purchaseId,
+  }).onConflictDoNothing().returning({ id: redeemableGemLedger.id });
+  if (!debit) throw new TokenPurchaseError("purchase_already_accounted", "Purchase accounting conflict.", 409);
+  const updated = await tx.update(redeemableGemAccounts).set({
+    balance: sql`${redeemableGemAccounts.balance} - ${GEM_COST}`,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(redeemableGemAccounts.walletAddress, walletAddress),
+    sql`${redeemableGemAccounts.balance} >= ${GEM_COST}`,
+  )).returning({ balance: redeemableGemAccounts.balance });
+  if (updated.length !== 1) {
+    throw new TokenPurchaseError("insufficient_redeemable_gems", "At least 100 redeemable gems are required.", 409);
+  }
+}
+
+async function markDefinitiveRevert(
+  purchase: typeof tokenPurchases.$inferSelect,
+): Promise<typeof tokenPurchases.$inferSelect> {
+  return db.transaction(async (tx) => {
+    const [updated] = await tx.update(tokenPurchases).set({
+      status: "failed",
+      errorCode: "transaction_reverted",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(tokenPurchases.id, purchase.id),
+      inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
+    )).returning();
+    if (!updated) {
+      const [current] = await tx.select().from(tokenPurchases)
+        .where(eq(tokenPurchases.id, purchase.id)).limit(1);
+      return current ?? purchase;
+    }
+    await ensureRedeemableAccount(tx, updated.walletAddress);
+    const [refund] = await tx.insert(redeemableGemLedger).values({
+      id: crypto.randomUUID(),
+      walletAddress: updated.walletAddress,
+      operationKey: `purchase:${updated.id}:revert-refund`,
+      delta: GEM_COST,
+      reason: "token-purchase-definitive-revert",
+      purchaseId: updated.id,
+    }).onConflictDoNothing().returning({ id: redeemableGemLedger.id });
+    if (refund) {
+      await tx.update(redeemableGemAccounts).set({
+        balance: sql`${redeemableGemAccounts.balance} + ${GEM_COST}`,
+        updatedAt: new Date(),
+      }).where(eq(redeemableGemAccounts.walletAddress, updated.walletAddress));
+    }
+    return updated;
+  });
+}
+
+async function purchaseStuck(tx: any): Promise<boolean> {
+  const cutoff = new Date(Date.now() - STUCK_NONCE_THRESHOLD_MS);
+  const rows = await tx
+    .select({ id: tokenPurchases.id })
+    .from(tokenPurchases)
+    .where(and(
+      inArray(tokenPurchases.status, ["signed", "submitted"]),
+      isNotNull(tokenPurchases.nonce),
+      lt(tokenPurchases.updatedAt, cutoff),
+    ))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export function catalogItem(quote: Quote) {
@@ -231,7 +363,10 @@ export function catalogItem(quote: Quote) {
   };
 }
 
-function outputPurchase(row: typeof tokenPurchases.$inferSelect) {
+function outputPurchase(
+  row: typeof tokenPurchases.$inferSelect,
+  redeemableGemBalance: number,
+) {
   return {
     id: row.id,
     symbol: row.symbol,
@@ -243,21 +378,35 @@ function outputPurchase(row: typeof tokenPurchases.$inferSelect) {
     quoteTimestamp: row.quoteTimestamp.toISOString(),
     quoteDelayed: row.quoteDelayed,
     delayed: true,
+    redeemableGemBalance,
     transactionHash: row.transactionHash,
   };
 }
 
+async function purchaseResponse(row: typeof tokenPurchases.$inferSelect) {
+  const balance = await db
+    .select({ balance: redeemableGemAccounts.balance })
+    .from(redeemableGemAccounts)
+    .where(eq(redeemableGemAccounts.walletAddress, row.walletAddress))
+    .limit(1);
+  return outputPurchase(row, balance[0]?.balance ?? 0);
+}
+
 async function receiptStatus(row: typeof tokenPurchases.$inferSelect) {
-  if (!row.transactionHash) return row;
+  if (!row.transactionHash || row.status === "confirmed" || row.status === "failed") return row;
   try {
     const receipt = await publicClient.getTransactionReceipt({ hash: row.transactionHash as Hex });
     const status: PurchaseStatus = receipt.status === "success" ? "confirmed" : "failed";
+    if (status === "failed") return markDefinitiveRevert(row);
     const [updated] = await db.update(tokenPurchases).set({
       status,
-      errorCode: status === "failed" ? "transaction_reverted" : null,
+      errorCode: null,
       updatedAt: new Date(),
-      confirmedAt: status === "confirmed" ? new Date() : null,
-    }).where(eq(tokenPurchases.id, row.id)).returning();
+      confirmedAt: new Date(),
+    }).where(and(
+      eq(tokenPurchases.id, row.id),
+      inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
+    )).returning();
     return updated ?? row;
   } catch {
     return row;
@@ -275,9 +424,28 @@ async function signAndPersist(row: typeof tokenPurchases.$inferSelect): Promise<
   // The advisory transaction lock serializes nonce allocation and remains held
   // until the signed bytes and their hash are durable.
   const [updated] = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"dicebound-token-payout"}))`);
+    await tx.execute(signerLockSql());
+    if (await purchaseStuck(tx)) {
+      throw new TokenPurchaseError(
+        "signer_nonce_stuck",
+        "A previous token payout is still pending. New payouts are temporarily paused.",
+        503,
+      );
+    }
     const current = (await tx.select().from(tokenPurchases).where(eq(tokenPurchases.id, row.id)).limit(1))[0];
     if (!current || current.rawSignedTransaction) return [current ?? row];
+    const earlierSigned = await tx
+      .select({ id: tokenPurchases.id })
+      .from(tokenPurchases)
+      .where(and(
+        isNotNull(tokenPurchases.nonce),
+        inArray(tokenPurchases.status, ["signed", "submitted"]),
+        sql`${tokenPurchases.id} <> ${row.id}`,
+      ))
+      .limit(1);
+    // Do not create a nonce gap by signing a later pending intent while an
+    // earlier durable transaction still needs to be rebroadcast/confirmed.
+    if (earlierSigned.length > 0) return [current];
     const chainNonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
     const [latestSigned] = await tx
       .select({ nonce: tokenPurchases.nonce })
@@ -288,10 +456,13 @@ async function signAndPersist(row: typeof tokenPurchases.$inferSelect): Promise<
     // A signed intent is durable before broadcast. Include it when allocating
     // the next nonce so two requests cannot sign different payouts at the same
     // nonce during the brief signed-but-not-yet-broadcast window.
-    const databaseNonce = latestSigned?.nonce == null
-      ? chainNonce
-      : Number(latestSigned.nonce + 1n);
-    const nonce = Math.max(chainNonce, databaseNonce);
+    const databaseNonceBig = latestSigned?.nonce == null
+      ? BigInt(chainNonce)
+      : latestSigned.nonce + 1n;
+    if (databaseNonceBig > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new TokenPurchaseError("nonce_unavailable", "Token payout nonce is unavailable.", 503);
+    }
+    const nonce = Math.max(chainNonce, Number(databaseNonceBig));
     const gas = await publicClient.estimateGas({ account, to: row.tokenAddress as Address, data, value: 0n });
     const gasPrice = await publicClient.getGasPrice();
     const raw = await account.signTransaction({
@@ -320,6 +491,7 @@ async function broadcast(row: typeof tokenPurchases.$inferSelect) {
   if (!row.rawSignedTransaction) return row;
   try {
     await publicClient.sendRawTransaction({ serializedTransaction: row.rawSignedTransaction as Hex });
+    if (row.status === "submitted") return receiptStatus(row);
     const [updated] = await db.update(tokenPurchases).set({
       status: "submitted",
       submittedAt: row.submittedAt ?? new Date(),
@@ -336,6 +508,7 @@ async function broadcast(row: typeof tokenPurchases.$inferSelect) {
 async function processPurchase(row: typeof tokenPurchases.$inferSelect) {
   let current = row;
   if (current.status === "confirmed" || current.status === "failed") return current;
+  if (process.env.TOKEN_PURCHASES_ENABLED !== "true") return current;
   if (!current.rawSignedTransaction) current = await signAndPersist(current);
   if (current.rawSignedTransaction) current = await broadcast(current);
   return current;
@@ -351,41 +524,40 @@ export async function purchaseToken(walletAddress: string, requestedSymbol: unkn
   const existing = (await db.select().from(tokenPurchases).where(sql`${tokenPurchases.walletAddress} = ${walletAddress} AND ${tokenPurchases.idempotencyKey} = ${idempotencyKey}`).limit(1))[0];
   if (existing) {
     if (existing.symbol !== token) throw new TokenPurchaseError("idempotency_conflict", "Idempotency key belongs to another token.", 409);
-    return outputPurchase(await processPurchase(await receiptStatus(existing)));
+    return purchaseResponse(await processPurchase(await receiptStatus(existing)));
   }
 
   assertPurchasesEnabled();
   const quote = await fetchQuote(token);
-  // Fail closed before touching the wallet save. A signer mismatch is a
-  // deployment/configuration error, not a reason to deduct gems.
+  // Fail closed before touching the redeemable-gem account. A signer mismatch
+  // is a deployment/configuration error, not a reason to debit gems.
   escrowAccount();
-  let escrowBalance: bigint;
-  try {
-    escrowBalance = await getEscrowBalance(quote.tokenAddress);
-  } catch {
-    throw new TokenPurchaseError("inventory_unavailable", "Token inventory is unavailable.");
-  }
-  if (escrowBalance < BigInt(quote.amountBaseUnits)) {
-    throw new TokenPurchaseError("inventory_unavailable", "The selected token is not currently available.", 409);
-  }
   let intent: typeof tokenPurchases.$inferSelect;
   try {
     [intent] = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT address FROM wallet_saves WHERE address = ${walletAddress} FOR UPDATE`);
-      const saveRow = (await tx.select().from(walletSaves).where(eq(walletSaves.address, walletAddress)).limit(1))[0];
-      const save = saveRow?.save as { meta?: { gems?: unknown } } | null;
-      const gems = save?.meta?.gems;
-      if (!saveRow || !save || !save.meta || typeof gems !== "number" || !Number.isInteger(gems) || gems < GEM_COST) {
-        throw new TokenPurchaseError("insufficient_gems", "At least 100 gems are required.", 409);
+      await tx.execute(tokenLockSql(quote.tokenAddress));
+      await tx.execute(signerLockSql());
+      if (await purchaseStuck(tx)) {
+        throw new TokenPurchaseError(
+          "signer_nonce_stuck",
+          "A previous token payout is still pending. New payouts are temporarily paused.",
+          503,
+        );
       }
-      const nextSave = { ...save, meta: { ...save.meta, gems: gems - GEM_COST } };
-      await tx.update(walletSaves).set({
-        save: nextSave,
-        revision: sql`${walletSaves.revision} + 1`,
-        updatedAt: new Date(),
-      }).where(eq(walletSaves.address, walletAddress));
+      let chainBalance: bigint;
+      try {
+        chainBalance = await getEscrowBalance(quote.tokenAddress);
+      } catch {
+        throw new TokenPurchaseError("inventory_unavailable", "Token inventory is unavailable.");
+      }
+      const reserved = await unresolvedReservation(tx, quote.tokenAddress);
+      if (chainBalance - reserved < BigInt(quote.amountBaseUnits)) {
+        throw new TokenPurchaseError("inventory_unavailable", "The selected token is not currently available.", 409);
+      }
+      const purchaseId = crypto.randomUUID();
+      await debitRedeemableGems(tx, walletAddress, purchaseId);
       return tx.insert(tokenPurchases).values({
-        id: crypto.randomUUID(),
+        id: purchaseId,
         walletAddress,
         idempotencyKey,
         symbol: token,
@@ -405,13 +577,81 @@ export async function purchaseToken(walletAddress: string, requestedSymbol: unkn
     const retry = (await db.select().from(tokenPurchases).where(sql`${tokenPurchases.walletAddress} = ${walletAddress} AND ${tokenPurchases.idempotencyKey} = ${idempotencyKey}`).limit(1))[0];
     if (retry) {
       if (retry.symbol !== token) throw new TokenPurchaseError("idempotency_conflict", "Idempotency key belongs to another token.", 409);
-      return outputPurchase(await processPurchase(await receiptStatus(retry)));
+      return purchaseResponse(await processPurchase(await receiptStatus(retry)));
     }
     throw error;
   }
   if (!intent) throw new TokenPurchaseError("purchase_unavailable", "Purchase could not be created.");
   logger.info({ walletAddress, symbol: token, purchaseId: intent.id }, "Token purchase intent created");
-  return outputPurchase(await processPurchase(intent));
+  return purchaseResponse(await processPurchase(intent));
+}
+
+export async function getRedeemableGemBalance(walletAddress: string): Promise<number> {
+  return db.transaction(async (tx) => {
+    await ensureRedeemableAccount(tx, walletAddress);
+    const [row] = await tx
+      .select({ balance: redeemableGemAccounts.balance })
+      .from(redeemableGemAccounts)
+      .where(eq(redeemableGemAccounts.walletAddress, walletAddress))
+      .limit(1);
+    return row?.balance ?? 0;
+  });
+}
+
+export async function getTokenPurchase(walletAddress: string, id: string) {
+  const [row] = await db.select().from(tokenPurchases).where(and(
+    eq(tokenPurchases.id, id),
+    eq(tokenPurchases.walletAddress, walletAddress),
+  )).limit(1);
+  if (!row) return null;
+  return purchaseResponse(await receiptStatus(row));
+}
+
+export async function getPendingTokenPurchases(walletAddress: string) {
+  const rows = await db.select().from(tokenPurchases).where(and(
+    eq(tokenPurchases.walletAddress, walletAddress),
+    inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
+  )).orderBy(tokenPurchases.createdAt).limit(100);
+  const processed = [];
+  for (const row of rows) {
+    processed.push(await purchaseResponse(await receiptStatus(row)));
+  }
+  return processed;
+}
+
+export async function recoverPendingPurchases(): Promise<void> {
+  if (process.env.TOKEN_PURCHASES_ENABLED !== "true") return;
+  const rows = await db.select().from(tokenPurchases).where(
+    inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
+  ).orderBy(tokenPurchases.createdAt).limit(25);
+  for (const row of rows) {
+    try {
+      await processPurchase(await receiptStatus(row));
+    } catch (error) {
+      // Never include raw transaction bytes or signer configuration in logs.
+      // RPC errors can echo request payloads; do not attach the error object
+      // because it could contain serialized transaction bytes.
+      logger.warn({ purchaseId: row.id, symbol: row.symbol }, "Token purchase recovery deferred");
+    }
+  }
+}
+
+export function startTokenPurchaseWorker(): ReturnType<typeof setInterval> | null {
+  if (process.env.TOKEN_PURCHASES_ENABLED !== "true") return null;
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await recoverPendingPurchases();
+    } catch {
+      logger.warn("Token purchase recovery cycle failed");
+    } finally {
+      running = false;
+    }
+  };
+  void tick();
+  return setInterval(() => void tick(), 15_000);
 }
 
 export function tokenAddress(symbol: TokenSymbol): Address {

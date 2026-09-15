@@ -110,6 +110,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /wallet/redeemable-gems:
+    get:
+      operationId: getRedeemableGemBalance
+      tags: [token-purchases]
+      summary: Get the server-authoritative token-redeemable gem balance
+      security:
+        - walletSession: []
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Redeemable gem balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemableGemBalanceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /wallet/purchase/{id}:
+    get:
+      operationId: getTokenPurchase
+      tags: [token-purchases]
+      summary: Get a purchase status
+      security:
+        - walletSession: []
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Purchase status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPurchaseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Purchase not found
+  /wallet/purchases/pending:
+    get:
+      operationId: getPendingTokenPurchases
+      tags: [token-purchases]
+      summary: Get pending purchases for the authenticated wallet
+      security:
+        - walletSession: []
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Pending purchase statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPurchasePendingResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   securitySchemes:
     walletSession:
@@ -187,10 +253,12 @@ components:
       allOf:
         - $ref: "#/components/schemas/TokenCatalogItem"
         - type: object
-          required: [escrowBalance, escrowBalanceBaseUnits]
+          required: [escrowBalance, escrowBalanceBaseUnits, reservedBaseUnits, availableBalanceBaseUnits]
           properties:
             escrowBalance: { type: string }
             escrowBalanceBaseUnits: { type: string }
+            reservedBaseUnits: { type: string }
+            availableBalanceBaseUnits: { type: string }
     TokenInventoryResponse:
       type: object
       required: [items]
@@ -205,7 +273,7 @@ components:
         symbol: { $ref: "#/components/schemas/TokenSymbol" }
     TokenPurchaseResponse:
       type: object
-      required: [id, symbol, status, gemCost, tokenAmount, quotePrice, quoteSource, quoteTimestamp, quoteDelayed, delayed]
+      required: [id, symbol, status, gemCost, tokenAmount, quotePrice, quoteSource, quoteTimestamp, quoteDelayed, delayed, redeemableGemBalance]
       properties:
         id: { type: string }
         symbol: { $ref: "#/components/schemas/TokenSymbol" }
@@ -219,7 +287,20 @@ components:
         quoteTimestamp: { type: string, format: date-time }
         quoteDelayed: { type: string, const: "previous-close" }
         delayed: { type: boolean, const: true }
+        redeemableGemBalance: { type: integer, minimum: 0 }
         transactionHash: { type: ["string", "null"] }
+    RedeemableGemBalanceResponse:
+      type: object
+      required: [balance]
+      properties:
+        balance: { type: integer, minimum: 0 }
+    TokenPurchasePendingResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TokenPurchaseResponse" }
     ErrorResponse:
       type: object
       required: [error]

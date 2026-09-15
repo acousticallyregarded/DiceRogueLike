@@ -75,7 +75,7 @@ export function Lobby({
             </button>
             <AudioSettingsButton />
           </div>
-           <div aria-label={`${wallet.canSpendGems ? 'Wallet' : 'Unspendable'} gems: ${meta.gems}`} title={wallet.canSpendGems ? 'Gems saved with your wallet' : 'Connect a wallet to spend gems'} className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
+           <div aria-label={`Campaign gems: ${meta.gems}`} title="Campaign gems earned from gameplay (used for chests and talents)" className="flex items-center gap-1.5 font-black bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full border-2 border-[#1c1c1c] shadow-md text-sm">
              <Gem className="w-4 h-4 text-cyan-300 fill-current" /> {meta.gems}
           </div>
         </div>
@@ -90,7 +90,7 @@ export function Lobby({
            {tab !== 'play' && (
              <p role="status" className="mt-3 rounded-xl border-2 border-slate-800 bg-white px-3 py-2 text-xs font-bold text-slate-700">
                {wallet.canSpendGems
-                 ? 'Gem purchases use this wallet’s balance and save with its inventory.'
+                 ? 'Campaign gems are earned through gameplay. Redeemable gems come from trusted grants.'
                  : wallet.session
                    ? 'Finish connecting or resolve your wallet save before spending gems.'
                    : 'A wallet is required to spend gems. Connect using Wallet above. Guest progress stays separate until you choose to import it.'}
@@ -188,8 +188,21 @@ export function Lobby({
                  <Store className="w-5 h-5 text-slate-400" /> Token Shop
                </h2>
 
+               {wallet.session && (
+                 <div className="bg-fuchsia-50 border-2 border-fuchsia-200 rounded-2xl p-4 mb-4 flex justify-between items-center">
+                   <div>
+                     <div className="text-[10px] font-black uppercase tracking-wider text-fuchsia-600 mb-1">Redeemable Gems</div>
+                     <div className="text-xs font-semibold text-fuchsia-800 leading-tight">Use these trusted grants for tokens.</div>
+                   </div>
+                   <div className="flex items-center gap-2 text-2xl font-black text-fuchsia-700 bg-white px-3 py-1 rounded-xl shadow-sm border border-fuchsia-100">
+                     <Gem className="w-6 h-6 fill-current text-fuchsia-400" />
+                     {wallet.redeemableGemsLoading ? '...' : (wallet.redeemableGemBalance ?? 0)}
+                   </div>
+                 </div>
+               )}
+
                 <p className="mb-4 text-xs font-bold leading-relaxed text-slate-600">
-                  Spend 100 gems for $10 of GLD or SLV, calculated from Massive’s delayed previous close. Tokens transfer to your connected wallet.
+                  Spend 100 redeemable gems for $10 of GLD or SLV, calculated from Massive’s delayed previous close. Tokens transfer to your connected wallet.
                 </p>
                 <div className="flex flex-col gap-4">
                  {wallet.purchaseError && (
@@ -213,15 +226,32 @@ export function Lobby({
                    </div>
                  )}
 
+                 {wallet.pendingPurchases.map((pending) => (
+                   <div key={pending.id} className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 flex flex-col gap-2">
+                     <div className="text-sm font-bold text-blue-800">
+                       Pending {pending.symbol} transfer ({pending.status})
+                     </div>
+                     {pending.transactionHash && (
+                       <a href={`https://robinhoodchain.blockscout.com/tx/${pending.transactionHash}`} target="_blank" rel="noreferrer" className="text-xs font-bold underline text-blue-700">
+                         View transaction
+                       </a>
+                     )}
+                   </div>
+                 ))}
+
                  {!wallet.session ? (
                    <div className="text-center font-bold text-slate-400 py-6">Wallet connection required.</div>
                  ) : !wallet.inventory ? (
                    <div className="text-center font-bold text-slate-400 py-6">Loading shop...</div>
                  ) : (
                    wallet.inventory.map(item => {
-                      const isAvailable = item.available;
-                     const canAfford = meta.gems >= item.gemCost;
-                     const disabled = !isAvailable || !canAfford || !wallet.canSpendGems || wallet.isPurchasing;
+                     const escrowSufficient = parseFloat(item.escrowBalance) >= parseFloat(item.tokenAmount);
+                     const isAvailable = item.available && escrowSufficient;
+                     const redeemable = wallet.redeemableGemBalance ?? 0;
+                     const canAfford = redeemable >= item.gemCost;
+                     const hasPendingIntent = wallet.pendingIntent?.symbol === item.symbol;
+                     const anyOtherPending = wallet.pendingIntent !== null && !hasPendingIntent;
+                     const disabled = !isAvailable || !canAfford || !wallet.canSpendGems || wallet.isPurchasing || anyOtherPending;
 
                      return (
                        <div key={item.symbol} className={`bg-slate-100 border-2 border-slate-200 p-4 rounded-2xl flex flex-col gap-3 ${disabled ? 'opacity-60 grayscale' : ''}`}>

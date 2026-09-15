@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -64,6 +65,36 @@ export const walletSaves = pgTable("wallet_saves", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }),
 });
 
+/** Server-authoritative token-redeemable gem balance. */
+export const redeemableGemAccounts = pgTable("redeemable_gem_accounts", {
+  walletAddress: text("wallet_address").primaryKey(),
+  balance: integer("balance").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
+/**
+ * Append-only accounting entries. Credits are intentionally not exposed by
+ * the public API; trusted server/admin jobs will add them later.
+ */
+export const redeemableGemLedger = pgTable(
+  "redeemable_gem_ledger",
+  {
+    id: text("id").primaryKey(),
+    walletAddress: text("wallet_address").notNull(),
+    operationKey: text("operation_key").notNull(),
+    delta: integer("delta").notNull(),
+    reason: text("reason").notNull(),
+    purchaseId: text("purchase_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    operationKeyIndex: uniqueIndex("redeemable_gem_ledger_operation_key_idx").on(table.operationKey),
+    walletCreatedIndex: index("redeemable_gem_ledger_wallet_created_idx").on(table.walletAddress, table.createdAt),
+    purchaseIndex: index("redeemable_gem_ledger_purchase_idx").on(table.purchaseId),
+  }),
+);
+
 /**
  * A purchase is both the durable user intent and the outbox record used to
  * submit its already-signed transaction.  Keeping these in one normalized
@@ -100,10 +131,15 @@ export const tokenPurchases = pgTable(
       table.walletAddress,
       table.idempotencyKey,
     ),
+    tokenStatusIndex: index("token_purchases_token_status_idx").on(table.tokenAddress, table.status),
+    walletStatusIndex: index("token_purchases_wallet_status_idx").on(table.walletAddress, table.status),
+    nonceIndex: uniqueIndex("token_purchases_signer_nonce_idx").on(table.nonce),
   }),
 );
 
 export type WalletChallenge = typeof walletChallenges.$inferSelect;
 export type WalletSession = typeof walletSessions.$inferSelect;
 export type WalletSave = typeof walletSaves.$inferSelect;
+export type RedeemableGemAccount = typeof redeemableGemAccounts.$inferSelect;
+export type RedeemableGemLedgerEntry = typeof redeemableGemLedger.$inferSelect;
 export type TokenPurchase = typeof tokenPurchases.$inferSelect;

@@ -24,9 +24,11 @@ import type {
   ErrorResponse,
   ForbiddenResponse,
   HealthStatus,
+  RedeemableGemBalanceResponse,
   TokenCatalogResponse,
   TokenInventoryResponse,
   TokenPurchaseInput,
+  TokenPurchasePendingResponse,
   TokenPurchaseResponse,
   UnauthorizedResponse
 } from './api.schemas';
@@ -129,13 +131,6 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getGetTokenCatalogUrl = () => {
 
 
@@ -206,13 +201,6 @@ export function useGetTokenCatalog<TData = Awaited<ReturnType<typeof getTokenCat
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getGetTokenInventoryUrl = () => {
 
 
@@ -283,13 +271,6 @@ export function useGetTokenInventory<TData = Awaited<ReturnType<typeof getTokenI
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getPurchaseTokenUrl = () => {
 
 
@@ -377,3 +358,228 @@ export const usePurchaseToken = <TError = ErrorType<BadRequestResponse | Unautho
       > => {
       return useMutation(getPurchaseTokenMutationOptions(options));
     }
+
+export const getGetRedeemableGemBalanceUrl = () => {
+
+
+
+
+  return `/api/wallet/redeemable-gems`
+}
+
+/**
+ * @summary Get the server-authoritative token-redeemable gem balance
+ */
+export const getRedeemableGemBalance = async ( options?: Parameters<typeof customFetch>[1]): Promise<RedeemableGemBalanceResponse> => {
+
+  return customFetch<RedeemableGemBalanceResponse>(getGetRedeemableGemBalanceUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRedeemableGemBalanceQueryKey = () => {
+    return [
+    `/api/wallet/redeemable-gems`
+    ] as const;
+    }
+
+
+export const getGetRedeemableGemBalanceQueryOptions = <TData = Awaited<ReturnType<typeof getRedeemableGemBalance>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRedeemableGemBalance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRedeemableGemBalanceQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRedeemableGemBalance>>> = ({ signal }) => getRedeemableGemBalance({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRedeemableGemBalance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRedeemableGemBalanceQueryResult = NonNullable<Awaited<ReturnType<typeof getRedeemableGemBalance>>>
+export type GetRedeemableGemBalanceQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Get the server-authoritative token-redeemable gem balance
+ */
+
+export function useGetRedeemableGemBalance<TData = Awaited<ReturnType<typeof getRedeemableGemBalance>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRedeemableGemBalance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRedeemableGemBalanceQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTokenPurchaseUrl = (id: string,) => {
+
+
+
+
+  return `/api/wallet/purchase/${id}`
+}
+
+/**
+ * @summary Get a purchase status
+ */
+export const getTokenPurchase = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<TokenPurchaseResponse> => {
+
+  return customFetch<TokenPurchaseResponse>(getGetTokenPurchaseUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTokenPurchaseQueryKey = (id: string,) => {
+    return [
+    `/api/wallet/purchase/${id}`
+    ] as const;
+    }
+
+
+export const getGetTokenPurchaseQueryOptions = <TData = Awaited<ReturnType<typeof getTokenPurchase>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTokenPurchase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTokenPurchaseQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTokenPurchase>>> = ({ signal }) => getTokenPurchase(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTokenPurchase>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTokenPurchaseQueryResult = NonNullable<Awaited<ReturnType<typeof getTokenPurchase>>>
+export type GetTokenPurchaseQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse | void>
+
+
+/**
+ * @summary Get a purchase status
+ */
+
+export function useGetTokenPurchase<TData = Awaited<ReturnType<typeof getTokenPurchase>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTokenPurchase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTokenPurchaseQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPendingTokenPurchasesUrl = () => {
+
+
+
+
+  return `/api/wallet/purchases/pending`
+}
+
+/**
+ * @summary Get pending purchases for the authenticated wallet
+ */
+export const getPendingTokenPurchases = async ( options?: Parameters<typeof customFetch>[1]): Promise<TokenPurchasePendingResponse> => {
+
+  return customFetch<TokenPurchasePendingResponse>(getGetPendingTokenPurchasesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPendingTokenPurchasesQueryKey = () => {
+    return [
+    `/api/wallet/purchases/pending`
+    ] as const;
+    }
+
+
+export const getGetPendingTokenPurchasesQueryOptions = <TData = Awaited<ReturnType<typeof getPendingTokenPurchases>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPendingTokenPurchases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPendingTokenPurchasesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPendingTokenPurchases>>> = ({ signal }) => getPendingTokenPurchases({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPendingTokenPurchases>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPendingTokenPurchasesQueryResult = NonNullable<Awaited<ReturnType<typeof getPendingTokenPurchases>>>
+export type GetPendingTokenPurchasesQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Get pending purchases for the authenticated wallet
+ */
+
+export function useGetPendingTokenPurchases<TData = Awaited<ReturnType<typeof getPendingTokenPurchases>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPendingTokenPurchases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPendingTokenPurchasesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}

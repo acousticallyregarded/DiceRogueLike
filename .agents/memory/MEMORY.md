@@ -2,3 +2,4 @@
 - [Character animation](character-animation.md) — Preserve character identity with source-art cutouts; synchronize combat animation with real events.
 - [Browser tests and hot reload](browser-test-hmr.md) — Keep hooks stable during browser verification; concurrent edits can cause misleading hook-order failures.
 - [Playwright on Replit Nix](playwright-replit-nix.md) — Repository Playwright checks need both browser binaries and declared Chromium runtime libraries.
+- [Redeemable gem trust boundary](redeemable-gem-trust.md) — Keep real-value redemption separate from client-authored campaign gems; balances start at zero.

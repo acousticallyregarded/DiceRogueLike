@@ -39,6 +39,8 @@ export interface TokenCatalogResponse {
 export type TokenInventoryItem = TokenCatalogItem & {
   escrowBalance: string;
   escrowBalanceBaseUnits: string;
+  reservedBaseUnits: string;
+  availableBalanceBaseUnits: string;
 };
 
 export interface TokenInventoryResponse {
@@ -71,10 +73,20 @@ export interface TokenPurchaseResponse {
   quoteTimestamp: string;
   quoteDelayed: 'previous-close';
   delayed: true;
+  /** @minimum 0 */
+  redeemableGemBalance: number;
   /** @nullable */
   transactionHash?: string | null;
 }
 
+export interface RedeemableGemBalanceResponse {
+  /** @minimum 0 */
+  balance: number;
+}
+
+export interface TokenPurchasePendingResponse {
+  items: TokenPurchaseResponse[];
+}
 export interface ErrorResponse {
   error: string;
 }
