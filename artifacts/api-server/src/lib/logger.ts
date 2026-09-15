@@ -14,6 +14,10 @@ export const logger = pino({
     "*.rawSignedTransaction",
     "serializedTransaction",
     "*.serializedTransaction",
+    "webhookUrl",
+    "*.webhookUrl",
+    "TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL",
+    "*.TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL",
   ],
   ...(isProduction
     ? {}

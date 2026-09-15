@@ -29,6 +29,11 @@ import {
   type TokenPayoutHealthSnapshot,
   type TokenSymbol,
 } from "./token-payout-health";
+import {
+  deliverTokenPayoutIncident,
+  incidentEventForAlert,
+  resolvedIncidentEvent,
+} from "./token-payout-incident-channel";
 export { tokenAmountForPrice } from "./token-purchase-math";
 export {
   DEFAULT_MIN_INVENTORY_PAYOUTS,
@@ -902,10 +907,19 @@ export function startTokenPayoutMonitor(): ReturnType<typeof setInterval> | null
     try {
       await monitorTokenPayoutHealth();
     } catch {
-      logger.error({
+      const alert: TokenPayoutAlert = {
+        key: "monitor-cycle-failed",
+        severity: "critical",
         condition: "monitor_cycle_failed",
         action: "Check database and Robinhood Chain RPC connectivity; payout health could not be evaluated.",
+        details: {},
+      };
+      logger.error({
+        alertKey: alert.key,
+        condition: alert.condition,
+        action: alert.action,
       }, "Token payout operator alert");
+      await deliverTokenPayoutIncident(incidentEventForAlert(alert, new Date()));
     } finally {
       running = false;
     }
@@ -952,7 +966,7 @@ function minimumNativeGas(): bigint {
   }
 }
 
-const activePayoutAlerts = new Map<string, number>();
+const activePayoutAlerts = new Map<string, { alert: TokenPayoutAlert; lastEmittedAt: number }>();
 
 function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
@@ -968,14 +982,19 @@ export async function monitorTokenPayoutHealth(now = new Date()): Promise<TokenP
   const currentKeys = new Set(alerts.map((alert) => alert.key));
   for (const key of activePayoutAlerts.keys()) {
     if (!currentKeys.has(key)) {
+      const active = activePayoutAlerts.get(key);
       activePayoutAlerts.delete(key);
       logger.info({ alertKey: key }, "Token payout operator alert resolved");
+      if (active) {
+        await deliverTokenPayoutIncident(resolvedIncidentEvent(active.alert, now));
+      }
     }
   }
   for (const alert of alerts) {
-    const lastEmitted = activePayoutAlerts.get(alert.key) ?? 0;
-    if (now.getTime() - lastEmitted < TOKEN_ALERT_REPEAT_MS) continue;
-    activePayoutAlerts.set(alert.key, now.getTime());
+    const active = activePayoutAlerts.get(alert.key);
+    const escalated = active?.alert.severity === "warning" && alert.severity === "critical";
+    if (active && !escalated && now.getTime() - active.lastEmittedAt < TOKEN_ALERT_REPEAT_MS) continue;
+    activePayoutAlerts.set(alert.key, { alert, lastEmittedAt: now.getTime() });
     logger[alert.severity === "critical" ? "error" : "warn"](
       {
         alertKey: alert.key,
@@ -986,6 +1005,7 @@ export async function monitorTokenPayoutHealth(now = new Date()): Promise<TokenP
       },
       "Token payout operator alert",
     );
+    await deliverTokenPayoutIncident(incidentEventForAlert(alert, now));
   }
   return alerts;
 }

@@ -2,6 +2,23 @@
 
 The API emits structured `Token payout operator alert` log records once per minute while token purchases are enabled. Repeated alerts are limited to once every 30 minutes per condition, and a resolution record is emitted when a condition clears. These records contain operational counts, timestamps, and base-unit balances only. They never contain private keys or signed transaction bytes.
 
+## Direct incident-channel delivery
+
+Set the secret `TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL` to an operator-owned HTTPS incoming-webhook URL and restart the API. The API posts a JSON body with a human-readable `text` field and an `event` object. Each event includes `alertKey`, `status` (`firing` or `resolved`), severity, condition, action, safe operational details, and occurrence time.
+
+The same `alertKey` identifies warning repeats, critical escalation, and resolution. Firing notifications are limited to once every 30 minutes per key, except that a warning becoming critical is delivered immediately; a resolved notification is sent once when that key clears. Delivery times out after five seconds. A failed delivery is logged without the webhook URL or response body and never blocks later monitor cycles or payout processing.
+
+Keep the webhook URL in Replit Secrets, not in source control or deployment logs. Configure the receiving channel to group or thread events by `event.alertKey`. The endpoint must accept an HTTPS `POST` with JSON; Slack-compatible incoming webhooks can display the top-level `text` field, while general incident receivers can inspect the complete `event`.
+
+### Send a test notification
+
+1. Create a temporary HTTPS request-bin endpoint or a dedicated test incoming webhook owned by the on-call team.
+2. Store its URL as `TOKEN_PAYOUT_INCIDENT_WEBHOOK_URL` and restart the API.
+3. Temporarily set `TOKEN_ESCROW_MIN_NATIVE_GAS` above the escrow's current native balance, then restart the API. Do not change escrow funds or signer data for this test.
+4. Confirm the channel receives a `firing` event whose `alertKey` is `native-gas-low`, with no signed transaction or secret fields.
+5. Restore the normal gas threshold and restart the API. Confirm the same `alertKey` receives one `resolved` event.
+6. Remove the temporary endpoint and retain only the production incident webhook secret.
+
 ## Alert settings
 
 - `TOKEN_ESCROW_MIN_NATIVE_GAS`: minimum native RBH balance for transaction fees. Default: `0.01`.
