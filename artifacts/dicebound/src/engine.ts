@@ -244,6 +244,8 @@ export interface RunState {
   trailCinematic?: "prologue" | "intro" | "alert" | "awakening" | null;
   /** Current player-paced card in the opening story. */
   prologueStep?: number;
+  /** Current player-paced card in the final campaign epilogue. */
+  finalEpilogueStep?: number;
   trailIntroSeen?: boolean;
   trailAlertSeen?: boolean;
   trailAwakeningSeen?: boolean;
@@ -507,6 +509,7 @@ export function getHeroDeathDurationMs(
 
 export type GameAction =
   | { type: "DISMISS_VICTORY_REPORT" }
+  | { type: "ADVANCE_FINAL_EPILOGUE" }
   | { type: "START_RUN"; characterId?: CharacterId }
   | { type: "ROLL_DICE" }
   | { type: "BEGIN_MOVEMENT" }
@@ -1155,6 +1158,11 @@ export function validateState(input: any): GameStateV4 {
     s.run.prologueStep = s.run.trailCinematic === "prologue"
       ? Math.min(3, Math.max(0, Math.floor(Number(s.run.prologueStep) || 0)))
       : undefined;
+    s.run.finalEpilogueStep = s.run.phase === "victory"
+      && s.run.floor >= LEVELS.length
+      && s.run.finalEpilogueStep !== undefined
+      ? Math.min(3, Math.max(0, Math.floor(Number(s.run.finalEpilogueStep) || 0)))
+      : undefined;
     if (s.run.trailCinematic === "intro") s.run.trailIntroSeen = false;
     if (s.run.trailCinematic === "alert") s.run.trailAlertSeen = true;
     if (s.run.trailCinematic === "awakening") s.run.trailAwakeningSeen = true;
@@ -1472,7 +1480,9 @@ function gainXp(r: RunState, amount: number) {
  * checkpoint. `settled` remains the legacy boolean, while the totals make
  * every floor transition and the terminal campaign exit idempotent.
  */
-function settleRunRewards(s: GameStateV4, r: RunState) {
+export function getUnsettledRunRewards(
+  r: Pick<RunState, "gold" | "gemsEarned" | "settled" | "settledGold" | "settledGems">,
+) {
   // `settledGold`/`settledGems` are a high-water baseline only for legacy
   // saves that already received a pre-campaign settlement. New campaigns
   // remain unsettled until defeat, explicit Return to Lobby, or the terminal
@@ -1487,6 +1497,19 @@ function settleRunRewards(s: GameStateV4, r: RunState) {
   )));
   const goldReward = Math.max(0, cumulativeGold - settledGold);
   const gemReward = Math.max(0, cumulativeGems - settledGems);
+  return { goldReward, gemReward, total: goldReward + gemReward };
+}
+
+function settleRunRewards(s: GameStateV4, r: RunState) {
+  const { goldReward, gemReward } = getUnsettledRunRewards(r);
+  const cumulativeGold = Math.max(0, Math.floor(r.gold / 10));
+  const cumulativeGems = Math.max(0, Math.floor(r.gemsEarned));
+  const settledGold = Math.max(0, Math.floor(r.settledGold ?? (
+    r.settled ? cumulativeGold : 0
+  )));
+  const settledGems = Math.max(0, Math.floor(r.settledGems ?? (
+    r.settled ? cumulativeGems : 0
+  )));
   if (goldReward || gemReward) s.meta.gems += goldReward + gemReward;
   r.settledGold = Math.max(settledGold, cumulativeGold);
   r.settledGems = Math.max(settledGems, cumulativeGems);
@@ -2379,7 +2402,12 @@ function resolveEnemyTurn(s: GameStateV4) {
 export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   const s: GameStateV4 = JSON.parse(JSON.stringify(state));
   if (action.type === "DISMISS_VICTORY_REPORT") {
-    if (s.run?.victoryReport) s.run.victoryReport = null;
+    if (s.run?.victoryReport) {
+      s.run.victoryReport = null;
+      if (s.run.phase === "victory" && s.run.floor >= LEVELS.length) {
+        s.run.finalEpilogueStep = 0;
+      }
+    }
     return s;
   }
   if (s.run?.victoryReport && action.type !== "RESET_SAVE") return s;
@@ -2394,6 +2422,24 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   // A pending death presentation owns the run. In particular, do not let a
   // reload or an eager exit/start action skip directly to another screen.
   if (s.run?.heroDeathPending) return s;
+
+  if (action.type === "ADVANCE_FINAL_EPILOGUE") {
+    const r = s.run;
+    if (!r || r.phase !== "victory" || r.floor < LEVELS.length) return s;
+    const step = Math.min(3, Math.max(0, Math.floor(Number(r.finalEpilogueStep) || 0)));
+    if (step < 3) {
+      r.finalEpilogueStep = step + 1;
+      return s;
+    }
+    // The epilogue never grants rewards itself. The existing settlement ledger
+    // transfers only the still-unsettled campaign total before the run closes.
+    settleRunRewards(s, r);
+    s.run = null;
+    return s;
+  }
+  // Once the final report hands off to the epilogue, no stale gameplay or
+  // navigation action may discard the unsettled terminal run.
+  if (s.run?.phase === "victory" && s.run.floor >= LEVELS.length) return s;
 
   if (s.run) {
     const maxPosition = Math.max(0, s.run.tiles.length - 1);
@@ -2862,10 +2908,8 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
   if (action.type === "CONTINUE_RUN") {
     if (s.run && s.run.phase === "victory") {
       if (s.run.floor >= LEVELS.length) {
-        // The fourth boss ends the campaign. Settle once before discarding
-        // the run; a repeated Continue has no run to reward.
-        settleRunRewards(s, s.run);
-        s.run = null;
+        // The final epilogue owns terminal completion and reward settlement.
+        // Ignore stale or eager Continue actions until its last card.
         return s;
       }
       s.run.floor++;
@@ -2897,6 +2941,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "RETURN_TO_LOBBY") {
     if (s.run && (s.run.phase === "victory" || s.run.phase === "defeat")) {
+      if (s.run.phase === "victory" && s.run.floor >= LEVELS.length) return s;
       settleRunRewards(s, s.run);
       s.run = null;
     }

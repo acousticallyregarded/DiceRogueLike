@@ -102,6 +102,18 @@ test("wallet validator accepts a prologue in progress", () => {
   assert.equal(run.prologueStep, 2);
 });
 
+test("wallet validator accepts a final epilogue in progress", () => {
+  const input: any = bossSave();
+  input.run.floor = 4;
+  input.run.phase = "victory";
+  input.run.finalEpilogueStep = 2;
+  const validation = validateGameStateV4(JSON.parse(JSON.stringify(input)));
+  assert.equal(validation.ok, true);
+  if (!validation.ok) return;
+  const run = validation.value.run as Record<string, unknown>;
+  assert.equal(run.finalEpilogueStep, 2);
+});
+
 test("wallet validator rejects unknown boss moves", () => {
   const input = bossSave();
   (input.run.enemies[0] as { bossMove: string }).bossMove = "teleport";

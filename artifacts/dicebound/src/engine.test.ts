@@ -12,6 +12,7 @@ import {
   getPlayerArmorClass,
   getPlayerAttackDurationMs,
   getPendingHeroAttackDurationMs,
+  getUnsettledRunRewards,
   getEnemyResponseDelayMs,
   getHeroDeathDurationMs,
   POTION_ANIMATION_DURATION_MS,
@@ -457,11 +458,23 @@ function runAssertions() {
   bossVictory.run!.trailCinematic = null;
   bossVictory.run!.victoryReport = null;
   const beforeTerminalSettlement = bossVictory.meta.gems;
-  bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
+  const blockedTerminalContinue = act(bossVictory, { type: "CONTINUE_RUN" });
+  assert.equal(blockedTerminalContinue.run!.phase, "victory");
+  assert.equal(blockedTerminalContinue.meta.gems, beforeTerminalSettlement);
+  const blockedRestart = act(blockedTerminalContinue, { type: "START_RUN", characterId: "unc" });
+  assert.deepEqual(blockedRestart, blockedTerminalContinue);
+  bossVictory = blockedTerminalContinue;
+  for (let step = 1; step <= 3; step++) {
+    bossVictory = act(bossVictory, { type: "ADVANCE_FINAL_EPILOGUE" });
+    assert.equal(bossVictory.run!.finalEpilogueStep, step);
+    assert.equal(bossVictory.meta.gems, beforeTerminalSettlement);
+    bossVictory = validateState(JSON.parse(JSON.stringify(bossVictory)));
+  }
+  bossVictory = act(bossVictory, { type: "ADVANCE_FINAL_EPILOGUE" });
   assert.equal(bossVictory.run, null);
   assert.equal(bossVictory.meta.gems, beforeTerminalSettlement + 60);
   const settledState = JSON.stringify(bossVictory);
-  bossVictory = act(bossVictory, { type: "CONTINUE_RUN" });
+  bossVictory = act(bossVictory, { type: "ADVANCE_FINAL_EPILOGUE" });
   assert.equal(JSON.stringify(bossVictory), settledState);
 
   // A legacy settled:true save has no historical ledger. Loading it records
@@ -481,10 +494,22 @@ function runAssertions() {
   migratedSettled.run!.phase = "victory";
   migratedSettled.run!.trailCinematic = null;
   migratedSettled.run!.victoryReport = null;
-  const terminalLegacy = act(migratedSettled, { type: "CONTINUE_RUN" });
+  assert.deepEqual(getUnsettledRunRewards(migratedSettled.run!), {
+    goldReward: 3,
+    gemReward: 0,
+    total: 3,
+  });
+  const blockedTerminalExit = act(migratedSettled, { type: "CONTINUE_RUN" });
+  assert.equal(blockedTerminalExit.run!.phase, "victory");
+  let terminalLegacy = blockedTerminalExit;
+  for (let step = 1; step <= 3; step++) {
+    terminalLegacy = act(terminalLegacy, { type: "ADVANCE_FINAL_EPILOGUE" });
+    assert.equal(terminalLegacy.run!.finalEpilogueStep, step);
+  }
+  terminalLegacy = act(terminalLegacy, { type: "ADVANCE_FINAL_EPILOGUE" });
   assert.equal(terminalLegacy.run, null);
   assert.equal(terminalLegacy.meta.gems, 103);
-  assert.equal(act(terminalLegacy, { type: "CONTINUE_RUN" }).meta.gems, 103);
+  assert.equal(act(terminalLegacy, { type: "ADVANCE_FINAL_EPILOGUE" }).meta.gems, 103);
 
   // Traits are applied after defense: resistance floors, vulnerability doubles,
   // and immunity is exactly zero (never promoted to one).

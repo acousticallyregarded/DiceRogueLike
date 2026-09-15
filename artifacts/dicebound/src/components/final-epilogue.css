@@ -1,0 +1,319 @@
+.final-epilogue {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 18px;
+  overflow: hidden;
+  color: #f0fdf4;
+  background:
+    radial-gradient(circle at 50% 31%, rgba(253, 230, 138, 0.25), transparent 30%),
+    linear-gradient(180deg, rgba(6, 40, 25, 0.85), rgba(4, 20, 12, 0.96));
+  pointer-events: auto;
+}
+
+.final-epilogue__vignette {
+  position: absolute;
+  inset: -15%;
+  opacity: .65;
+  background:
+    radial-gradient(circle at 20% 35%, rgba(134, 239, 172, 0.15) 0 2px, transparent 3px),
+    radial-gradient(circle at 80% 50%, rgba(253, 224, 71, 0.15) 0 2px, transparent 3px);
+  background-size: 80px 80px, 100px 100px;
+  animation: final-epilogue-drift 12s linear infinite;
+}
+
+.final-epilogue--dawn {
+  background:
+    radial-gradient(circle at 50% 25%, rgba(253, 186, 116, 0.35), transparent 40%),
+    linear-gradient(180deg, rgba(45, 20, 15, 0.85), rgba(15, 8, 5, 0.95));
+}
+
+.final-epilogue--bloom {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(134, 239, 172, 0.3), transparent 35%),
+    linear-gradient(180deg, rgba(6, 40, 25, 0.88), rgba(2, 18, 10, 0.96));
+}
+
+.final-epilogue--hero {
+  background:
+    radial-gradient(circle at 50% 27%, rgba(191, 219, 254, 0.25), transparent 35%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.85), rgba(2, 6, 23, 0.96));
+}
+
+.final-epilogue--rewards {
+  background:
+    radial-gradient(circle at 50% 25%, rgba(250, 204, 21, 0.3), transparent 35%),
+    linear-gradient(180deg, rgba(40, 30, 5, 0.9), rgba(10, 8, 2, 0.98));
+}
+
+.final-epilogue__card {
+  position: relative;
+  width: 100%;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 22px 20px;
+  border: 2px solid rgba(217, 249, 157, 0.4);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(20, 45, 30, 0.94), rgba(12, 25, 15, 0.96));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  text-align: center;
+  animation: final-epilogue-card-in 300ms ease-out both;
+}
+
+.final-epilogue__sigil {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+  border: 2px solid #bef264;
+  border-radius: 50%;
+  color: #ecfccb;
+  background: radial-gradient(circle, #3f6212, #14532d);
+  box-shadow: 0 0 28px rgba(190, 242, 100, 0.3);
+}
+
+.final-epilogue__sigil svg {
+  width: 32px;
+  height: 32px;
+}
+
+.final-epilogue__eyebrow {
+  color: #86efac;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+
+.final-epilogue h2 {
+  margin: 6px 0 12px;
+  color: #f0fdf4;
+  font-size: clamp(26px, 8vw, 34px);
+  font-weight: 900;
+  letter-spacing: -.025em;
+  line-height: .98;
+  text-shadow: 0 3px 0 #064e3b;
+}
+
+.final-epilogue p {
+  max-width: 300px;
+  margin: 0;
+  color: rgba(240, 253, 244, 0.85);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.final-epilogue__hero {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 14px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid rgba(134, 239, 172, 0.3);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  text-align: left;
+}
+
+.final-epilogue__portrait {
+  width: 80px;
+  height: 80px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgba(2, 44, 34, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.final-epilogue__hero strong,
+.final-epilogue__hero span,
+.final-epilogue__hero q {
+  display: block;
+}
+
+.final-epilogue__hero strong {
+  color: #fef08a;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.final-epilogue__hero span {
+  margin-bottom: 5px;
+  color: #a7f3d0;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+.final-epilogue__hero q {
+  color: rgba(250, 250, 250, 0.8);
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.final-epilogue__rewards {
+  width: 100%;
+  margin-top: 22px;
+  padding: 16px;
+  border: 2px solid rgba(250, 204, 21, 0.3);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.final-epilogue__reward-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.final-epilogue__reward-row:last-child {
+  margin-bottom: 0;
+}
+
+.final-epilogue__reward-row span {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.final-epilogue__reward-row strong {
+  color: #fde047;
+  font-weight: 900;
+}
+
+.final-epilogue__reward-divider {
+  border: 0;
+  height: 1px;
+  background: rgba(250, 204, 21, 0.2);
+  margin: 12px 0;
+}
+
+.final-epilogue__reward-total {
+  font-size: 18px;
+}
+
+.final-epilogue__reward-total span {
+  color: #fef08a;
+  font-weight: 800;
+}
+
+.final-epilogue__reward-total strong {
+  color: #bef264;
+  font-size: 20px;
+}
+
+.final-epilogue__progress {
+  display: flex;
+  gap: 8px;
+  margin: 24px 0 16px;
+}
+
+.final-epilogue__progress span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: width 200ms ease, background 200ms ease;
+}
+
+.final-epilogue__progress .is-past {
+  background: rgba(134, 239, 172, 0.4);
+}
+
+.final-epilogue__progress .is-current {
+  width: 26px;
+  background: #86efac;
+}
+
+.final-epilogue__continue {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 3px solid #064e3b;
+  border-radius: 18px;
+  color: #022c22;
+  background: #86efac;
+  box-shadow: 0 4px 0 #064e3b;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.final-epilogue__continue:active {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+.final-epilogue__continue svg {
+  width: 18px;
+  height: 18px;
+}
+
+@keyframes final-epilogue-card-in {
+  from { opacity: 0; transform: translateY(12px) scale(.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes final-epilogue-drift {
+  to { transform: translate3d(24px, -20px, 0); }
+}
+
+@media (max-height: 700px) {
+  .final-epilogue {
+    padding-block: 14px;
+  }
+
+  .final-epilogue__card {
+    padding-block: 20px 16px;
+  }
+
+  .final-epilogue__sigil {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 10px;
+  }
+
+  .final-epilogue h2 {
+    font-size: 24px;
+  }
+
+  .final-epilogue__hero {
+    margin-top: 12px;
+  }
+
+  .final-epilogue__rewards {
+    margin-top: 14px;
+    padding: 12px;
+  }
+
+  .final-epilogue__progress {
+    margin-block: 16px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .final-epilogue__card,
+  .final-epilogue__vignette {
+    animation: none;
+  }
+}

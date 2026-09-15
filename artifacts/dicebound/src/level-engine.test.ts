@@ -198,14 +198,14 @@ function runAssertions() {
   assert.equal(cinder.run!.combatFeedback!.durationMs, 2400);
 
   // A campaign advances 1 -> 2 -> 3 -> 4 on separate boards and the fourth
-  // Continue exits to the lobby. Terminal settlement is idempotent.
+  // victory exits through its epilogue. Terminal settlement is idempotent.
   let campaign = bossReady(1);
   for (let floor = 1; floor <= 4; floor++) {
     assert.equal(campaign.run!.floor, floor);
     campaign = defeatBoss(campaign);
     const beforeContinue = campaign.meta.gems;
-    campaign = act(campaign, { type: "CONTINUE_RUN" });
     if (floor < 4) {
+      campaign = act(campaign, { type: "CONTINUE_RUN" });
       assert.ok(campaign.run);
       assert.equal(campaign.meta.gems, beforeContinue);
       assert.equal(campaign.run!.floor, floor + 1);
@@ -219,10 +219,16 @@ function runAssertions() {
       campaign = act(campaign, { type: "FINISH_TRAIL_CINEMATIC" });
       campaign = act(campaign, { type: "FIGHT_BOSS" });
     } else {
+      campaign = act(campaign, { type: "CONTINUE_RUN" });
+      assert.ok(campaign.run);
+      assert.equal(campaign.meta.gems, beforeContinue);
+      for (let step = 0; step < 4; step++) {
+        campaign = act(campaign, { type: "ADVANCE_FINAL_EPILOGUE" });
+      }
       assert.equal(campaign.run, null);
       assert.ok(campaign.meta.gems > beforeContinue);
       const settledGems = campaign.meta.gems;
-      campaign = act(campaign, { type: "CONTINUE_RUN" });
+      campaign = act(campaign, { type: "ADVANCE_FINAL_EPILOGUE" });
       assert.equal(campaign.run, null);
       assert.equal(campaign.meta.gems, settledGems);
     }

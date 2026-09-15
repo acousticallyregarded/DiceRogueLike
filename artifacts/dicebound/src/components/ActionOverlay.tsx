@@ -1,11 +1,24 @@
-import { RunState, GameAction, MetaState } from '../engine';
+import { RunState, GameAction, MetaState, getUnsettledRunRewards } from '../engine';
 import { Gift, Coins, Shield, Sword, Heart, Wind, Star, Zap, Skull } from 'lucide-react';
 import { VictoryReport } from './VictoryReport';
-import { getLevelDefinition } from '../level-content';
+import { FinalEpilogue } from './FinalEpilogue';
+import { getLevelDefinition, LEVELS } from '../level-content';
 
 export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch: (a: GameAction) => void, meta: MetaState }) {
   const level = getLevelDefinition(run.floor);
   if (run.victoryReport) return <VictoryReport key={run.victoryReport.id} report={run.victoryReport} dispatch={dispatch} />;
+  if (run.phase === 'victory' && run.floor >= LEVELS.length) {
+    const rewards = getUnsettledRunRewards(run);
+    return (
+      <FinalEpilogue
+        characterId={run.characterId}
+        step={run.finalEpilogueStep ?? 0}
+        gemsEarned={rewards.gemReward}
+        convertedGold={rewards.goldReward}
+        onAdvance={() => dispatch({ type: 'ADVANCE_FINAL_EPILOGUE' })}
+      />
+    );
+  }
   if (run.phase === 'boss_awakening') {
     return (
       <div
@@ -212,7 +225,7 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
               onClick={() => dispatch({ type: 'CONTINUE_RUN' })}
               className="w-full py-4 bg-green-500 text-white rounded-2xl font-black text-xl border-b-4 border-green-700 active:border-b-0 active:translate-y-1 transition-all"
             >
-               {run.floor < 4 ? `Continue to Floor ${run.floor + 1}` : 'Complete Adventure'}
+               {`Continue to Floor ${run.floor + 1}`}
             </button>
             <button 
               onClick={() => dispatch({ type: 'RETURN_TO_LOBBY' })}
