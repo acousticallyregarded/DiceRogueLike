@@ -442,12 +442,13 @@ export function Lobby({
             <div className="bg-white rounded-[32px] p-6 w-full max-h-[80vh] flex flex-col gap-4 overflow-y-auto border-4 border-[#1c1c1c] shadow-2xl" onClick={e => e.stopPropagation()}>
               <h2 className="text-2xl font-black text-amber-500 text-center uppercase" style={{ WebkitTextStroke: '1px black' }}>How to Play</h2>
               <div className="text-sm font-semibold text-slate-600 space-y-4">
-                <p><strong>The Board:</strong> Roll two dice to travel around a 24-tile square perimeter. The camera follows you automatically.</p>
-                 <p><strong>The Boss:</strong> Rather than a final tile, a Boss encounter is scheduled every 30 rolls. Defeat it to clear the floor!</p>
-                 <p><strong>Combat:</strong> Choose an attack stance, inspect enemies, then press Attack. You may use a consumable instead; enemies respond once after each committed action. There is no round timeout.</p>
-                 <p><strong>Speed:</strong> Your Speed is a combat stat. At {COMBAT_SPEED_BASELINE}, each 20 points above base adds +1 successful outgoing attack damage, capped at +{MAX_COMBAT_SPEED_DAMAGE}.</p>
-                 <p><strong>Skills & Upgrades:</strong> Level up through XP to choose 1 of 3 named skill cards. Use the Shop to buy stat boosts.</p>
-                <p><strong>Lobby Progression:</strong> Earn gems during runs to buy Chests (random equippable gear) and permanent Talents.</p>
+                <p><strong>The Trail:</strong> Roll two dice and follow the path. Land on encounters, shops, rest stops, chests, and other events as you travel.</p>
+                <p><strong>The Boss:</strong> Reach the end of each trail to awaken its guardian. Defeat the boss to recover a Crown fragment and continue to the next floor.</p>
+                <p><strong>Combat:</strong> Choose an unlocked attack, inspect your enemies, and press Attack. Health Potions and Guard Tonics are bonus actions; Fire Bombs use your full action. Enemies respond after committed attacks.</p>
+                <p><strong>Speed:</strong> At {COMBAT_SPEED_BASELINE} Speed, each additional 20 points adds +1 damage to successful attacks, up to +{MAX_COMBAT_SPEED_DAMAGE}.</p>
+                <p><strong>Skills & Upgrades:</strong> Gain XP to level up and choose 1 of 3 skill cards. Visit shops during a run to improve your stats.</p>
+                <p><strong>Campaign Progress:</strong> Campaign gems buy random gear Chests and permanent Talents in the lobby.</p>
+                <p><strong>Wallet Rewards:</strong> Connect a wallet to qualify for occasional GLD or SLV rewards from verified monster kills. Rewards accumulate until you claim them.</p>
               </div>
               <button onClick={() => setShowHelp(false)} className="mt-4 w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-black text-lg border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all">Got it!</button>
             </div>
