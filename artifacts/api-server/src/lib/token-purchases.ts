@@ -18,9 +18,11 @@ import {
   tokenPayoutAlertStates,
   tokenPayoutMonitorState,
   tokenPurchases,
+  tokenRewardClaims,
+  tokenRewards,
 } from "@workspace/db";
 import { logger } from "./logger";
-import { InvalidTokenPriceError, tokenAmountForPrice } from "./token-purchase-math";
+import { InvalidTokenPriceError, tokenAmountForPrice, tokenAmountForUsdCents } from "./token-purchase-math";
 import {
   DEFAULT_MIN_INVENTORY_PAYOUTS,
   DEFAULT_MIN_NATIVE_GAS,
@@ -36,7 +38,7 @@ import {
   incidentEventForAlert,
   resolvedIncidentEvent,
 } from "./token-payout-incident-channel";
-export { tokenAmountForPrice } from "./token-purchase-math";
+export { tokenAmountForPrice, tokenAmountForUsdCents } from "./token-purchase-math";
 export {
   DEFAULT_MIN_INVENTORY_PAYOUTS,
   DEFAULT_MIN_NATIVE_GAS,
@@ -280,6 +282,26 @@ export function isPayoutConfigured(): boolean {
   }
 }
 
+/** Shared fail-closed gate for creating any new value-bearing liability. */
+export async function isRewardPayoutOperational(tx?: any): Promise<boolean> {
+  if (process.env.TOKEN_REWARDS_ENABLED !== "true" || process.env.TOKEN_PURCHASES_ENABLED !== "true") return false;
+  try {
+    escrowAccount();
+    const getBalance = (dependencies.chainClient as TokenPurchaseChainClient & {
+      getBalance?: (args: { address: Address; blockTag: "pending" }) => Promise<bigint>;
+    }).getBalance;
+    if (!getBalance || (await getBalance({ address: ESCROW_ADDRESS, blockTag: "pending" })) < minimumNativeGas()) return false;
+    if (tx) return !(await purchaseStuck(tx));
+    return db.transaction(async (checkTx) => !(await purchaseStuck(checkTx)));
+  } catch {
+    return false;
+  }
+}
+
+export function tokenRewardsEnabled(): boolean {
+  return process.env.TOKEN_REWARDS_ENABLED === "true";
+}
+
 function decimalFromBaseUnits(value: bigint): string {
   const scale = 10n ** 18n;
   const whole = value / scale;
@@ -402,7 +424,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
   return items;
 }
 
-async function getEscrowBalance(tokenAddress: Address): Promise<bigint> {
+export async function getEscrowBalance(tokenAddress: Address): Promise<bigint> {
   const balance = await dependencies.chainClient.readContract({
     address: tokenAddress,
     abi: BALANCE_ABI,
@@ -412,7 +434,7 @@ async function getEscrowBalance(tokenAddress: Address): Promise<bigint> {
   return BigInt(balance as bigint);
 }
 
-function tokenLockSql(tokenAddress: Address) {
+export function tokenLockSql(tokenAddress: Address) {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${"dicebound-token-reservation:" + tokenAddress.toLowerCase()}))`;
 }
 
@@ -420,7 +442,7 @@ function signerLockSql() {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${"dicebound-token-signer-nonce"}))`;
 }
 
-async function unresolvedReservation(
+export async function unresolvedReservation(
   tx: any,
   tokenAddress: Address,
 ): Promise<bigint> {
@@ -431,7 +453,15 @@ async function unresolvedReservation(
       eq(tokenPurchases.tokenAddress, tokenAddress),
       inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
     ));
-  return rows.reduce((total: bigint, row: { amount: string }) => total + BigInt(row.amount), 0n);
+  const rewards = await tx
+    .select({ amount: tokenRewards.tokenAmountBaseUnits })
+    .from(tokenRewards)
+    .where(and(
+      eq(tokenRewards.tokenAddress, tokenAddress),
+      eq(tokenRewards.status, "unclaimed"),
+    ));
+  return rows.reduce((total: bigint, row: { amount: string }) => total + BigInt(row.amount), 0n)
+    + rewards.reduce((total: bigint, row: { amount: string }) => total + BigInt(row.amount), 0n);
 }
 
 async function ensureRedeemableAccount(tx: any, walletAddress: string): Promise<void> {
@@ -486,22 +516,69 @@ async function markDefinitiveRevert(
         .where(eq(tokenPurchases.id, purchase.id)).limit(1);
       return current ?? purchase;
     }
-    await ensureRedeemableAccount(tx, updated.walletAddress);
-    const [refund] = await tx.insert(redeemableGemLedger).values({
-      id: crypto.randomUUID(),
-      walletAddress: updated.walletAddress,
-      operationKey: `purchase:${updated.id}:revert-refund`,
-      delta: GEM_COST,
-      reason: "token-purchase-definitive-revert",
-      purchaseId: updated.id,
-    }).onConflictDoNothing().returning({ id: redeemableGemLedger.id });
-    if (refund) {
-      await tx.update(redeemableGemAccounts).set({
-        balance: sql`${redeemableGemAccounts.balance} + ${GEM_COST}`,
+    if (updated.payoutKind !== "reward") {
+      await ensureRedeemableAccount(tx, updated.walletAddress);
+      const [refund] = await tx.insert(redeemableGemLedger).values({
+        id: crypto.randomUUID(),
+        walletAddress: updated.walletAddress,
+        operationKey: `purchase:${updated.id}:revert-refund`,
+        delta: GEM_COST,
+        reason: "token-purchase-definitive-revert",
+        purchaseId: updated.id,
+      }).onConflictDoNothing().returning({ id: redeemableGemLedger.id });
+      if (refund) {
+        await tx.update(redeemableGemAccounts).set({
+          balance: sql`${redeemableGemAccounts.balance} + ${GEM_COST}`,
+          updatedAt: new Date(),
+        }).where(eq(redeemableGemAccounts.walletAddress, updated.walletAddress));
+      }
+    }
+    if (updated.payoutKind === "reward" && updated.rewardClaimId) {
+      await tx.update(tokenRewards).set({
+        status: "unclaimed",
+        claimId: null,
+      }).where(and(
+        eq(tokenRewards.claimId, updated.rewardClaimId),
+        eq(tokenRewards.symbol, updated.symbol),
+        eq(tokenRewards.status, "claiming"),
+      ));
+      const remaining = await tx.select({ id: tokenRewards.id }).from(tokenRewards).where(and(
+        eq(tokenRewards.claimId, updated.rewardClaimId),
+        eq(tokenRewards.status, "claiming"),
+      )).limit(1);
+      await tx.update(tokenRewardClaims).set({
+        status: remaining.length > 0 ? "partial" : "failed",
         updatedAt: new Date(),
-      }).where(eq(redeemableGemAccounts.walletAddress, updated.walletAddress));
+      }).where(eq(tokenRewardClaims.id, updated.rewardClaimId));
     }
     return updated;
+  });
+}
+
+async function markRewardPayoutConfirmed(purchase: typeof tokenPurchases.$inferSelect): Promise<void> {
+  if (purchase.payoutKind !== "reward" || !purchase.rewardClaimId) return;
+  const claimId = purchase.rewardClaimId;
+  await db.transaction(async (tx) => {
+    await tx.update(tokenRewards).set({
+      status: "claimed",
+      claimedAt: new Date(),
+    }).where(and(
+      eq(tokenRewards.claimId, claimId),
+      eq(tokenRewards.symbol, purchase.symbol),
+      eq(tokenRewards.status, "claiming"),
+    ));
+    const remaining = await tx.select({ id: tokenRewards.id }).from(tokenRewards).where(and(
+      eq(tokenRewards.claimId, claimId),
+      eq(tokenRewards.status, "claiming"),
+    )).limit(1);
+    const [claimRow] = await tx.select({ status: tokenRewardClaims.status })
+      .from(tokenRewardClaims).where(eq(tokenRewardClaims.id, claimId)).limit(1);
+    if (remaining.length === 0 && claimRow?.status !== "partial") {
+      await tx.update(tokenRewardClaims).set({
+        status: "confirmed",
+        updatedAt: new Date(),
+      }).where(eq(tokenRewardClaims.id, claimId));
+    }
   });
 }
 
@@ -580,6 +657,7 @@ async function receiptStatus(row: typeof tokenPurchases.$inferSelect) {
       eq(tokenPurchases.id, row.id),
       inArray(tokenPurchases.status, [...UNRESOLVED_STATUSES]),
     )).returning();
+    if (updated?.payoutKind === "reward") await markRewardPayoutConfirmed(updated);
     return updated ?? row;
   } catch {
     return row;
@@ -678,7 +756,7 @@ async function broadcast(row: typeof tokenPurchases.$inferSelect) {
   }
 }
 
-async function processPurchase(row: typeof tokenPurchases.$inferSelect) {
+export async function processTokenPayout(row: typeof tokenPurchases.$inferSelect) {
   let current = row;
   if (current.status === "confirmed" || current.status === "failed") return current;
   if (process.env.TOKEN_PURCHASES_ENABLED !== "true") return current;
@@ -697,7 +775,7 @@ export async function purchaseToken(walletAddress: string, requestedSymbol: unkn
   const existing = (await db.select().from(tokenPurchases).where(sql`${tokenPurchases.walletAddress} = ${walletAddress} AND ${tokenPurchases.idempotencyKey} = ${idempotencyKey}`).limit(1))[0];
   if (existing) {
     if (existing.symbol !== token) throw new TokenPurchaseError("idempotency_conflict", "Idempotency key belongs to another token.", 409);
-    return purchaseResponse(await processPurchase(await receiptStatus(existing)));
+    return purchaseResponse(await processTokenPayout(await receiptStatus(existing)));
   }
 
   assertPurchasesEnabled();
@@ -750,13 +828,13 @@ export async function purchaseToken(walletAddress: string, requestedSymbol: unkn
     const retry = (await db.select().from(tokenPurchases).where(sql`${tokenPurchases.walletAddress} = ${walletAddress} AND ${tokenPurchases.idempotencyKey} = ${idempotencyKey}`).limit(1))[0];
     if (retry) {
       if (retry.symbol !== token) throw new TokenPurchaseError("idempotency_conflict", "Idempotency key belongs to another token.", 409);
-      return purchaseResponse(await processPurchase(await receiptStatus(retry)));
+      return purchaseResponse(await processTokenPayout(await receiptStatus(retry)));
     }
     throw error;
   }
   if (!intent) throw new TokenPurchaseError("purchase_unavailable", "Purchase could not be created.");
   logger.info({ walletAddress, symbol: token, purchaseId: intent.id }, "Token purchase intent created");
-  return purchaseResponse(await processPurchase(intent));
+  return purchaseResponse(await processTokenPayout(intent));
 }
 
 export async function getRedeemableGemBalance(walletAddress: string): Promise<number> {
@@ -799,7 +877,7 @@ export async function recoverPendingPurchases(): Promise<void> {
   ).orderBy(tokenPurchases.createdAt).limit(25);
   for (const row of rows) {
     try {
-      await processPurchase(await receiptStatus(row));
+      await processTokenPayout(await receiptStatus(row));
     } catch (error) {
       // Never include raw transaction bytes or signer configuration in logs.
       // RPC errors can echo request payloads; do not attach the error object
@@ -953,6 +1031,7 @@ export function setTokenPurchaseTestDependencies(
 
 interface TokenPurchaseChainClient {
   readContract(args: Parameters<typeof publicClient.readContract>[0]): Promise<unknown>;
+  getBalance?(args: Parameters<typeof publicClient.getBalance>[0]): Promise<bigint>;
   getTransactionReceipt(args: Parameters<typeof publicClient.getTransactionReceipt>[0]): Promise<{ status: "success" | "reverted" }>;
   getTransactionCount(args: Parameters<typeof publicClient.getTransactionCount>[0]): Promise<number>;
   estimateGas(args: Parameters<typeof publicClient.estimateGas>[0]): Promise<bigint>;

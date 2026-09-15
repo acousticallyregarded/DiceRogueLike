@@ -45,8 +45,16 @@ import {
   getTokenQuote,
   isPayoutConfigured,
   purchaseToken,
+  tokenRewardsEnabled,
   TokenPurchaseError,
 } from "../lib/token-purchases";
+import {
+  claimTokenRewards,
+  completeEncounterMonster,
+  getTokenRewards,
+  issueEncounterEligibility,
+  TokenRewardError,
+} from "../lib/token-rewards";
 
 const router: IRouter = Router();
 router.use("/wallet", (_req, res, next) => {
@@ -596,6 +604,125 @@ router.get(
     }
     if (!requireWalletAddress(req, res, session.address)) return;
     res.json(GetTokenInventoryResponse.parse({ items: await getInventory() }));
+  }),
+);
+
+router.post(
+  "/wallet/encounter-ticket",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    if (!tokenRewardsEnabled()) {
+      sendJsonError(res, 503, "token_rewards_disabled");
+      return;
+    }
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address) || !requireCsrf(req, res, session.csrfToken)) return;
+    const body = bodyRecord(req);
+    const encounterId = body?.encounterId;
+    const monsterIds = body?.monsterIds;
+    if (
+      typeof encounterId !== "string" ||
+      !Array.isArray(monsterIds) ||
+      !monsterIds.every((id) => typeof id === "string")
+    ) {
+      sendJsonError(res, 400, "invalid_encounter_ticket");
+      return;
+    }
+    try {
+      const ticket = await issueEncounterEligibility(
+        session.address,
+        session.id,
+        encounterId,
+        monsterIds as string[],
+      );
+      res.status(201).json({
+        id: ticket.id,
+        encounterId: ticket.encounterId,
+        monsterIds: ticket.monsterIds,
+        expiresAt: ticket.expiresAt.toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof TokenRewardError) {
+        sendJsonError(res, error.status, error.code);
+        return;
+      }
+      throw error;
+    }
+  }),
+);
+
+router.post(
+  "/wallet/encounter-ticket/:id/monster",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address) || !requireCsrf(req, res, session.csrfToken)) return;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const body = bodyRecord(req);
+    if (!id || typeof body?.monsterId !== "string") {
+      sendJsonError(res, 400, "invalid_encounter_completion");
+      return;
+    }
+    try {
+      const result = await completeEncounterMonster(session.address, session.id, id, body.monsterId);
+      res.json({
+        settled: true,
+        duplicate: result.duplicate,
+        reward: result.reward
+          ? { symbol: result.reward.symbol, tokenAmountBaseUnits: result.reward.tokenAmountBaseUnits, usdCents: result.reward.usdCents }
+          : null,
+      });
+    } catch (error) {
+      if (error instanceof TokenRewardError) {
+        sendJsonError(res, error.status, error.code);
+        return;
+      }
+      throw error;
+    }
+  }),
+);
+
+router.get(
+  "/wallet/rewards",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address)) return;
+    res.json(await getTokenRewards(session.address));
+  }),
+);
+
+router.post(
+  "/wallet/rewards/claim",
+  asyncRoute(async (req, res) => {
+    if (!requestIsTrusted(req, res)) return;
+    const session = await findSession(req);
+    if (!session) {
+      unauthorized(req, res);
+      return;
+    }
+    if (!requireWalletAddress(req, res, session.address) || !requireCsrf(req, res, session.csrfToken)) return;
+    try {
+      res.json(await claimTokenRewards(session.address));
+    } catch (error) {
+      if (error instanceof TokenRewardError) {
+        sendJsonError(res, error.status, error.code);
+        return;
+      }
+      throw error;
+    }
   }),
 );
 

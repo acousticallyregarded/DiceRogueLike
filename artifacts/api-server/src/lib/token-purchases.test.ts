@@ -12,8 +12,10 @@ import {
   tokenPayoutAlertStates,
   tokenPayoutMonitorState,
   tokenPurchases,
+  tokenRewardClaims,
+  tokenRewards,
 } from "@workspace/db";
-import { tokenAmountForPrice } from "./token-purchase-math";
+import { tokenAmountForPrice, tokenAmountForUsdCents } from "./token-purchase-math";
 import {
   GEM_COST,
   MAX_REDEEMABLE_GEM_GRANT,
@@ -50,7 +52,7 @@ class FakeChain {
     if (this.failBroadcast) throw new Error("ambiguous RPC failure");
     return `0x${"ab".repeat(32)}` as Hex;
   };
-  getTransactionReceipt = async () => {
+  getTransactionReceipt = async (_args?: { hash?: Hex }) => {
     if (this.receipt === "missing") throw new Error("receipt unavailable");
     return { status: this.receipt };
   };
@@ -93,6 +95,8 @@ beforeEach(async () => {
   process.env.TOKEN_PURCHASES_ENABLED = "true";
   await db.delete(redeemableGemLedger);
   await db.delete(tokenPurchases);
+  await db.delete(tokenRewards);
+  await db.delete(tokenRewardClaims);
   await db.delete(redeemableGemAccounts);
   await db.delete(tokenPayoutAlertStates);
   await db.delete(tokenPayoutMonitorState);
@@ -111,6 +115,7 @@ test("token quote conversion uses integer-safe base-unit math", () => {
   assert.equal(tokenAmountForPrice("1"), "10000000000000000000");
   assert.equal(tokenAmountForPrice("2000"), "5000000000000000");
   assert.equal(tokenAmountForPrice("12.50"), "800000000000000000");
+  assert.equal(tokenAmountForUsdCents("10", 15), "15000000000000000");
 });
 
 test("non-positive and malformed quotes fail closed", () => {
@@ -356,4 +361,79 @@ test("ambiguous RPC failures retain one debit and one signed transfer without re
   const refunds = await db.select().from(redeemableGemLedger)
     .where(eq(redeemableGemLedger.reason, "token-purchase-definitive-revert"));
   assert.equal(refunds.length, 0);
+});
+
+test("reward payout failure is symbol-scoped and never mints gems", async () => {
+  const claimId = "reward-claim-partial";
+  const now = new Date();
+  await db.insert(tokenRewardClaims).values({
+    id: claimId,
+    walletAddress: WALLET,
+    status: "pending",
+  });
+  await db.insert(tokenRewards).values([
+    {
+      id: "reward-gld",
+      walletAddress: WALLET,
+      eligibilityId: "eligibility",
+      monsterId: "monster-gld",
+      symbol: "GLD",
+      tokenAddress: tokenAddress("GLD"),
+      tokenAmountBaseUnits: "15",
+      usdCents: 15,
+      status: "claiming",
+      claimId,
+    },
+    {
+      id: "reward-slv",
+      walletAddress: WALLET,
+      eligibilityId: "eligibility",
+      monsterId: "monster-slv",
+      symbol: "SLV",
+      tokenAddress: tokenAddress("SLV"),
+      tokenAmountBaseUnits: "30",
+      usdCents: 15,
+      status: "claiming",
+      claimId,
+    },
+  ]);
+  const payoutBase = {
+    walletAddress: WALLET,
+    gemCost: 0,
+    quotePrice: "0",
+    quoteSource: "test",
+    quoteTimestamp: now,
+    quoteDelayed: "previous-close",
+    status: "submitted",
+    rawSignedTransaction: `0x${"11".repeat(32)}`,
+    payoutKind: "reward",
+    rewardClaimId: claimId,
+    updatedAt: now,
+  } as const;
+  const gldHash = `0x${"22".repeat(32)}` as Hex;
+  const slvHash = `0x${"33".repeat(32)}` as Hex;
+  await db.insert(tokenPurchases).values([
+    { ...payoutBase, id: "payout-gld", idempotencyKey: "reward:gld", symbol: "GLD", tokenAddress: tokenAddress("GLD"), tokenAmountBaseUnits: "15", transactionHash: gldHash },
+    { ...payoutBase, id: "payout-slv", idempotencyKey: "reward:slv", symbol: "SLV", tokenAddress: tokenAddress("SLV"), tokenAmountBaseUnits: "30", transactionHash: slvHash },
+  ]);
+
+  let slvReceiptCalls = 0;
+  chain.getTransactionReceipt = async ({ hash }: { hash?: Hex } = {}) => {
+    if (hash === gldHash) return { status: "reverted" };
+    slvReceiptCalls += 1;
+    if (slvReceiptCalls === 1) throw new Error("receipt unavailable");
+    return { status: "success" };
+  };
+  await recoverPendingPurchases();
+  const afterFailure = await db.select().from(tokenRewards).orderBy(tokenRewards.id);
+  assert.equal(afterFailure.find(row => row.symbol === "GLD")?.status, "unclaimed");
+  assert.equal(afterFailure.find(row => row.symbol === "SLV")?.status, "claimed");
+  assert.equal((await db.select().from(tokenRewardClaims))[0]?.status, "partial");
+  assert.equal(await gemBalance(WALLET), 0);
+
+  await recoverPendingPurchases();
+  const afterSuccess = await db.select().from(tokenRewards).orderBy(tokenRewards.id);
+  assert.equal(afterSuccess.find(row => row.symbol === "SLV")?.status, "claimed");
+  assert.equal((await db.select().from(tokenRewardClaims))[0]?.status, "partial");
+  assert.equal(await gemBalance(WALLET), 0);
 });

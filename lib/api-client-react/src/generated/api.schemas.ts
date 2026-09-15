@@ -51,6 +51,51 @@ export interface TokenPurchaseInput {
   symbol: TokenSymbol;
 }
 
+export interface EncounterTicketInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  encounterId: string;
+  /**
+     * @minItems 1
+     * @maxItems 12
+     */
+  monsterIds: string[];
+}
+
+export interface EncounterTicketResponse {
+  id: string;
+  encounterId: string;
+  monsterIds: string[];
+  expiresAt: string;
+}
+
+export interface EncounterMonsterInput {
+  monsterId: string;
+}
+
+export interface TokenRewardsResponse {
+  enabled: boolean;
+  GLD: string;
+  SLV: string;
+  /** @minimum 0 */
+  GLDValueCents: number;
+  /** @minimum 0 */
+  SLVValueCents: number;
+  /** @minimum 0 */
+  count: number;
+}
+
+export interface TokenRewardClaimResponse {
+  /** @nullable */
+  id: string | null;
+  status: string;
+  GLD: string;
+  SLV: string;
+  pending: boolean;
+}
+
 export type TokenPurchaseResponseStatus = typeof TokenPurchaseResponseStatus[keyof typeof TokenPurchaseResponseStatus];
 
 
@@ -87,6 +132,7 @@ export interface RedeemableGemBalanceResponse {
 export interface TokenPurchasePendingResponse {
   items: TokenPurchaseResponse[];
 }
+
 export interface ErrorResponse {
   error: string;
 }

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startTokenPayoutMonitor, startTokenPurchaseWorker } from "./lib/token-purchases";
+import { recoverPendingRewardClaims } from "./lib/token-rewards";
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +26,9 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
   if (process.env.TOKEN_PURCHASES_ENABLED === "true") {
     startTokenPurchaseWorker();
+    setInterval(() => void recoverPendingRewardClaims().catch(() => {
+      logger.warn("Token reward recovery cycle failed");
+    }), 15_000);
     startTokenPayoutMonitor();
     logger.info("Token purchase recovery worker started");
     logger.info("Token payout health monitor started");

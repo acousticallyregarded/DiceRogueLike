@@ -21,6 +21,9 @@ import type {
 
 import type {
   BadRequestResponse,
+  EncounterMonsterInput,
+  EncounterTicketInput,
+  EncounterTicketResponse,
   ErrorResponse,
   ForbiddenResponse,
   HealthStatus,
@@ -30,6 +33,8 @@ import type {
   TokenPurchaseInput,
   TokenPurchasePendingResponse,
   TokenPurchaseResponse,
+  TokenRewardClaimResponse,
+  TokenRewardsResponse,
   UnauthorizedResponse
 } from './api.schemas';
 
@@ -131,6 +136,13 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getGetTokenCatalogUrl = () => {
 
 
@@ -201,6 +213,13 @@ export function useGetTokenCatalog<TData = Awaited<ReturnType<typeof getTokenCat
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getGetTokenInventoryUrl = () => {
 
 
@@ -271,6 +290,13 @@ export function useGetTokenInventory<TData = Awaited<ReturnType<typeof getTokenI
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getPurchaseTokenUrl = () => {
 
 
@@ -357,6 +383,334 @@ export const usePurchaseToken = <TError = ErrorType<BadRequestResponse | Unautho
         TContext
       > => {
       return useMutation(getPurchaseTokenMutationOptions(options));
+    }
+
+export const getIssueEncounterTicketUrl = () => {
+
+
+
+
+  return `/api/wallet/encounter-ticket`
+}
+
+/**
+ * @summary Issue a single-use combat encounter eligibility ticket
+ */
+export const issueEncounterTicket = async (encounterTicketInput: EncounterTicketInput, options?: Parameters<typeof customFetch>[1]): Promise<EncounterTicketResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<EncounterTicketResponse>(getIssueEncounterTicketUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(encounterTicketInput)
+  }
+);}
+
+
+
+
+
+export const getIssueEncounterTicketMutationKey = () => ['issueEncounterTicket'] as const;
+
+export const getIssueEncounterTicketMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof issueEncounterTicket>>, TError,IssueEncounterTicketMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof issueEncounterTicket>>, TError,IssueEncounterTicketMutationVariables, TContext> => {
+
+const mutationKey = getIssueEncounterTicketMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof issueEncounterTicket>>, IssueEncounterTicketMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  issueEncounterTicket(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IssueEncounterTicketMutationResult = NonNullable<Awaited<ReturnType<typeof issueEncounterTicket>>>
+    export type IssueEncounterTicketMutationBody = BodyType<EncounterTicketInput>
+    export type IssueEncounterTicketMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse | void>
+    export type IssueEncounterTicketMutationVariables = {data: BodyType<EncounterTicketInput>}
+
+    /**
+ * @summary Issue a single-use combat encounter eligibility ticket
+ */
+export const useIssueEncounterTicket = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof issueEncounterTicket>>, TError,IssueEncounterTicketMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof issueEncounterTicket>>,
+        TError,
+        IssueEncounterTicketMutationVariables,
+        TContext
+      > => {
+      return useMutation(getIssueEncounterTicketMutationOptions(options));
+    }
+
+export const getSettleEncounterMonsterUrl = (id: string,) => {
+
+
+
+
+  return `/api/wallet/encounter-ticket/${id}/monster`
+}
+
+/**
+ * @summary Settle one defeated monster against an encounter ticket
+ */
+export const settleEncounterMonster = async (id: string,
+    encounterMonsterInput: EncounterMonsterInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getSettleEncounterMonsterUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(encounterMonsterInput)
+  }
+);}
+
+
+
+
+
+export const getSettleEncounterMonsterMutationKey = () => ['settleEncounterMonster'] as const;
+
+export const getSettleEncounterMonsterMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof settleEncounterMonster>>, TError,SettleEncounterMonsterMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof settleEncounterMonster>>, TError,SettleEncounterMonsterMutationVariables, TContext> => {
+
+const mutationKey = getSettleEncounterMonsterMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof settleEncounterMonster>>, SettleEncounterMonsterMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  settleEncounterMonster(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SettleEncounterMonsterMutationResult = NonNullable<Awaited<ReturnType<typeof settleEncounterMonster>>>
+    export type SettleEncounterMonsterMutationBody = BodyType<EncounterMonsterInput>
+    export type SettleEncounterMonsterMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+    export type SettleEncounterMonsterMutationVariables = {id: string;data: BodyType<EncounterMonsterInput>}
+
+    /**
+ * @summary Settle one defeated monster against an encounter ticket
+ */
+export const useSettleEncounterMonster = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof settleEncounterMonster>>, TError,SettleEncounterMonsterMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof settleEncounterMonster>>,
+        TError,
+        SettleEncounterMonsterMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSettleEncounterMonsterMutationOptions(options));
+    }
+
+export const getGetTokenRewardsUrl = () => {
+
+
+
+
+  return `/api/wallet/rewards`
+}
+
+/**
+ * @summary Get accumulated server-side monster rewards
+ */
+export const getTokenRewards = async ( options?: Parameters<typeof customFetch>[1]): Promise<TokenRewardsResponse> => {
+
+  return customFetch<TokenRewardsResponse>(getGetTokenRewardsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTokenRewardsQueryKey = () => {
+    return [
+    `/api/wallet/rewards`
+    ] as const;
+    }
+
+
+export const getGetTokenRewardsQueryOptions = <TData = Awaited<ReturnType<typeof getTokenRewards>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTokenRewards>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTokenRewardsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTokenRewards>>> = ({ signal }) => getTokenRewards({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTokenRewards>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTokenRewardsQueryResult = NonNullable<Awaited<ReturnType<typeof getTokenRewards>>>
+export type GetTokenRewardsQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Get accumulated server-side monster rewards
+ */
+
+export function useGetTokenRewards<TData = Awaited<ReturnType<typeof getTokenRewards>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTokenRewards>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTokenRewardsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getClaimTokenRewardsUrl = () => {
+
+
+
+
+  return `/api/wallet/rewards/claim`
+}
+
+/**
+ * @summary Claim all unclaimed monster rewards
+ */
+export const claimTokenRewards = async ( options?: Parameters<typeof customFetch>[1]): Promise<TokenRewardClaimResponse> => {
+
+  return customFetch<TokenRewardClaimResponse>(getClaimTokenRewardsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getClaimTokenRewardsMutationKey = () => ['claimTokenRewards'] as const;
+
+export const getClaimTokenRewardsMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimTokenRewards>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof claimTokenRewards>>, TError,void, TContext> => {
+
+const mutationKey = getClaimTokenRewardsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof claimTokenRewards>>, void> = () => {
+
+
+          return  claimTokenRewards(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClaimTokenRewardsMutationResult = NonNullable<Awaited<ReturnType<typeof claimTokenRewards>>>
+
+    export type ClaimTokenRewardsMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+    /**
+ * @summary Claim all unclaimed monster rewards
+ */
+export const useClaimTokenRewards = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimTokenRewards>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof claimTokenRewards>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClaimTokenRewardsMutationOptions(options));
     }
 
 export const getGetRedeemableGemBalanceUrl = () => {

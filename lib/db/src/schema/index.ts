@@ -66,6 +66,71 @@ export const walletSaves = pgTable("wallet_saves", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }),
 });
 
+/**
+ * A server-issued combat eligibility window.  The client may report only
+ * monster identifiers that were included in this ticket; the ticket itself is
+ * single-use per monster and is bound to the authenticated wallet session.
+ */
+export const encounterEligibilities = pgTable(
+  "encounter_eligibilities",
+  {
+    id: text("id").primaryKey(),
+    walletAddress: text("wallet_address").notNull(),
+    sessionId: text("session_id").notNull(),
+    encounterId: text("encounter_id").notNull(),
+    monsterIds: jsonb("monster_ids").$type<string[]>().notNull(),
+    completedMonsterIds: jsonb("completed_monster_ids").$type<string[]>().notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    lastCompletedAt: timestamp("last_completed_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    status: text("status").notNull().default("active"),
+  },
+  (table) => ({
+    walletStatusIndex: index("encounter_eligibilities_wallet_status_idx").on(table.walletAddress, table.status),
+    encounterIndex: uniqueIndex("encounter_eligibilities_wallet_encounter_idx").on(table.walletAddress, table.encounterId),
+  }),
+);
+
+/** A fixed-$0.15 liability reserved against escrow inventory at award time. */
+export const tokenRewards = pgTable(
+  "token_rewards",
+  {
+    id: text("id").primaryKey(),
+    walletAddress: text("wallet_address").notNull(),
+    eligibilityId: text("eligibility_id").notNull(),
+    monsterId: text("monster_id").notNull(),
+    symbol: text("symbol").notNull(),
+    tokenAddress: text("token_address").notNull(),
+    tokenAmountBaseUnits: text("token_amount_base_units").notNull(),
+    usdCents: integer("usd_cents").notNull().default(15),
+    status: text("status").notNull().default("unclaimed"),
+    claimId: text("claim_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => ({
+    monsterIndex: uniqueIndex("token_rewards_eligibility_monster_idx").on(table.eligibilityId, table.monsterId),
+    walletStatusIndex: index("token_rewards_wallet_status_idx").on(table.walletAddress, table.status),
+  }),
+);
+
+/** Durable idempotent aggregation of reward payouts. */
+export const tokenRewardClaims = pgTable(
+  "token_reward_claims",
+  {
+    id: text("id").primaryKey(),
+    walletAddress: text("wallet_address").notNull(),
+    status: text("status").notNull().default("pending"),
+    gldPayoutId: text("gld_payout_id"),
+    slvPayoutId: text("slv_payout_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    walletStatusIndex: index("token_reward_claims_wallet_status_idx").on(table.walletAddress, table.status),
+  }),
+);
+
 /** Server-authoritative token-redeemable gem balance. */
 export const redeemableGemAccounts = pgTable("redeemable_gem_accounts", {
   walletAddress: text("wallet_address").primaryKey(),
@@ -117,6 +182,8 @@ export const tokenPurchases = pgTable(
     rawSignedTransaction: text("raw_signed_transaction"),
     transactionHash: text("transaction_hash"),
     nonce: bigint("nonce", { mode: "bigint" }),
+    payoutKind: text("payout_kind").notNull().default("purchase"),
+    rewardClaimId: text("reward_claim_id"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -161,6 +228,9 @@ export const tokenPayoutMonitorState = pgTable("token_payout_monitor_state", {
 export type WalletChallenge = typeof walletChallenges.$inferSelect;
 export type WalletSession = typeof walletSessions.$inferSelect;
 export type WalletSave = typeof walletSaves.$inferSelect;
+export type EncounterEligibility = typeof encounterEligibilities.$inferSelect;
+export type TokenReward = typeof tokenRewards.$inferSelect;
+export type TokenRewardClaim = typeof tokenRewardClaims.$inferSelect;
 export type RedeemableGemAccount = typeof redeemableGemAccounts.$inferSelect;
 export type RedeemableGemLedgerEntry = typeof redeemableGemLedger.$inferSelect;
 export type TokenPurchase = typeof tokenPurchases.$inferSelect;

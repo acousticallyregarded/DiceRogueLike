@@ -1,3 +1,15 @@
+# Dicebound monster reward trust boundary
+
+Monster defeat reports are accepted only for a short-lived, server-issued
+encounter ticket bound to the authenticated wallet session. The ticket is
+single-use per monster, enforces a minimum completion interval, and the server
+performs the cryptographic roll, delayed-price conversion, inventory
+reservation, and durable payout claim. The browser still supplies the
+combat-enemy identifiers and reports when an enemy disappears because the full
+combat simulation is not server-side. Consequently a compromised client could
+misrepresent a plausible encounter within its ticket; it cannot choose the
+chance, token, amount, replay a monster, or create an unbacked liability.
+
 # Token payout operator runbook
 
 The API emits structured `Token payout operator alert` log records once per minute while token purchases are enabled. Repeated alerts are limited to once every 30 minutes per condition, and a resolution record is emitted when a condition clears. These records contain operational counts, timestamps, and base-unit balances only. They never contain private keys or signed transaction bytes.

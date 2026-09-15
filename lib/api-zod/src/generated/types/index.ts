@@ -8,6 +8,9 @@
 
 export * from './badRequestResponse';
 export * from './csrfTokenParameter';
+export * from './encounterMonsterInput';
+export * from './encounterTicketInput';
+export * from './encounterTicketResponse';
 export * from './errorResponse';
 export * from './forbiddenResponse';
 export * from './healthStatus';
@@ -20,6 +23,8 @@ export * from './tokenPurchaseInput';
 export * from './tokenPurchasePendingResponse';
 export * from './tokenPurchaseResponse';
 export * from './tokenPurchaseResponseStatus';
+export * from './tokenRewardClaimResponse';
+export * from './tokenRewardsResponse';
 export * from './tokenSymbol';
 export * from './unauthorizedResponse';
 export * from './walletAddressParameter';

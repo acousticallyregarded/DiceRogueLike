@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: token-purchases
     description: Authenticated GLD and SLV token purchases
+  - name: token-rewards
+    description: Server-authoritative monster token rewards
 paths:
   /healthz:
     get:
@@ -110,6 +112,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /wallet/encounter-ticket:
+    post:
+      operationId: issueEncounterTicket
+      tags: [token-rewards]
+      summary: Issue a single-use combat encounter eligibility ticket
+      security: [{ walletSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EncounterTicketInput" }
+      responses:
+        "201":
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EncounterTicketResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Another encounter ticket is active }
+  /wallet/encounter-ticket/{id}/monster:
+    post:
+      operationId: settleEncounterMonster
+      tags: [token-rewards]
+      summary: Settle one defeated monster against an encounter ticket
+      security: [{ walletSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CsrfToken"
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EncounterMonsterInput" }
+      responses:
+        "200": { description: Settlement result }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /wallet/rewards:
+    get:
+      operationId: getTokenRewards
+      tags: [token-rewards]
+      summary: Get accumulated server-side monster rewards
+      security: [{ walletSession: [] }]
+      parameters: [{ $ref: "#/components/parameters/WalletAddress" }]
+      responses:
+        "200":
+          description: Accumulated GLD and SLV rewards
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenRewardsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /wallet/rewards/claim:
+    post:
+      operationId: claimTokenRewards
+      tags: [token-rewards]
+      summary: Claim all unclaimed monster rewards
+      security: [{ walletSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Durable reward claim status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenRewardClaimResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /wallet/redeemable-gems:
     get:
       operationId: getRedeemableGemBalance
@@ -271,6 +350,48 @@ components:
       required: [symbol]
       properties:
         symbol: { $ref: "#/components/schemas/TokenSymbol" }
+    EncounterTicketInput:
+      type: object
+      required: [encounterId, monsterIds]
+      properties:
+        encounterId: { type: string, minLength: 1, maxLength: 120 }
+        monsterIds:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items: { type: string }
+    EncounterTicketResponse:
+      type: object
+      required: [id, encounterId, monsterIds, expiresAt]
+      properties:
+        id: { type: string }
+        encounterId: { type: string }
+        monsterIds: { type: array, items: { type: string } }
+        expiresAt: { type: string, format: date-time }
+    EncounterMonsterInput:
+      type: object
+      required: [monsterId]
+      properties:
+        monsterId: { type: string }
+    TokenRewardsResponse:
+      type: object
+      required: [enabled, GLD, SLV, GLDValueCents, SLVValueCents, count]
+      properties:
+        enabled: { type: boolean }
+        GLD: { type: string }
+        SLV: { type: string }
+        GLDValueCents: { type: integer, minimum: 0 }
+        SLVValueCents: { type: integer, minimum: 0 }
+        count: { type: integer, minimum: 0 }
+    TokenRewardClaimResponse:
+      type: object
+      required: [id, status, GLD, SLV, pending]
+      properties:
+        id: { type: ["string", "null"] }
+        status: { type: string }
+        GLD: { type: string }
+        SLV: { type: string }
+        pending: { type: boolean }
     TokenPurchaseResponse:
       type: object
       required: [id, symbol, status, gemCost, tokenAmount, quotePrice, quoteSource, quoteTimestamp, quoteDelayed, delayed, redeemableGemBalance]

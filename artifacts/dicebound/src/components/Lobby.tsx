@@ -14,6 +14,17 @@ import { AudioSettingsButton } from './AudioSettings';
 import { WalletButton } from './WalletButton';
 import type { WalletCloudController } from '../hooks/use-wallet-cloud';
 
+function formatRewardUnits(value: string): string {
+  try {
+    const units = BigInt(value);
+    const whole = units / 1_000_000_000_000_000_000n;
+    const fraction = (units % 1_000_000_000_000_000_000n).toString().padStart(18, '0').slice(0, 6).replace(/0+$/, '');
+    return fraction ? `${whole}.${fraction}` : whole.toString();
+  } catch {
+    return '0';
+  }
+}
+
 export function Lobby({
   state,
   dispatch,
@@ -33,8 +44,9 @@ export function Lobby({
   useEffect(() => {
     if (tab === 'shop' && wallet.session) {
       wallet.refreshInventory();
+      wallet.refreshRewards();
     }
-  }, [tab, wallet.session, wallet.refreshInventory]);
+  }, [tab, wallet.session, wallet.refreshInventory, wallet.refreshRewards]);
 
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans">
@@ -204,6 +216,57 @@ export function Lobby({
                 <p className="mb-4 text-xs font-bold leading-relaxed text-slate-600">
                   Spend 100 redeemable gems for $10 of GLD or SLV, calculated from Massive’s delayed previous close. Tokens transfer to your connected wallet.
                 </p>
+                <div className="mb-4 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-wider text-amber-700">Monster rewards</div>
+                      <div className="text-xs font-bold text-amber-900">Each reward is worth $0.15 and stays server-backed.</div>
+                    </div>
+                    {wallet.rewards && (wallet.rewards.count > 0) && (
+                      <button
+                        onClick={() => { void wallet.claimRewards(); }}
+                        disabled={wallet.rewardsLoading}
+                        className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-slate-900 shadow-sm disabled:opacity-50"
+                      >
+                        {wallet.rewardsLoading ? 'Claiming…' : 'Claim'}
+                      </button>
+                    )}
+                  </div>
+                  {wallet.rewards && !wallet.rewards.enabled && (
+                    <div role="status" className="mb-3 text-xs font-black text-slate-600">
+                      Monster reward drops are unavailable until a server-authoritative combat source is enabled.
+                    </div>
+                  )}
+                  {wallet.rewardsLoading && !wallet.rewards ? (
+                    <div className="text-xs font-bold text-slate-500">Loading rewards…</div>
+                  ) : wallet.rewardsError ? (
+                    <div role="alert" className="text-xs font-bold text-red-700">{wallet.rewardsError}</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['GLD', 'SLV'] as const).map(symbol => {
+                        const units = wallet.rewards?.[symbol] ?? '0';
+                        return (
+                          <div key={symbol} className="rounded-xl border border-amber-200 bg-white p-2">
+                            <div className="text-sm font-black text-slate-800">{symbol}</div>
+                            <div className="font-mono text-xs font-bold text-slate-700">{formatRewardUnits(units)} {symbol}</div>
+                            <div className="text-[10px] font-bold text-slate-500">
+                              Value ${((wallet.rewards?.[`${symbol}ValueCents` as 'GLDValueCents' | 'SLVValueCents'] ?? 0) / 100).toFixed(2)}
+                            </div>
+                            <div className={`mt-1 text-[10px] font-black ${units !== '0' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                              {units !== '0' ? 'Escrow reserved' : 'No accrued reward'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {wallet.rewardClaim && (
+                    <div role="status" className="mt-2 text-xs font-black text-slate-600">
+                      Claim {wallet.rewardClaim.status === 'confirmed' ? 'confirmed.' : wallet.rewardClaim.pending ? 'pending confirmation; your rewards remain backed.' : wallet.rewardClaim.status}.
+                    </div>
+                  )}
+                  {!wallet.session && <div className="mt-2 text-xs font-black text-slate-600">Connect a wallet to earn and claim rewards.</div>}
+                </div>
                 <div className="flex flex-col gap-4">
                  {wallet.purchaseError && (
                    <div className="bg-red-100 text-red-700 p-3 rounded-xl border-2 border-red-200 text-sm font-bold">
