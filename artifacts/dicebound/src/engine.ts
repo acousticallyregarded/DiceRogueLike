@@ -224,6 +224,11 @@ export interface RunState {
   combatSpeed?: number;
   gold: number;
   gemsEarned: number;
+  /** Visible outcome of the mysterious-dice event, cleared after acknowledgement. */
+  minigameResult?: {
+    kind: "hp_loss" | "gold" | "gems";
+    message: string;
+  } | null;
   
   xp: number;
   level: number;
@@ -538,6 +543,7 @@ export type GameAction =
   | { type: "REST_HEAL" }
   | { type: "REST_TRAIN" }
   | { type: "PLAY_MINIGAME" }
+  | { type: "CONTINUE_MINIGAME" }
   | { type: "LEAVE_MINIGAME" }
   | { type: "CONTINUE_POST_COMBAT" }
   | { type: "RETURN_TO_LOBBY" }
@@ -974,6 +980,7 @@ function triggerTile(s: GameStateV4, r: RunState) {
     r.phase = "rest";
     logMessage(r, "You found a safe place to rest.");
   } else if (tile?.type === "minigame") {
+    r.minigameResult = null;
     r.phase = "minigame";
     logMessage(r, "A strange minigame awaits.");
   } else {
@@ -1184,6 +1191,12 @@ export function validateState(input: any): GameStateV4 {
       : [];
     s.run.log = Array.isArray(s.run.log) ? s.run.log : [];
     s.run.shopRerollCost = typeof s.run.shopRerollCost === "number" ? s.run.shopRerollCost : 10;
+    const minigameResult = s.run.minigameResult;
+    s.run.minigameResult = minigameResult
+      && (minigameResult.kind === "hp_loss" || minigameResult.kind === "gold" || minigameResult.kind === "gems")
+      && typeof minigameResult.message === "string"
+      ? minigameResult
+      : null;
     s.run.settled = Boolean(s.run.settled);
     // Pre-campaign V4 saves only carry the settled flag, not a reward ledger.
     // Baseline their current totals rather than inventing historical records;
@@ -2589,6 +2602,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
       speed: character.baseStats.speed + s.meta.talents.quickness * 5 + eq.speed,
       gold: 0,
       gemsEarned: 0,
+      minigameResult: null,
       xp: 0,
       level: 1,
       queuedLevels: 0,
@@ -2883,23 +2897,40 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "PLAY_MINIGAME") {
     const r = s.run;
-    if (r && r.phase === "minigame") {
+    if (r && r.phase === "minigame" && !r.minigameResult) {
       const roll = Math.floor(Math.random() * 100) + 1;
       if (roll <= 30) {
         r.hp -= 20;
-        logMessage(r, "The dice betrayed you! Lost 20 HP.");
-        if (r.hp <= 0) {
-          settleDefeat(s, r);
-        } else {
-          r.phase = "explore";
-        }
+        r.minigameResult = {
+          kind: "hp_loss",
+          message: "The dice betrayed you! You lost 20 HP.",
+        };
+        logMessage(r, r.minigameResult.message);
       } else if (roll <= 80) {
         r.gold += 40;
-        logMessage(r, "A lucky roll! Gained 40 Gold.");
-        r.phase = "explore";
+        r.minigameResult = {
+          kind: "gold",
+          message: "A lucky roll! You gained 40 Gold.",
+        };
+        logMessage(r, r.minigameResult.message);
       } else {
         r.gemsEarned += 15;
-        logMessage(r, "Jackpot! Gained 15 Gems!");
+        r.minigameResult = {
+          kind: "gems",
+          message: "Jackpot! You gained 15 Gems.",
+        };
+        logMessage(r, r.minigameResult.message);
+      }
+    }
+  }
+
+  if (action.type === "CONTINUE_MINIGAME") {
+    const r = s.run;
+    if (r && r.phase === "minigame" && r.minigameResult) {
+      r.minigameResult = null;
+      if (r.hp <= 0) {
+        settleDefeat(s, r);
+      } else {
         r.phase = "explore";
       }
     }
@@ -2907,7 +2938,7 @@ export function act(state: GameStateV4, action: GameAction): GameStateV4 {
 
   if (action.type === "LEAVE_MINIGAME") {
     const r = s.run;
-    if (r && r.phase === "minigame") {
+    if (r && r.phase === "minigame" && !r.minigameResult) {
       r.phase = "explore";
       logMessage(r, "You ignored the temptation and moved on.");
     }

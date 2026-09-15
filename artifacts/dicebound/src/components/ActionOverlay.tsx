@@ -192,21 +192,47 @@ export function ActionOverlay({ run, dispatch, meta }: { run: RunState, dispatch
         <div className="w-full max-w-sm flex flex-col items-center bg-white rounded-[32px] p-6 shadow-2xl border-4 border-[#1c1c1c] text-center">
           <Star className="w-16 h-16 text-pink-500 mb-4 fill-current" />
           <h2 className="text-2xl text-pink-500 mb-2 font-black uppercase" style={{ WebkitTextStroke: '1px black' }}>Mysterious Dice</h2>
-          <p className="text-slate-600 font-semibold mb-6">Roll the cosmic dice. 30% chance to lose 20 HP. 50% chance to win 40 Gold. 20% chance to win 15 Gems.</p>
-          <div className="flex flex-col gap-3 w-full">
-            <button 
-              onClick={() => dispatch({ type: 'PLAY_MINIGAME' })}
-              className="w-full py-4 bg-pink-500 text-white rounded-2xl font-black text-lg border-b-4 border-pink-700 active:border-b-0 active:translate-y-1 transition-all"
-            >
-              Roll the Dice
-            </button>
-            <button 
-              onClick={() => dispatch({ type: 'LEAVE_MINIGAME' })}
-              className="w-full py-4 bg-slate-200 text-slate-700 rounded-2xl font-black text-lg border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all"
-            >
-              Walk Away
-            </button>
-          </div>
+          {run.minigameResult ? (
+            <div className="flex flex-col gap-4 w-full">
+              <div
+                role="status"
+                aria-live="polite"
+                className={`rounded-2xl border-2 p-4 text-lg font-black ${
+                  run.minigameResult.kind === 'hp_loss'
+                    ? 'border-red-300 bg-red-100 text-red-800'
+                    : run.minigameResult.kind === 'gold'
+                      ? 'border-amber-300 bg-amber-100 text-amber-800'
+                      : 'border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800'
+                }`}
+              >
+                {run.minigameResult.message}
+              </div>
+              <button
+                onClick={() => dispatch({ type: 'CONTINUE_MINIGAME' })}
+                className="w-full py-4 bg-pink-500 text-white rounded-2xl font-black text-lg border-b-4 border-pink-700 active:border-b-0 active:translate-y-1 transition-all"
+              >
+                Continue
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-slate-600 font-semibold mb-6">Roll the cosmic dice. 30% chance to lose 20 HP. 50% chance to win 40 Gold. 20% chance to win 15 Gems.</p>
+              <div className="flex flex-col gap-3 w-full">
+                <button
+                  onClick={() => dispatch({ type: 'PLAY_MINIGAME' })}
+                  className="w-full py-4 bg-pink-500 text-white rounded-2xl font-black text-lg border-b-4 border-pink-700 active:border-b-0 active:translate-y-1 transition-all"
+                >
+                  Roll the Dice
+                </button>
+                <button
+                  onClick={() => dispatch({ type: 'LEAVE_MINIGAME' })}
+                  className="w-full py-4 bg-slate-200 text-slate-700 rounded-2xl font-black text-lg border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all"
+                >
+                  Walk Away
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
