@@ -15,6 +15,8 @@ import {
   db,
   redeemableGemAccounts,
   redeemableGemLedger,
+  tokenPayoutAlertStates,
+  tokenPayoutMonitorState,
   tokenPurchases,
 } from "@workspace/db";
 import { logger } from "./logger";
@@ -965,36 +967,26 @@ function minimumNativeGas(): bigint {
     return parseEther(DEFAULT_MIN_NATIVE_GAS);
   }
 }
-
-const activePayoutAlerts = new Map<string, { alert: TokenPayoutAlert; lastEmittedAt: number }>();
-
 function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function payoutAlertLockSql() {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${"dicebound-token-payout-alert-state"}))`;
+}
 export async function monitorTokenPayoutHealth(now = new Date()): Promise<TokenPayoutAlert[]> {
   const snapshot = await inspectTokenPayoutHealth(now);
   const alerts = evaluateTokenPayoutHealth(
     snapshot,
     positiveInteger(process.env.TOKEN_ESCROW_MIN_INVENTORY_PAYOUTS, DEFAULT_MIN_INVENTORY_PAYOUTS),
   );
-  const currentKeys = new Set(alerts.map((alert) => alert.key));
-  for (const key of activePayoutAlerts.keys()) {
-    if (!currentKeys.has(key)) {
-      const active = activePayoutAlerts.get(key);
-      activePayoutAlerts.delete(key);
-      logger.info({ alertKey: key }, "Token payout operator alert resolved");
-      if (active) {
-        await deliverTokenPayoutIncident(resolvedIncidentEvent(active.alert, now));
-      }
-    }
+  const actions = await coordinateTokenPayoutAlerts(alerts, now);
+  for (const alert of actions.resolved) {
+    logger.info({ alertKey: alert.key }, "Token payout operator alert resolved");
+    await deliverTokenPayoutIncident(resolvedIncidentEvent(alert, now));
   }
-  for (const alert of alerts) {
-    const active = activePayoutAlerts.get(alert.key);
-    const escalated = active?.alert.severity === "warning" && alert.severity === "critical";
-    if (active && !escalated && now.getTime() - active.lastEmittedAt < TOKEN_ALERT_REPEAT_MS) continue;
-    activePayoutAlerts.set(alert.key, { alert, lastEmittedAt: now.getTime() });
+  for (const alert of actions.emit) {
     logger[alert.severity === "critical" ? "error" : "warn"](
       {
         alertKey: alert.key,
@@ -1008,4 +1000,81 @@ export async function monitorTokenPayoutHealth(now = new Date()): Promise<TokenP
     await deliverTokenPayoutIncident(incidentEventForAlert(alert, now));
   }
   return alerts;
+}
+
+/**
+ * Claims alert and resolution emissions in shared storage. The transaction lock
+ * serializes monitor replicas, while persisted timestamps survive restarts.
+ */
+export async function coordinateTokenPayoutAlerts(
+  alerts: TokenPayoutAlert[],
+  now = new Date(),
+): Promise<TokenPayoutAlertActions> {
+  return db.transaction(async (tx) => {
+    await tx.execute(payoutAlertLockSql());
+    const [monitorState] = await tx.select().from(tokenPayoutMonitorState)
+      .where(eq(tokenPayoutMonitorState.id, "payout-health"))
+      .limit(1);
+    if (monitorState && monitorState.lastObservedAt.getTime() >= now.getTime()) {
+      return { emit: [], resolved: [] };
+    }
+    await tx.insert(tokenPayoutMonitorState).values({
+      id: "payout-health",
+      lastObservedAt: now,
+    }).onConflictDoUpdate({
+      target: tokenPayoutMonitorState.id,
+      set: { lastObservedAt: now },
+    });
+
+    const states = await tx.select().from(tokenPayoutAlertStates);
+    const byKey = new Map(states.map((state) => [state.alertKey, state]));
+    const currentKeys = new Set(alerts.map((alert) => alert.key));
+    const resolvedStates = states
+      .filter((state) => state.active && !currentKeys.has(state.alertKey));
+    const resolved = resolvedStates
+      .map((state) => state.alertSnapshot)
+      .filter((alert): alert is TokenPayoutAlert => alert !== null);
+
+    if (resolvedStates.length > 0) {
+      await tx.update(tokenPayoutAlertStates).set({
+        active: false,
+        resolvedAt: now,
+        updatedAt: now,
+      }).where(inArray(tokenPayoutAlertStates.alertKey, resolvedStates.map((state) => state.alertKey)));
+    }
+
+    const emit: TokenPayoutAlert[] = [];
+    for (const alert of alerts) {
+      const state = byKey.get(alert.key);
+      const escalated = state?.alertSnapshot?.severity === "warning" && alert.severity === "critical";
+      const shouldEmit = !state ||
+        !state.active ||
+        escalated ||
+        now.getTime() - state.lastEmittedAt.getTime() >= TOKEN_ALERT_REPEAT_MS;
+      if (shouldEmit) emit.push(alert);
+      await tx.insert(tokenPayoutAlertStates).values({
+        alertKey: alert.key,
+        alertSnapshot: alert,
+        active: true,
+        lastEmittedAt: shouldEmit ? now : state.lastEmittedAt,
+        resolvedAt: null,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: tokenPayoutAlertStates.alertKey,
+        set: {
+          alertSnapshot: alert,
+          active: true,
+          lastEmittedAt: shouldEmit ? now : state?.lastEmittedAt ?? now,
+          resolvedAt: null,
+          updatedAt: now,
+        },
+      });
+    }
+    return { emit, resolved };
+  });
+}
+
+export interface TokenPayoutAlertActions {
+  emit: TokenPayoutAlert[];
+  resolved: TokenPayoutAlert[];
 }

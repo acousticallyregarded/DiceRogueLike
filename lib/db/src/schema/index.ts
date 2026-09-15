@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   integer,
   jsonb,
   pgTable,
@@ -135,9 +136,34 @@ export const tokenPurchases = pgTable(
   }),
 );
 
+/** Shared repeat-suppression state for payout health alerts across API replicas. */
+export const tokenPayoutAlertStates = pgTable("token_payout_alert_states", {
+  alertKey: text("alert_key").primaryKey(),
+  alertSnapshot: jsonb("alert_snapshot").$type<{
+    key: string;
+    severity: "warning" | "critical";
+    condition: string;
+    symbol?: "GLD" | "SLV";
+    action: string;
+    details: Record<string, string | number | boolean | null>;
+  }>(),
+  active: boolean("active").notNull().default(true),
+  lastEmittedAt: timestamp("last_emitted_at", { withTimezone: true, mode: "date" }).notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
+/** Monotonic checkpoint preventing stale replica snapshots from changing alert state. */
+export const tokenPayoutMonitorState = pgTable("token_payout_monitor_state", {
+  id: text("id").primaryKey(),
+  lastObservedAt: timestamp("last_observed_at", { withTimezone: true, mode: "date" }).notNull(),
+});
 export type WalletChallenge = typeof walletChallenges.$inferSelect;
 export type WalletSession = typeof walletSessions.$inferSelect;
 export type WalletSave = typeof walletSaves.$inferSelect;
 export type RedeemableGemAccount = typeof redeemableGemAccounts.$inferSelect;
 export type RedeemableGemLedgerEntry = typeof redeemableGemLedger.$inferSelect;
 export type TokenPurchase = typeof tokenPurchases.$inferSelect;
+export type TokenPayoutAlertState = typeof tokenPayoutAlertStates.$inferSelect;
+
+export type TokenPayoutMonitorState = typeof tokenPayoutMonitorState.$inferSelect;

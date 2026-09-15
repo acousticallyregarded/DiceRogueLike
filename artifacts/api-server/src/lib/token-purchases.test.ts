@@ -9,6 +9,8 @@ import {
   pool,
   redeemableGemAccounts,
   redeemableGemLedger,
+  tokenPayoutAlertStates,
+  tokenPayoutMonitorState,
   tokenPurchases,
 } from "@workspace/db";
 import { tokenAmountForPrice } from "./token-purchase-math";
@@ -16,6 +18,7 @@ import {
   GEM_COST,
   MAX_REDEEMABLE_GEM_GRANT,
   authenticateRedeemableGemGrant,
+  coordinateTokenPayoutAlerts,
   purchaseToken,
   quoteAgeIsAllowed,
   redeemableGemGrantSigningPayload,
@@ -91,6 +94,8 @@ beforeEach(async () => {
   await db.delete(redeemableGemLedger);
   await db.delete(tokenPurchases);
   await db.delete(redeemableGemAccounts);
+  await db.delete(tokenPayoutAlertStates);
+  await db.delete(tokenPayoutMonitorState);
   chain = new FakeChain();
   setTokenPurchaseTestDependencies({
     chainClient: chain,
@@ -119,6 +124,62 @@ test("previous-close quotes cover long weekends but not a full trading week", ()
   assert.equal(quoteAgeIsAllowed(new Date("2026-09-14T20:00:00.000Z"), now), true);
   assert.equal(quoteAgeIsAllowed(new Date("2026-09-11T20:00:00.000Z"), now), true);
   assert.equal(quoteAgeIsAllowed(new Date("2026-09-10T20:00:00.000Z"), now), false);
+});
+
+test("payout alert suppression is shared, durable, and resolves once", async () => {
+  const alert = {
+    key: "inventory_low:GLD",
+    severity: "warning" as const,
+    condition: "inventory_low",
+    symbol: "GLD" as const,
+    action: "Refill inventory.",
+    details: { availablePayouts: 2 },
+  };
+  const firstAt = new Date("2026-09-15T18:00:00.000Z");
+
+  const concurrent = await Promise.all([
+    coordinateTokenPayoutAlerts([alert], firstAt),
+    coordinateTokenPayoutAlerts([alert], firstAt),
+  ]);
+  assert.equal(concurrent.flatMap((result) => result.emit).length, 1);
+
+  const afterRestartEquivalent = await coordinateTokenPayoutAlerts(
+    [alert],
+    new Date(firstAt.getTime() + 60_000),
+  );
+  assert.equal(afterRestartEquivalent.emit.length, 0);
+
+  const resolutions = await Promise.all([
+    coordinateTokenPayoutAlerts([], new Date(firstAt.getTime() + 120_000)),
+    coordinateTokenPayoutAlerts([], new Date(firstAt.getTime() + 120_000)),
+  ]);
+  assert.deepEqual(resolutions.flatMap((result) => result.resolved), [alert]);
+});
+
+test("older healthy snapshots cannot resolve newer payout alerts", async () => {
+  const alert = {
+    key: "native-gas-low",
+    severity: "critical" as const,
+    condition: "native_gas_low",
+    action: "Refill native gas.",
+    details: { nativeGasBaseUnits: "0" },
+  };
+  const olderAt = new Date("2026-09-15T18:00:00.000Z");
+  const newerAt = new Date("2026-09-15T18:01:00.000Z");
+
+  assert.equal((await coordinateTokenPayoutAlerts([alert], newerAt)).emit.length, 1);
+  assert.deepEqual((await coordinateTokenPayoutAlerts([], olderAt)).resolved, []);
+
+  const nextCycle = await coordinateTokenPayoutAlerts(
+    [alert],
+    new Date(newerAt.getTime() + 60_000),
+  );
+  assert.equal(nextCycle.emit.length, 0);
+  assert.equal(
+    (await db.select().from(tokenPayoutAlertStates)
+      .where(eq(tokenPayoutAlertStates.alertKey, alert.key)))[0]?.active,
+    true,
+  );
 });
 
 const validGrant = {
