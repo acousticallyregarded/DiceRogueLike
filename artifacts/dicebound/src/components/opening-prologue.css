@@ -59,22 +59,20 @@
   animation: opening-prologue-card-in 260ms ease-out both;
 }
 
-.opening-prologue__sigil {
-  width: 58px;
-  height: 58px;
+.opening-prologue__art {
+  width: 122px;
+  height: 96px;
   display: grid;
   place-items: center;
-  margin-bottom: 14px;
-  border: 2px solid #f0c765;
-  border-radius: 50%;
-  color: #ffe29a;
-  background: radial-gradient(circle, #7b5c22, #251e17);
-  box-shadow: 0 0 24px rgb(255 194 67 / 31%);
+  margin: -7px 0 8px;
+  filter: drop-shadow(0 8px 12px rgb(0 0 0 / 48%));
 }
 
-.opening-prologue__sigil svg {
-  width: 28px;
-  height: 28px;
+.opening-prologue__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: opening-prologue-art-float 3.6s ease-in-out infinite;
 }
 
 .opening-prologue__eyebrow {
@@ -260,6 +258,10 @@
   to { transform: translate3d(22px, -18px, 0); }
 }
 
+@keyframes opening-prologue-art-float {
+  50% { transform: translateY(-4px) scale(1.025); }
+}
+
 @media (max-height: 690px) {
   .opening-prologue {
     padding-block: 12px;
@@ -269,10 +271,10 @@
     padding-block: 18px 13px;
   }
 
-  .opening-prologue__sigil {
-    width: 46px;
-    height: 46px;
-    margin-bottom: 9px;
+  .opening-prologue__art {
+    width: 92px;
+    height: 68px;
+    margin: -5px 0 5px;
   }
 
   .opening-prologue h2 {
@@ -290,7 +292,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .opening-prologue__card,
-  .opening-prologue__vignette {
+  .opening-prologue__vignette,
+  .opening-prologue__art img {
     animation: none;
   }
 }

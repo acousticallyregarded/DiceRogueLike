@@ -1,10 +1,14 @@
-import { Crown, Flame, Shield, SkipForward, Sparkles, Trees } from 'lucide-react';
+import { Shield, SkipForward } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { getCharacter, type CharacterId } from '../characters';
 import { SpriteAnimator } from './SpriteAnimator';
 import johnUrl from '../assets/custom-lobby-hero.png';
 import uncUrl from '../assets/characters/unc-selection.png';
 import alanUrl from '../assets/characters/bard-selection.png';
+import heartwoodArt from '../assets/prologue/heartwood.png';
+import hollowCrownArt from '../assets/prologue/hollow-crown.png';
+import lastLanternArt from '../assets/prologue/last-lantern.png';
+import breakCrownArt from '../assets/prologue/break-crown.png';
 import './opening-prologue.css';
 
 interface OpeningPrologueProps {
@@ -25,28 +29,28 @@ const cards = [
     eyebrow: 'Long ago',
     title: 'The Heartwood Endured',
     body: 'Its magic sheltered every road and village. Four ancient wardens kept watch from the forest to the Ashen Gate.',
-    icon: Trees,
+    art: heartwoodArt,
     tone: 'heartwood',
   },
   {
     eyebrow: 'Then came the Hollow Crown',
     title: 'The Wardens Fell',
     body: 'The Crown broke their vows. Paths began to shift, creatures turned hostile, and the Heartwood started to die.',
-    icon: Crown,
+    art: hollowCrownArt,
     tone: 'crown',
   },
   {
     eyebrow: 'The silent village',
     title: 'One Lantern Remained',
     body: 'Every village light went dark—except the last forest lantern. It spoke your name and opened the forbidden trail.',
-    icon: Sparkles,
+    art: lastLanternArt,
     tone: 'lantern',
   },
   {
     eyebrow: 'Your quest',
     title: 'Break the Hollow Crown',
     body: 'Defeat the four corrupted wardens. Recover what they guard. Restore the Heartwood before its final ember dies.',
-    icon: Flame,
+    art: breakCrownArt,
     tone: 'quest',
   },
 ] as const;
@@ -59,7 +63,6 @@ export function OpeningPrologue({
 }: OpeningPrologueProps) {
   const safeStep = Math.min(cards.length - 1, Math.max(0, Math.floor(step)));
   const card = cards[safeStep];
-  const Icon = card.icon;
   const character = getCharacter(characterId);
   const heroSprite = character.id === 'john'
     ? { sprite: 'custom-lobby-hero' as const, fallbackUrl: johnUrl, frames: 9, duration: 1800 }
@@ -101,8 +104,8 @@ export function OpeningPrologue({
     >
       <div className="opening-prologue__vignette" aria-hidden="true" />
       <div className="opening-prologue__card" key={safeStep}>
-        <div className="opening-prologue__sigil" aria-hidden="true">
-          <Icon />
+        <div className="opening-prologue__art" aria-hidden="true">
+          <img src={card.art} alt="" />
         </div>
         <span className="opening-prologue__eyebrow">{card.eyebrow}</span>
         <h2 id="opening-prologue-title">{card.title}</h2>
