@@ -1,6 +1,7 @@
 import { Home, ShieldCheck, Sparkles, Sun, Trees } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { getCharacter, type CharacterId } from '../characters';
+import { useAudio } from '../audio/use-audio';
 import { SpriteAnimator } from './SpriteAnimator';
 import johnUrl from '../assets/custom-lobby-hero.png';
 import uncUrl from '../assets/characters/unc-selection.png';
@@ -28,6 +29,7 @@ const cards = [
     body: 'Sir Cinder falls. The Hollow Crown shatters into dust, its dark hold over the forest finally broken.',
     icon: ShieldCheck,
     tone: 'dawn',
+    cue: 'epilogue-crown-shatter',
   },
   {
     eyebrow: 'A New Morning',
@@ -35,6 +37,7 @@ const cards = [
     body: 'Twisted paths straighten and dead wood blooms. The sun pierces the canopy for the first time in an age.',
     icon: Trees,
     tone: 'bloom',
+    cue: 'epilogue-heartwood',
   },
   {
     eyebrow: 'The Warden’s Bane',
@@ -42,6 +45,7 @@ const cards = [
     body: 'You stand at the edge of the restored woods. The lanterns glow bright, guiding travelers safely home.',
     icon: Sun,
     tone: 'hero',
+    cue: null,
   },
   {
     eyebrow: 'Journey’s End',
@@ -49,6 +53,7 @@ const cards = [
     body: 'Your deeds become legend, and the spoils of your adventure will prepare the next generation of heroes.',
     icon: Sparkles,
     tone: 'rewards',
+    cue: 'epilogue-feather',
   },
 ] as const;
 
@@ -63,6 +68,7 @@ export function FinalEpilogue({
   const card = cards[safeStep];
   const Icon = card.icon;
   const character = getCharacter(characterId);
+  const { playEffect } = useAudio();
   
   const heroSprite = character.id === 'john'
     ? { sprite: 'custom-lobby-hero' as const, fallbackUrl: johnUrl, frames: 9, duration: 1800 }
@@ -75,6 +81,10 @@ export function FinalEpilogue({
   useEffect(() => {
     continueRef.current?.focus();
   }, [safeStep]);
+
+  useEffect(() => {
+    if (card.cue) playEffect(card.cue);
+  }, [card.cue, playEffect]);
 
   return (
     <section
@@ -99,6 +109,36 @@ export function FinalEpilogue({
       }}
     >
       <div className="final-epilogue__vignette" aria-hidden="true" />
+      <div className="final-epilogue__scene" aria-hidden="true">
+        {safeStep === 0 && (
+          <div className="final-epilogue__crown">
+            <i className="final-epilogue__crown-left" />
+            <i className="final-epilogue__crown-right" />
+            <span className="final-epilogue__shard final-epilogue__shard--one" />
+            <span className="final-epilogue__shard final-epilogue__shard--two" />
+            <span className="final-epilogue__shard final-epilogue__shard--three" />
+          </div>
+        )}
+        {safeStep === 1 && (
+          <div className="final-epilogue__heartwood">
+            <span className="final-epilogue__canopy" />
+            <span className="final-epilogue__trunk" />
+            <i className="final-epilogue__leaf final-epilogue__leaf--one" />
+            <i className="final-epilogue__leaf final-epilogue__leaf--two" />
+            <i className="final-epilogue__leaf final-epilogue__leaf--three" />
+          </div>
+        )}
+        {safeStep === 2 && (
+          <div className="final-epilogue__lanterns">
+            <i /><i /><i />
+          </div>
+        )}
+        {safeStep === 3 && (
+          <div className="final-epilogue__feather">
+            <span />
+          </div>
+        )}
+      </div>
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {card.title}. {card.body}
       </div>
@@ -155,7 +195,13 @@ export function FinalEpilogue({
           ))}
         </div>
 
-        <button ref={continueRef} type="button" className="final-epilogue__continue" onClick={onAdvance}>
+        <button
+          ref={continueRef}
+          type="button"
+          className="final-epilogue__continue"
+          onClick={onAdvance}
+          data-testid="button-advance-final-epilogue"
+        >
           {safeStep === cards.length - 1 ? (
             <><Home aria-hidden="true" /> Return Home</>
           ) : (

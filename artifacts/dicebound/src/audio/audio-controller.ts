@@ -13,7 +13,10 @@ export type AudioEffectName =
   | "fire-bomb"
   | "sword-slash"
   | "sword-metal"
-  | "blunt-impact";
+  | "blunt-impact"
+  | "epilogue-crown-shatter"
+  | "epilogue-heartwood"
+  | "epilogue-feather";
 
 export type MusicScene = "lobby" | "explore" | "combat" | null;
 export type AudioStatus = "locked" | "loading" | "ready" | "blocked" | "unavailable";
@@ -44,6 +47,9 @@ const AUDIO_FILES: Record<AudioEffectName | "forest-music" | "battle-music", str
   "sword-metal": swordMetalUrl,
   "sword-slash": swordSlashUrl,
   "blunt-impact": bluntImpactUrl,
+  "epilogue-crown-shatter": bluntImpactUrl,
+  "epilogue-heartwood": healingPotionUrl,
+  "epilogue-feather": swordMetalUrl,
 };
 
 function clampVolume(value: unknown, fallback: number): number {

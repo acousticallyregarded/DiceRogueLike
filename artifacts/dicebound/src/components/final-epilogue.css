@@ -25,6 +25,157 @@
   animation: final-epilogue-drift 12s linear infinite;
 }
 
+.final-epilogue__scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.final-epilogue__crown {
+  position: absolute;
+  top: 9%;
+  left: 50%;
+  width: 170px;
+  height: 100px;
+  filter: drop-shadow(0 0 18px rgba(251, 146, 60, .45));
+  transform: translateX(-50%);
+}
+
+.final-epilogue__crown i {
+  position: absolute;
+  top: 20px;
+  width: 82px;
+  height: 62px;
+  border: 5px solid #d97706;
+  background: linear-gradient(145deg, #fde68a, #92400e);
+  clip-path: polygon(0 100%, 0 28%, 22% 52%, 45% 0, 68% 54%, 100% 25%, 100% 100%);
+  animation: final-epilogue-crown-break 650ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.final-epilogue__crown-left { left: 2px; transform-origin: right center; }
+.final-epilogue__crown-right { right: 2px; transform: scaleX(-1); transform-origin: left center; }
+
+.final-epilogue__crown-left {
+  animation-name: final-epilogue-crown-break-left !important;
+}
+
+.final-epilogue__crown-right {
+  animation-name: final-epilogue-crown-break-right !important;
+}
+
+.final-epilogue__shard {
+  position: absolute;
+  left: 50%;
+  top: 55px;
+  width: 10px;
+  height: 16px;
+  background: #fbbf24;
+  clip-path: polygon(50% 0, 100% 100%, 0 76%);
+  animation: final-epilogue-shard 900ms ease-out both;
+}
+
+.final-epilogue__shard--one { --shard-x: -54px; --shard-r: -70deg; }
+.final-epilogue__shard--two { --shard-x: 18px; --shard-r: 52deg; animation-delay: 80ms; }
+.final-epilogue__shard--three { --shard-x: 55px; --shard-r: 100deg; animation-delay: 140ms; }
+
+.final-epilogue__heartwood {
+  position: absolute;
+  top: 3%;
+  left: 50%;
+  width: 230px;
+  height: 210px;
+  transform: translateX(-50%);
+  animation: final-epilogue-tree-rise 900ms ease-out both;
+}
+
+.final-epilogue__canopy {
+  position: absolute;
+  inset: 0 5px 62px;
+  border-radius: 52% 48% 45% 55%;
+  background:
+    radial-gradient(circle at 35% 42%, #dcfce7 0 4%, transparent 5%),
+    radial-gradient(circle at 67% 28%, #fef9c3 0 3%, transparent 4%),
+    radial-gradient(circle at 50% 55%, #4ade80 0 35%, #166534 72%);
+  box-shadow: 0 0 55px rgba(74, 222, 128, .55);
+}
+
+.final-epilogue__trunk {
+  position: absolute;
+  left: 93px;
+  bottom: 0;
+  width: 48px;
+  height: 110px;
+  background: linear-gradient(90deg, #422006, #a16207 48%, #3f1d08);
+  clip-path: polygon(31% 0, 70% 0, 79% 74%, 100% 100%, 58% 89%, 25% 100%, 37% 69%);
+}
+
+.final-epilogue__leaf {
+  position: absolute;
+  width: 12px;
+  height: 22px;
+  border-radius: 100% 0 100% 0;
+  background: #bbf7d0;
+  animation: final-epilogue-leaf 3s ease-in-out infinite;
+}
+
+.final-epilogue__leaf--one { left: 18px; top: 90px; }
+.final-epilogue__leaf--two { right: 21px; top: 54px; animation-delay: -1s; }
+.final-epilogue__leaf--three { right: 47px; top: 130px; animation-delay: -2s; }
+
+.final-epilogue__lanterns {
+  position: absolute;
+  inset: 13% 22px auto;
+  display: flex;
+  justify-content: space-between;
+}
+
+.final-epilogue__lanterns i {
+  width: 16px;
+  height: 24px;
+  border: 2px solid #713f12;
+  border-radius: 5px;
+  background: #fef3c7;
+  box-shadow: 0 0 22px 8px rgba(250, 204, 21, .32);
+  animation: final-epilogue-lantern 2.4s ease-in-out infinite alternate;
+}
+
+.final-epilogue__lanterns i:nth-child(2) { transform: translateY(-22px); animation-delay: -.8s; }
+.final-epilogue__lanterns i:nth-child(3) { animation-delay: -1.6s; }
+
+.final-epilogue__feather {
+  position: absolute;
+  top: 7%;
+  left: 50%;
+  width: 82px;
+  height: 150px;
+  border-radius: 100% 0 100% 0;
+  background: linear-gradient(135deg, #fff 0%, #cbd5e1 42%, #64748b 100%);
+  box-shadow: 0 0 34px rgba(226, 232, 240, .6);
+  transform: translateX(-50%) rotate(18deg);
+  animation: final-epilogue-feather-fall 1.8s ease-out both;
+}
+
+.final-epilogue__feather::before {
+  content: "";
+  position: absolute;
+  left: 34px;
+  top: 12px;
+  width: 3px;
+  height: 166px;
+  border-radius: 99px;
+  background: #f8fafc;
+  transform: rotate(-30deg);
+  transform-origin: top;
+}
+
+.final-epilogue__feather span {
+  position: absolute;
+  inset: 14px 8px;
+  background: repeating-linear-gradient(155deg, transparent 0 11px, rgba(71, 85, 105, .45) 12px 14px, transparent 15px 22px);
+  clip-path: inherit;
+}
+
 .final-epilogue--dawn {
   background:
     radial-gradient(circle at 50% 25%, rgba(253, 186, 116, 0.35), transparent 40%),
@@ -59,7 +210,8 @@
   padding: 28px 22px 20px;
   border: 2px solid rgba(217, 249, 157, 0.4);
   border-radius: 28px;
-  background: linear-gradient(145deg, rgba(20, 45, 30, 0.94), rgba(12, 25, 15, 0.96));
+  background: linear-gradient(145deg, rgba(10, 27, 20, 0.88), rgba(5, 14, 10, 0.96));
+  backdrop-filter: blur(10px);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   text-align: center;
   animation: final-epilogue-card-in 300ms ease-out both;
@@ -278,6 +430,39 @@
   to { transform: translate3d(24px, -20px, 0); }
 }
 
+@keyframes final-epilogue-crown-break-left {
+  from { transform: translate(32px, 0) rotate(0); }
+  to { transform: translate(-7px, 18px) rotate(-18deg); }
+}
+
+@keyframes final-epilogue-crown-break-right {
+  from { transform: translate(-32px, 0) scaleX(-1) rotate(0); }
+  to { transform: translate(7px, 18px) scaleX(-1) rotate(-18deg); }
+}
+
+@keyframes final-epilogue-shard {
+  from { opacity: 1; transform: translate(0, 0) rotate(0); }
+  to { opacity: 0; transform: translate(var(--shard-x), 70px) rotate(var(--shard-r)); }
+}
+
+@keyframes final-epilogue-tree-rise {
+  from { opacity: 0; transform: translate(-50%, 35px) scale(.82); filter: grayscale(1); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); filter: grayscale(0); }
+}
+
+@keyframes final-epilogue-leaf {
+  50% { transform: translate(12px, 16px) rotate(80deg); }
+}
+
+@keyframes final-epilogue-lantern {
+  to { filter: brightness(1.3); box-shadow: 0 0 30px 11px rgba(250, 204, 21, .42); }
+}
+
+@keyframes final-epilogue-feather-fall {
+  from { opacity: 0; transform: translate(-20%, -65px) rotate(-12deg); }
+  to { opacity: 1; transform: translate(-50%, 0) rotate(18deg); }
+}
+
 @media (max-height: 700px) {
   .final-epilogue {
     padding-block: 14px;
@@ -313,7 +498,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .final-epilogue__card,
-  .final-epilogue__vignette {
+  .final-epilogue__vignette,
+  .final-epilogue__crown i,
+  .final-epilogue__shard,
+  .final-epilogue__heartwood,
+  .final-epilogue__leaf,
+  .final-epilogue__lanterns i,
+  .final-epilogue__feather {
     animation: none;
   }
 }
