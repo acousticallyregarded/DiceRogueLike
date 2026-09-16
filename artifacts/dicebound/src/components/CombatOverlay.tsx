@@ -242,11 +242,13 @@ export function CombatOverlay({
   const heroApproach = useRef({ targetId: '', attackId: 0, durationMs: 420, enabled: false });
   const pendingMelee = run.playerCombat?.pendingHeroAttack;
   if (pendingMelee) {
+    const johnUsesMeleeDelivery = run.characterId === 'john';
     heroApproach.current = {
       targetId: pendingMelee.targetId,
       attackId: run.playerCombat?.heroAttackSequence ?? 0,
       durationMs: getPendingHeroAttackDurationMs(run),
-      enabled: ['slashing', 'piercing', 'bludgeoning'].includes(pendingMelee.damageType),
+      enabled: johnUsesMeleeDelivery
+        || ['slashing', 'piercing', 'bludgeoning'].includes(pendingMelee.damageType),
     };
   }
   const [bossAnimating, setBossAnimating] = useState(false);
