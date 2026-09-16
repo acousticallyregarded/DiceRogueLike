@@ -50,13 +50,20 @@ export function WalletButton({ wallet, className = "", compact = false }: Wallet
   };
 
   const close = () => {
-    if (status === "connecting" || status === "syncing" || status === "saving") return;
+    // Closing must remain available while an injected wallet prompt is
+    // pending. Disconnect bumps the ownership epoch so any late wallet
+    // response is ignored and guest play is unpaused.
+    const cancelPendingConnection = !active && (status === "connecting" || status === "syncing");
+    setOpen(false);
+    if (cancelPendingConnection) {
+      void wallet.disconnect();
+      return;
+    }
     // Cancelling a cloud/device choice is an explicit return to guest mode.
     // The wallet-specific cache remains intact in the hook.
     if (wallet.conflict || (!active && (status === "expired" || status === "locked"))) {
       void wallet.disconnect();
     }
-    setOpen(false);
   };
 
   return (
