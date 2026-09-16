@@ -690,7 +690,9 @@ export function CombatOverlay({
         </div>
       )}
 
-      <div data-combat-arena className="combat-overlay__arena flex-1 relative flex items-end justify-between px-3 pb-12">
+      <div data-combat-arena className={`combat-overlay__arena flex-1 relative flex items-end justify-center px-3 pb-12 ${
+        renderedRun.isBossCombat ? 'gap-0' : 'gap-3'
+      }`}>
          <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} floor={renderedRun.floor} />
         <div className={`relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
           <CombatApproach actorId="hero" {...heroApproach.current} paused={paused}>

@@ -115,6 +115,8 @@ button:disabled {
     grid-column: 2;
     grid-row: 1 / span 2;
     min-height: 0;
+    justify-content: center !important;
+    gap: clamp(20px, 4vw, 56px) !important;
   }
 
   .combat-overlay__actions {
