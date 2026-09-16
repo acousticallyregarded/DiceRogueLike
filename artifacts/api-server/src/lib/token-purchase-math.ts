@@ -11,9 +11,9 @@ function parseDecimal(value: string): { integer: bigint; scale: bigint } {
   };
 }
 
-/** Returns floor(USD10 / quote price) in token base units without floats. */
+/** Returns floor(USD5 / quote price) in token base units without floats. */
 export function tokenAmountForPrice(price: string): string {
-  return tokenAmountForUsdCents(price, 1_000);
+  return tokenAmountForUsdCents(price, 500);
 }
 
 /** Integer-safe base-unit conversion for a fixed USD-cent liability. */

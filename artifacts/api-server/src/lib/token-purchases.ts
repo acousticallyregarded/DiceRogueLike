@@ -605,7 +605,7 @@ export function catalogItem(quote: Quote) {
     tokenAddress: quote.tokenAddress,
     decimals: TOKEN_DECIMALS,
     gemCost: GEM_COST,
-    usdValue: "10",
+    usdValue: "5",
     tokenAmount: decimalFromBaseUnits(BigInt(quote.amountBaseUnits)),
     quotePrice: quote.price,
     quoteSource: quote.source,

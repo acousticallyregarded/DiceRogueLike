@@ -584,7 +584,7 @@ router.get(
               : "0x411efb0e7f985935daec3d4c3ebaea0d0ad7d89f",
             decimals: 18,
             gemCost: 100,
-            usdValue: "10",
+            usdValue: "5",
             tokenAmount: "0",
             quotePrice: "",
             quoteSource: "Massive previous-day aggregate",

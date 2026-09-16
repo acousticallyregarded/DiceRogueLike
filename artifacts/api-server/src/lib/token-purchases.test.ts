@@ -114,9 +114,9 @@ afterEach(() => setTokenPurchaseTestDependencies(null));
 after(async () => pool.end());
 
 test("token quote conversion uses integer-safe base-unit math", () => {
-  assert.equal(tokenAmountForPrice("1"), "10000000000000000000");
-  assert.equal(tokenAmountForPrice("2000"), "5000000000000000");
-  assert.equal(tokenAmountForPrice("12.50"), "800000000000000000");
+  assert.equal(tokenAmountForPrice("1"), "5000000000000000000");
+  assert.equal(tokenAmountForPrice("2000"), "2500000000000000");
+  assert.equal(tokenAmountForPrice("12.50"), "400000000000000000");
   assert.equal(tokenAmountForUsdCents("10", 15), "15000000000000000");
 });
 

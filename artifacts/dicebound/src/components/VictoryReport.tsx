@@ -3,8 +3,26 @@ import { BookMarked } from 'lucide-react';
 import type { GameAction, RunState } from '../engine';
 import type { VictoryInterlude } from '../level-content';
 import { getLevelDefinition, getVictoryInterlude } from '../level-content';
+import verdantCrownFragment from '../assets/story/verdant-crown-fragment.png';
+import mireCrownFragment from '../assets/story/mire-crown-fragment.png';
+import silkenCrownFragment from '../assets/story/silken-crown-fragment.png';
 import { CrownJournal } from './CrownJournal';
 import './victory-report.css';
+
+const crownFragmentImages: Record<string, { src: string; alt: string }> = {
+  'The Verdant Shard': {
+    src: verdantCrownFragment,
+    alt: 'The Verdant Shard, a broken gold Crown fragment set with a glowing green crystal',
+  },
+  'The Mire Shard': {
+    src: mireCrownFragment,
+    alt: 'The Mire Shard, a broken gold Crown fragment set with a glowing marsh-green crystal',
+  },
+  'The Silken Shard': {
+    src: silkenCrownFragment,
+    alt: 'The Silken Shard, a broken gold Crown fragment set with a glowing purple crystal wrapped in silver silk',
+  },
+};
 
 export function VictoryReport({ report, recoveredFragments, dispatch }: {
   report: NonNullable<RunState['victoryReport']>;
@@ -15,6 +33,7 @@ export function VictoryReport({ report, recoveredFragments, dispatch }: {
   const [journalOpen, setJournalOpen] = useState(false);
   const level = getLevelDefinition(report.floor);
   const interlude = report.boss ? getVictoryInterlude(report.floor) : null;
+  const fragmentImage = interlude ? crownFragmentImages[interlude.fragment] : null;
   const button = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -63,6 +82,13 @@ export function VictoryReport({ report, recoveredFragments, dispatch }: {
             <h2 id="victory-interlude-title" className="my-4 text-4xl italic">
               {interlude.title}
             </h2>
+            {fragmentImage && (
+              <img
+                src={fragmentImage.src}
+                alt={fragmentImage.alt}
+                className="mx-auto -mt-2 mb-3 h-36 w-44 object-contain drop-shadow-[0_8px_8px_rgba(45,73,29,0.35)]"
+              />
+            )}
             <p className="text-left text-lg leading-relaxed">{interlude.body}</p>
             <p className="mt-5 border-y border-[#78512b]/40 py-4 text-left italic">
               {interlude.destination}

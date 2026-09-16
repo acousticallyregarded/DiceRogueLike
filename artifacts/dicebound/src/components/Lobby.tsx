@@ -217,7 +217,7 @@ export function Lobby({
                )}
 
                 <p className="mb-4 text-xs font-bold leading-relaxed text-slate-600">
-                  Spend 100 redeemable gems for $10 of GLD or SLV, calculated from Massive’s delayed previous close. Tokens transfer to your connected wallet.
+                  Spend 100 redeemable gems for $5 of GLD or SLV, calculated from Massive’s delayed previous close. Tokens transfer to your connected wallet.
                 </p>
                 <div className="mb-4 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
@@ -361,7 +361,7 @@ export function Lobby({
                          </div>
                           {!isAvailable && (
                             <p role="status" className="text-center text-xs font-black text-slate-600">
-                              Unavailable: escrow holds less than this $10 amount, or pricing is unavailable.
+                              Unavailable: escrow holds less than this $5 amount, or pricing is unavailable.
                             </p>
                           )}
                          <div className="text-[10px] font-bold text-slate-500 text-center px-2 leading-tight">
