@@ -1,24 +1,40 @@
-export function EnemyHealthBar({ name, hp, maxHp, reducedMotion = false }: {
+/** Unit plate shown under a combatant: name, HP numbers, and a bar whose
+ * pale "lag" layer trails behind recent damage so each hit reads clearly. */
+export function EnemyHealthBar({ name, hp, maxHp, reducedMotion = false, variant = 'enemy', selected = false }: {
   name: string;
   hp: number;
   maxHp: number;
   reducedMotion?: boolean;
+  variant?: 'enemy' | 'hero';
+  selected?: boolean;
 }) {
   const maximum = Math.max(1, maxHp);
   const current = Math.max(0, Math.min(hp, maximum));
+  const ratio = current / maximum;
+  const tone = variant === 'hero'
+    ? ratio <= 0.3 ? 'combat-plate__fill--danger' : 'combat-plate__fill--hero'
+    : ratio <= 0.3 ? 'combat-plate__fill--danger' : 'combat-plate__fill--enemy';
   return (
-    <div className="mt-2 w-20">
+    <div className={`combat-plate combat-plate--${variant} ${selected ? 'combat-plate--selected' : ''}`}>
+      <div className="combat-plate__header">
+        <span className="combat-plate__name">{name}</span>
+        <span className="combat-plate__hp tabular-nums">
+          {Math.ceil(current)}<span className="combat-plate__hp-max">/{Math.ceil(maximum)}</span>
+        </span>
+      </div>
       <div role="progressbar" aria-label={`${name} HP`}
         aria-valuemin={0} aria-valuemax={maximum} aria-valuenow={current}
-        className="h-3 overflow-hidden rounded border-2 border-[#1c1c1c] bg-red-950 shadow-sm">
-        <div className="h-full origin-left bg-red-500"
+        className="combat-plate__track">
+        <div className="combat-plate__lag"
           style={{
-            transform: `scaleX(${current / maximum})`,
+            transform: `scaleX(${ratio})`,
+            transition: reducedMotion ? 'none' : undefined,
+          }} />
+        <div className={`combat-plate__fill ${tone}`}
+          style={{
+            transform: `scaleX(${ratio})`,
             transition: reducedMotion ? 'none' : 'transform 100ms linear',
           }} />
-      </div>
-      <div className="mt-0.5 rounded bg-black/80 px-1 text-center text-[10px] font-black tabular-nums text-white">
-        {Math.ceil(current)} / {Math.ceil(maximum)} HP
       </div>
     </div>
   );

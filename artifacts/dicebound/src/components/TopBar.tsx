@@ -20,6 +20,10 @@ export function TopBar({ run, onHeightChange, onOpenBestiary }: { run: RunState;
   
   // Use bossCountdown if available (new paces logic), else fallback to bossRollsLeft
   const countdown = run.bossCountdown ?? run.bossRollsLeft;
+  // Phones have little vertical room in battle, so loot and journal pills
+  // step aside until the fight ends. Combat-relevant stats stay visible.
+  const hideOutOfCombatInfo = run.phase === 'combat' || Boolean(run.heroDeathPending && run.playerCombat)
+    ? 'max-md:hidden' : '';
   
   const bossStatus = run.phase === 'boss_awakening'
     ? `${level.boss.name.toUpperCase()} AWAKENING`
@@ -79,11 +83,11 @@ export function TopBar({ run, onHeightChange, onOpenBestiary }: { run: RunState;
       
       {/* Second Row */}
       <div className="flex flex-wrap gap-2">
-        <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto">
+        <div className={`flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto ${hideOutOfCombatInfo}`}>
           <Coins className="w-3 h-3 text-yellow-300 mr-1 fill-current" />
           {run.gold}
         </div>
-        <div className="flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto">
+        <div className={`flex items-center bg-[var(--color-ui-purple)] text-white rounded-full px-2 py-1 font-black text-sm border-2 border-[#1c1c1c] shadow-md pointer-events-auto ${hideOutOfCombatInfo}`}>
           <Gem className="w-3 h-3 text-cyan-300 mr-1 fill-current" />
           {run.gemsEarned}
         </div>
@@ -95,7 +99,7 @@ export function TopBar({ run, onHeightChange, onOpenBestiary }: { run: RunState;
           SPD {run.speed} <span className="ml-1 text-teal-200">+{getCombatSpeedBonus(run.speed)} DMG</span>
         </div>
         <div
-          className={`flex items-center rounded-full px-2 py-1 font-black text-[10px] border-2 border-[#1c1c1c] shadow-md pointer-events-auto ${
+          className={`flex items-center rounded-full px-2 py-1 font-black text-[10px] border-2 border-[#1c1c1c] shadow-md pointer-events-auto ${run.isBossCombat ? '' : hideOutOfCombatInfo} ${
             run.phase === 'boss_awakening'
               ? 'bg-amber-500 text-slate-950'
               : run.phase === 'boss_ready'
@@ -112,7 +116,7 @@ export function TopBar({ run, onHeightChange, onOpenBestiary }: { run: RunState;
           type="button"
           onClick={() => setJournalOpen(true)}
           aria-label={`Open Crown Fragment Journal, ${recoveredFragments.length} of 3 recovered`}
-          className="flex items-center rounded-full bg-[#f4dfac] px-2 py-1 font-black text-[10px] text-[#3f2b18] border-2 border-[#1c1c1c] shadow-md pointer-events-auto active:translate-y-0.5 active:shadow-none"
+          className={`flex items-center rounded-full bg-[#f4dfac] px-2 py-1 font-black text-[10px] text-[#3f2b18] border-2 border-[#1c1c1c] shadow-md pointer-events-auto active:translate-y-0.5 active:shadow-none ${hideOutOfCombatInfo}`}
         >
           <BookMarked className="w-3 h-3 mr-1" />
           CROWN {recoveredFragments.length}/3

@@ -37,7 +37,10 @@ export function CombatApproach({
     const dash = Math.min(180, durationMs * 0.18);
     const retreat = Math.min(180, Math.max(80, durationMs * 0.12));
     const total = durationMs + retreat;
-    const contact = `translate(${x}px, ${y}px)`;
+    // Rects are viewport pixels; a CSS-zoomed stage scales the translation,
+    // so convert back into the artwork's own (zoomed) pixel space.
+    const zoom = (moving as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom || 1;
+    const contact = `translate(${x / zoom}px, ${y / zoom}px)`;
     // Remain beside the committed target through authored impact, then return.
     // No gameplay callbacks: damage and attack completion remain engine-owned.
     const motion = moving.animate([
