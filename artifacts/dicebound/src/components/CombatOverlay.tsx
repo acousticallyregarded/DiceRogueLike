@@ -96,6 +96,7 @@ interface DamagePopup {
 const EMPTY_EVENTS: VisualEvents = { heroAttack: 0, heroDrink: 0, heroFireBomb: 0, heroGuard: 0, heroHit: 0, heroLastAction: null, enemies: {} };
 const EXIT_DURATION_MS = 650;
 const MIN_COMBAT_SPEED = 1;
+const HIT_FLINCH_LOCK_MS = 600;
 
 function makeSnapshot(run: RunState): CombatSnapshot {
   return {
@@ -521,6 +522,16 @@ export function CombatOverlay({
   const finishHeroAttack = useCallback(() => {
     setCompletedHeroAttack(visualEvents.heroAttack);
   }, [visualEvents.heroAttack]);
+  // Unc's and Alan-a-Dale's hurt clips run ~2s. Hold input only for the
+  // flinch so the player can act while the rest of the clip plays out; a new
+  // action simply replaces the hurt animation.
+  const [hitFlinching, setHitFlinching] = useState(false);
+  useEffect(() => {
+    if (!visualEvents.heroHit) return;
+    setHitFlinching(true);
+    const timer = window.setTimeout(() => setHitFlinching(false), HIT_FLINCH_LOCK_MS / Math.max(1, speed));
+    return () => window.clearTimeout(timer);
+  }, [visualEvents.heroHit, speed]);
   // A short camera shake sells incoming damage. It animates the arena box
   // only, so actor state and measured approach slots are untouched.
   useEffect(() => {
@@ -599,7 +610,7 @@ export function CombatOverlay({
     : run.characterId === 'alan-a-dale' ? 3400 : POTION_ANIMATION_DURATION_MS;
   const guardDuration = run.characterId === 'unc' ? UNC_ACTION_DURATIONS.guard
     : run.characterId === 'alan-a-dale' ? 3400 : GUARD_TONIC_ANIMATION_DURATION_MS;
-  const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit;
+  const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit && hitFlinching;
   const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack
     && !drinkingPotion && !guardingHero && !leaving && !bossAnimating && !uncRecovering;
   const statusLabel = run.heroDeathPending ? 'Defeated'
