@@ -1,4 +1,4 @@
-import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getPendingHeroAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
+import { ConsumableType, GameAction, RunState, FIRE_BOMB_ANIMATION_DURATION_MS, GIF_FIRE_BOMB_DURATION_MS, GUARD_TONIC_ANIMATION_DURATION_MS, HERO_HIT_ANIMATION_DURATION_MS, POTION_ANIMATION_DURATION_MS, getPlayerAttackDurationMs, getPendingHeroAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
 import { CombatApproach } from './CombatApproach';
 import { BardSpellHelp } from './BardSpellHelp';
 import {
@@ -47,6 +47,7 @@ import { BattleBackdrop } from './BattleBackdrop';
 import { getCombatActorSize } from './combat-actor-size';
 import { getBossId, getBossDeathDurationMs, getBossMovePresentation } from '../level-content';
 import { getCharacter } from '../characters';
+import { UNC_ACTION_DURATIONS } from '../unc-moves';
 import './combat-overlay.css';
 
 interface EnemySnapshot {
@@ -590,9 +591,14 @@ export function CombatOverlay({
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
-  const fireBombDuration = run.characterId === 'unc' || run.characterId === 'alan-a-dale' ? 4200 : 2600;
-  const potionDuration = run.characterId === 'unc' ? 4200 : run.characterId === 'alan-a-dale' ? 3400 : 1800;
-  const guardDuration = run.characterId === 'unc' ? 5000 : run.characterId === 'alan-a-dale' ? 3400 : 2600;
+  // Sheet clips follow the shared combat tempo; Alan-a-Dale's consumables
+  // and the Unc/Alan fire bombs are GIFs with their own fixed timing.
+  const fireBombDuration = run.characterId === 'unc' || run.characterId === 'alan-a-dale'
+    ? GIF_FIRE_BOMB_DURATION_MS : FIRE_BOMB_ANIMATION_DURATION_MS;
+  const potionDuration = run.characterId === 'unc' ? UNC_ACTION_DURATIONS.health
+    : run.characterId === 'alan-a-dale' ? 3400 : POTION_ANIMATION_DURATION_MS;
+  const guardDuration = run.characterId === 'unc' ? UNC_ACTION_DURATIONS.guard
+    : run.characterId === 'alan-a-dale' ? 3400 : GUARD_TONIC_ANIMATION_DURATION_MS;
   const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit;
   const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack
     && !drinkingPotion && !guardingHero && !leaving && !bossAnimating && !uncRecovering;
@@ -748,7 +754,7 @@ export function CombatOverlay({
                 active
                 loop={!swingingSword && !reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
                 frameCount={swingingSword ? 13 : reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
-                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? 1800
+                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? HERO_HIT_ANIMATION_DURATION_MS
                   : (throwingFireBomb ? fireBombDuration / Math.max(1, speed)
                     : (drinkingPotion ? potionDuration / Math.max(1, speed)
                       : (guardingHero ? guardDuration / Math.max(1, speed) : 1800)))}

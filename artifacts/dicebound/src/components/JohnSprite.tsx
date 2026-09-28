@@ -1,5 +1,5 @@
 import type { DamageType } from '../bestiary';
-import { JOHN_ATTACK_DURATIONS } from '../john-moves';
+import { JOHN_ATTACK_DURATIONS, JOHN_ATTACK_FRAMES } from '../john-moves';
 import { SpriteAnimator, type SpriteAnimatorProps, type SpriteName } from './SpriteAnimator';
 
 const fallbacks = import.meta.glob('../assets/characters/john-*.png', {
@@ -18,7 +18,7 @@ export function JohnSprite({ damageType, ...props }: SpriteAnimatorProps & { dam
   return <SpriteAnimator {...props}
     sprite={sprite}
     fallbackUrl={fallbacks[`../assets/characters/${sprite}.png`]}
-    frameCount={JOHN_ATTACK_DURATIONS[move] / 200}
+    frameCount={JOHN_ATTACK_FRAMES[move]}
     durationMs={props.durationMs ?? JOHN_ATTACK_DURATIONS[move]}
     loop={false}
   />;

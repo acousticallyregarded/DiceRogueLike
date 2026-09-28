@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { DamageType } from '../bestiary';
-import { BARD_DURATIONS } from '../bard-moves';
+import { BARD_DURATIONS, BARD_FRAMES } from '../bard-moves';
 import { SpriteAnimator, type SpriteAnimatorProps, type SpriteName } from './SpriteAnimator';
 import './unc-speech.css';
 import bardGuardGif from '../assets/characters/consumables/bard-guard.gif';
@@ -26,6 +26,7 @@ export function BardSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAn
     ? props.sprite.replace('custom-walk-', 'bard-walk-') as SpriteName
     : `bard-${action}`;
   const duration = BARD_DURATIONS[walking ? 'walk' : action];
+  const frames = BARD_FRAMES[walking ? 'walk' : action];
   const idle = !walking && action === 'idle';
   const consumableGif = props.sprite === 'custom-guard-tonic' ? bardGuardGif
     : props.sprite === 'custom-drink-potion' ? bardHealthGif
@@ -61,7 +62,7 @@ export function BardSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAn
         active
         loop={Boolean(walking || idle)}
         holdLastFrame={action === 'death'}
-        frameCount={duration / 200}
+        frameCount={frames}
         durationMs={duration / Math.max(1, playbackSpeed)}
         onAnimationEnd={idle ? undefined : props.onAnimationEnd}
         alt={props.alt === 'Hero' ? 'Alan-a-Dale' : props.alt}

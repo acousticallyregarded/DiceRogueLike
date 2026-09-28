@@ -1,3 +1,4 @@
+import { actionSheetDurationMs } from "./combat-tempo";
 /**
  * Authored Alan-a-Dale animation timings.
  *
@@ -5,13 +6,24 @@
  * committed playback speed when scheduling an action so a reload cannot
  * change the pace of an in-flight animation.
  */
+export const BARD_FRAMES = {
+  electric: 41,
+  bludgeoning: 21,
+  magic: 29,
+  idle: 21,
+  hurt: 25,
+  death: 25,
+  walk: 21,
+} as const;
+
 export const BARD_DURATIONS = {
-  electric: 8200,
-  bludgeoning: 4200,
-  magic: 5800,
+  electric: actionSheetDurationMs(BARD_FRAMES.electric),
+  bludgeoning: actionSheetDurationMs(BARD_FRAMES.bludgeoning),
+  magic: actionSheetDurationMs(BARD_FRAMES.magic),
+  // Idle and walking loops keep their original relaxed 200ms cadence.
   idle: 4200,
-  hurt: 5000,
-  death: 5000,
+  hurt: actionSheetDurationMs(BARD_FRAMES.hurt),
+  death: actionSheetDurationMs(BARD_FRAMES.death),
   walk: 4200,
 } as const;
 
