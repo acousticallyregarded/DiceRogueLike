@@ -908,11 +908,11 @@ function runAssertions() {
   // Unc's authored action sheets drive the special and class-consumable
   // timings, while the existing hero timings remain unchanged.
   assert.deepEqual(UNC_ACTION_DURATIONS, {
-    guard: 5000,
-    health: 4200,
-    special: 8200,
-    death: 8200,
-    hurt: 4200,
+    guard: 2500,
+    health: 2100,
+    special: 4100,
+    death: 4100,
+    hurt: 2100,
     idle: 3400,
   });
   const uncTiming = combatState({ ...skeleton, id: "unc-timing", hp: 1000 });
@@ -935,12 +935,12 @@ function runAssertions() {
   // style to the magic clip. Pending impact timing uses the committed style
   // and playback pace rather than the current stance.
   assert.deepEqual(BARD_DURATIONS, {
-    electric: 8200,
-    bludgeoning: 4200,
-    magic: 5800,
+    electric: 4100,
+    bludgeoning: 2100,
+    magic: 2900,
     idle: 4200,
-    hurt: 5000,
-    death: 5000,
+    hurt: 2500,
+    death: 2500,
     walk: 4200,
   });
   const bardStyles: Skill[] = [
@@ -1104,13 +1104,13 @@ function runAssertions() {
 
   // John's authored attacks use exact timings; Slash keeps its original clip.
   assert.deepEqual(JOHN_ATTACK_DURATIONS, {
-    lightning: 3400,
-    cold: 1800,
-    acid: 5000,
-    piercing: 4200,
-    fire: 5000,
-    bludgeoning: 5000,
-    takedown: 5800,
+    lightning: 1700,
+    cold: 900,
+    acid: 2500,
+    piercing: 2100,
+    fire: 2500,
+    bludgeoning: 2500,
+    takedown: 2900,
   });
   const johnTiming = combatState({ ...skeleton, id: "john-timing", hp: 1000 });
   johnTiming.run!.combatSpeed = 2;
@@ -1157,7 +1157,7 @@ function runAssertions() {
   assert.equal(getPlayerAttackDurationMs(johnTiming.run!), JOHN_ATTACK_DURATIONS.lightning);
   const sparkCommitted = act(johnTiming, { type: "PLAYER_ATTACK", targetId: "john-timing" });
   assert.equal(sparkCommitted.run!.enemies[0].hp, johnTiming.run!.enemies[0].hp);
-  assert.equal(getPendingHeroAttackDurationMs(sparkCommitted.run!), 1700);
+  assert.equal(getPendingHeroAttackDurationMs(sparkCommitted.run!), JOHN_ATTACK_DURATIONS.lightning / 2);
   const sparkLanded = act(sparkCommitted, { type: "FINISH_HERO_ATTACK" });
   assert.ok(sparkLanded.run!.enemies[0].hp < sparkCommitted.run!.enemies[0].hp);
   const legacyJohnTiming = JSON.parse(JSON.stringify(johnTiming)) as GameStateV4;

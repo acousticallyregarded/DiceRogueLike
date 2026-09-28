@@ -1,4 +1,4 @@
-import { ConsumableType, GameAction, RunState, getPlayerAttackDurationMs, getPendingHeroAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
+import { ConsumableType, GameAction, RunState, FIRE_BOMB_ANIMATION_DURATION_MS, GIF_FIRE_BOMB_DURATION_MS, GUARD_TONIC_ANIMATION_DURATION_MS, HERO_HIT_ANIMATION_DURATION_MS, POTION_ANIMATION_DURATION_MS, getPlayerAttackDurationMs, getPendingHeroAttackDurationMs, getHeroDeathDurationMs, getBardSpellDC, getEnemyWisdomSaveBonus, getPlayerArmorClass } from '../engine';
 import { CombatApproach } from './CombatApproach';
 import { BardSpellHelp } from './BardSpellHelp';
 import {
@@ -46,6 +46,9 @@ import kingUrl from '../assets/skeleton-king.png';
 import { BattleBackdrop } from './BattleBackdrop';
 import { getCombatActorSize } from './combat-actor-size';
 import { getBossId, getBossDeathDurationMs, getBossMovePresentation } from '../level-content';
+import { getCharacter } from '../characters';
+import { UNC_ACTION_DURATIONS } from '../unc-moves';
+import './combat-overlay.css';
 
 interface EnemySnapshot {
   id: string;
@@ -93,6 +96,7 @@ interface DamagePopup {
 const EMPTY_EVENTS: VisualEvents = { heroAttack: 0, heroDrink: 0, heroFireBomb: 0, heroGuard: 0, heroHit: 0, heroLastAction: null, enemies: {} };
 const EXIT_DURATION_MS = 650;
 const MIN_COMBAT_SPEED = 1;
+const HIT_FLINCH_LOCK_MS = 600;
 
 function makeSnapshot(run: RunState): CombatSnapshot {
   return {
@@ -239,6 +243,7 @@ export function CombatOverlay({
   const enemyArchive = useRef<Record<string, RunState['enemies'][number]>>({});
   const popupTimers = useRef<number[]>([]);
   const reducedMotion = usePrefersReducedMotion();
+  const arenaRef = useRef<HTMLDivElement>(null);
   const heroApproach = useRef({ targetId: '', attackId: 0, durationMs: 420, enabled: false });
   const pendingMelee = run.playerCombat?.pendingHeroAttack;
   if (pendingMelee) {
@@ -517,6 +522,31 @@ export function CombatOverlay({
   const finishHeroAttack = useCallback(() => {
     setCompletedHeroAttack(visualEvents.heroAttack);
   }, [visualEvents.heroAttack]);
+  // Unc's and Alan-a-Dale's hurt clips run ~2s. Hold input only for the
+  // flinch so the player can act while the rest of the clip plays out; a new
+  // action simply replaces the hurt animation.
+  const [hitFlinching, setHitFlinching] = useState(false);
+  useEffect(() => {
+    if (!visualEvents.heroHit) return;
+    setHitFlinching(true);
+    const timer = window.setTimeout(() => setHitFlinching(false), HIT_FLINCH_LOCK_MS / Math.max(1, speed));
+    return () => window.clearTimeout(timer);
+  }, [visualEvents.heroHit, speed]);
+  // A short camera shake sells incoming damage. It animates the arena box
+  // only, so actor state and measured approach slots are untouched.
+  useEffect(() => {
+    const arena = arenaRef.current;
+    if (!visualEvents.heroHit || !arena || reducedMotion || !arena.animate) return;
+    const motion = arena.animate([
+      { transform: 'translate(0, 0)' },
+      { transform: 'translate(-5px, 2px)' },
+      { transform: 'translate(4px, -2px)' },
+      { transform: 'translate(-3px, 1px)' },
+      { transform: 'translate(2px, 0)' },
+      { transform: 'translate(0, 0)' },
+    ], { duration: 320, easing: 'ease-out' });
+    return () => motion.cancel();
+  }, [visualEvents.heroHit, reducedMotion]);
   const renderedRun = run.phase === 'combat' || run.heroDeathPending ? run : displayRun;
   if ((!visible && !run.heroDeathPending) || !renderedRun || !renderedRun.playerCombat
     || (run.phase === 'defeat' && !run.heroDeathPending)) return null;
@@ -572,10 +602,15 @@ export function CombatOverlay({
     && !bagOpen;
   const combatDuration = Math.max(180, 420 / Math.max(1, speed));
   const hitDuration = Math.max(160, 300 / Math.max(1, speed));
-  const fireBombDuration = run.characterId === 'unc' || run.characterId === 'alan-a-dale' ? 4200 : 2600;
-  const potionDuration = run.characterId === 'unc' ? 4200 : run.characterId === 'alan-a-dale' ? 3400 : 1800;
-  const guardDuration = run.characterId === 'unc' ? 5000 : run.characterId === 'alan-a-dale' ? 3400 : 2600;
-  const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit;
+  // Sheet clips follow the shared combat tempo; Alan-a-Dale's consumables
+  // and the Unc/Alan fire bombs are GIFs with their own fixed timing.
+  const fireBombDuration = run.characterId === 'unc' || run.characterId === 'alan-a-dale'
+    ? GIF_FIRE_BOMB_DURATION_MS : FIRE_BOMB_ANIMATION_DURATION_MS;
+  const potionDuration = run.characterId === 'unc' ? UNC_ACTION_DURATIONS.health
+    : run.characterId === 'alan-a-dale' ? 3400 : POTION_ANIMATION_DURATION_MS;
+  const guardDuration = run.characterId === 'unc' ? UNC_ACTION_DURATIONS.guard
+    : run.characterId === 'alan-a-dale' ? 3400 : GUARD_TONIC_ANIMATION_DURATION_MS;
+  const uncRecovering = (run.characterId === 'unc' || run.characterId === 'alan-a-dale') && reactingToHit && hitFlinching;
   const canInput = run.phase === 'combat' && run.combatTurn === 'player' && !run.playerCombat?.pendingHeroAttack
     && !drinkingPotion && !guardingHero && !leaving && !bossAnimating && !uncRecovering;
   const statusLabel = run.heroDeathPending ? 'Defeated'
@@ -585,48 +620,11 @@ export function CombatOverlay({
 
   return (
     <div
-      className={`combat-overlay absolute left-0 right-0 bottom-[18%] min-h-[480px] flex flex-col z-20 overflow-hidden pb-4 ${leaving ? 'combat-overlay--leaving' : ''}`}
-      style={{ top: headerHeight + 20 }}
+      className={`combat-overlay absolute left-0 right-0 bottom-[4.75rem] md:bottom-[18%] md:min-h-[480px] flex flex-col z-20 overflow-hidden pb-2 ${leaving ? 'combat-overlay--leaving' : ''} ${canInput ? 'combat-overlay--player-turn' : 'combat-overlay--waiting'}`}
+      style={{ top: headerHeight + 12 }}
     >
       <div className="combat-overlay__hud relative z-40 flex shrink-0 flex-col gap-2 px-3">
-        <div className="flex flex-wrap items-center justify-between gap-1.5">
-          <div className="bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full font-black text-[10px] border-2 border-[#1c1c1c] shadow-[0_2px_0_#1c1c1c] uppercase tracking-wider">
-            Floor {renderedRun.floor} • Round {renderedRun.playerCombat.roundCounter}
-          </div>
-          <div
-            className={`pointer-events-none rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider border-2 shadow-sm ${
-              canInput ? 'bg-emerald-100 text-emerald-900 border-emerald-600' : 'bg-slate-200 text-slate-700 border-slate-500'
-            }`}
-            role="status"
-            aria-live="polite"
-          >
-            {statusLabel}{!canInput && run.combatTurn === 'enemy' ? ' • resolving…' : ''}
-          </div>
-        </div>
-
         <AttackStyleSelector run={run} dispatch={dispatch} compact disabled={!canInput} />
-
-        {!run.playerCombat?.pendingHeroAttack && run.bardSpellFeedback && (
-          <div role="status" className="whitespace-pre-line rounded-xl border-2 border-indigo-300 bg-indigo-950 px-3 py-1 text-center text-[10px] font-bold text-white">
-            {run.bardSpellFeedback}
-          </div>
-        )}
-        {!run.playerCombat?.pendingHeroAttack && !run.bardSpellFeedback && run.combatFeedback && (
-          <div
-            role="status"
-            className={`rounded-full px-3 py-1 text-center text-[10px] font-black border-2 shadow-md ${
-              run.combatFeedback.kind === 'immune'
-                ? 'bg-slate-900 text-slate-100 border-slate-300'
-                : run.combatFeedback.kind === 'resisted'
-                  ? 'bg-amber-100 text-amber-900 border-amber-500'
-                  : run.combatFeedback.kind === 'vulnerable'
-                    ? 'bg-red-100 text-red-900 border-red-500'
-                    : 'bg-white text-slate-800 border-[#1c1c1c]'
-            }`}
-          >
-            {run.combatFeedback.message}
-          </div>
-        )}
       </div>
 
       {inspectedEnemy && (
@@ -692,11 +690,56 @@ export function CombatOverlay({
         </div>
       )}
 
-      <div data-combat-arena className={`combat-overlay__arena flex-1 relative flex items-end justify-center px-3 pb-12 ${
+      <div ref={arenaRef} data-combat-arena className={`combat-overlay__arena flex-1 relative flex items-end justify-center px-3 pb-12 ${
         renderedRun.isBossCombat ? 'gap-0' : 'gap-3'
       }`}>
          <BattleBackdrop enemies={renderedEnemies} boss={renderedRun.isBossCombat} floor={renderedRun.floor} />
-        <div className={`relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
+        <div className="combat-arena-top">
+          <div className="combat-arena-badges">
+            <div className="bg-[var(--color-ui-purple)] text-white px-3 py-1 rounded-full font-black text-[10px] border-2 border-[#1c1c1c] shadow-[0_2px_0_#1c1c1c] uppercase tracking-wider">
+              Floor {renderedRun.floor} • Round {renderedRun.playerCombat.roundCounter}
+            </div>
+            <div
+              className={`combat-turn-pill pointer-events-none inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider border-2 ${
+                canInput ? 'combat-turn-pill--player'
+                  : run.heroDeathPending ? 'combat-turn-pill--defeat'
+                  : run.combatTurn === 'enemy' || bossAnimating ? 'combat-turn-pill--enemy' : 'combat-turn-pill--busy'
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="combat-turn-pill__dot" aria-hidden="true" />
+              {statusLabel}{!canInput && run.combatTurn === 'enemy' ? ' • resolving…' : ''}
+            </div>
+          </div>
+          <div className="combat-feedback-slot">
+            {!run.playerCombat?.pendingHeroAttack && run.bardSpellFeedback && (
+              <div role="status" className="combat-feedback-banner whitespace-pre-line rounded-xl border-2 border-indigo-300 bg-indigo-950 px-3 py-1 text-center text-[10px] font-bold text-white">
+                {run.bardSpellFeedback}
+              </div>
+            )}
+            {!run.playerCombat?.pendingHeroAttack && !run.bardSpellFeedback && run.combatFeedback && (
+              <div
+                role="status"
+                className={`combat-feedback-banner rounded-full px-3 py-1 text-center text-[10px] font-black border-2 shadow-md ${
+                  run.combatFeedback.kind === 'immune'
+                    ? 'bg-slate-900 text-slate-100 border-slate-300'
+                    : run.combatFeedback.kind === 'resisted'
+                      ? 'bg-amber-100 text-amber-900 border-amber-500'
+                      : run.combatFeedback.kind === 'vulnerable'
+                        ? 'bg-red-100 text-red-900 border-red-500'
+                        : 'bg-white text-slate-800 border-[#1c1c1c]'
+                }`}
+              >
+                {run.combatFeedback.message}
+              </div>
+            )}
+          </div>
+        </div>
+        {playerHitTrigger > 0 && !reducedMotion && (
+          <div key={playerHitTrigger} className="combat-hurt-vignette" aria-hidden="true" />
+        )}
+        <div className={`combat-unit combat-unit--hero relative flex flex-col items-center ${run.characterId === 'alan-a-dale' ? 'ml-4' : ''}`}>
           <CombatApproach actorId="hero" {...heroApproach.current} paused={paused}>
           <div
             className="combat-actor w-28 h-28"
@@ -722,7 +765,7 @@ export function CombatOverlay({
                 active
                 loop={!swingingSword && !reactingToHit && !throwingFireBomb && !drinkingPotion && !guardingHero}
                 frameCount={swingingSword ? 13 : reactingToHit ? 9 : (throwingFireBomb ? 13 : (drinkingPotion ? 9 : (guardingHero ? 13 : 9)))}
-                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? 1800
+                durationMs={swingingSword ? getPlayerAttackDurationMs(run) / Math.max(1, speed) : reactingToHit ? HERO_HIT_ANIMATION_DURATION_MS
                   : (throwingFireBomb ? fireBombDuration / Math.max(1, speed)
                     : (drinkingPotion ? potionDuration / Math.max(1, speed)
                       : (guardingHero ? guardDuration / Math.max(1, speed) : 1800)))}
@@ -741,15 +784,13 @@ export function CombatOverlay({
             ))}
           </div>
           </CombatApproach>
-          <div className="mt-2 w-20 h-4 bg-red-950 border-2 border-[#1c1c1c] rounded overflow-hidden relative shadow-sm">
-            <div className="absolute inset-0 bg-red-500 origin-left transition-transform duration-200" style={{ transform: `scaleX(${Math.max(0, renderedRun.hp / Math.max(1, renderedRun.maxHp))})` }} />
-            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white text-shadow-sm">
-              {Math.floor(renderedRun.hp)}
-            </div>
-          </div>
+          <div className="combat-feet" aria-hidden="true"><div className="combat-ground-shadow" /></div>
+          <EnemyHealthBar name={getCharacter(run.characterId).name}
+            hp={Math.floor(renderedRun.hp)} maxHp={renderedRun.maxHp}
+            reducedMotion={reducedMotion} variant="hero" />
         </div>
 
-        <div className="relative flex items-end gap-0">
+        <div className="combat-enemy-row relative flex items-end gap-0">
           {renderedEnemies.map(enemy => {
             const enemyEvent = visualEvents.enemies[enemy.id] ?? { attackTrigger: 0, hitTrigger: 0, deathTrigger: 0 };
             const isDying = enemyEvent.deathTrigger > 0;
@@ -760,10 +801,11 @@ export function CombatOverlay({
              const Approach = placeholderBoss && bossMove?.kind === 'melee' ? MeleeCombatApproach : CombatApproach;
             const enemySprite = getAttackSprite(enemy);
             const actorSize = getCombatActorSize(enemy);
+            const isTargeted = !isDying && run.phase === 'combat' && selectedEnemy?.id === enemy.id;
             return (
               <div
                 key={enemy.id}
-                className={`relative flex flex-col items-center rounded-lg ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : 'cursor-pointer'}`}
+                className={`combat-unit combat-unit--enemy relative flex flex-col items-center rounded-lg ${isTargeted ? 'combat-unit--targeted' : ''} ${isDying ? `combat-actor--dying${customWolf || isCustomGoblinEnemy(enemy) || isCustomOchreEnemy(enemy) || isCustomSkeletonEnemy(enemy) || isCustomMummyEnemy(enemy) || isCustomWinterWolfEnemy(enemy) || isCustomOgreEnemy(enemy) ? ' combat-actor--dying-custom-wolf' : ''}` : 'cursor-pointer'}`}
                 style={{ ...eventStyle(combatDuration), '--combat-exit-duration': `${deathExitDurationMs(enemy, speed)}ms`,
                    ...(isDying && enemy.boss
                      ? { animationName: bossId === 'skeleton-king' ? 'dicebound-king-death-exit' : 'dicebound-boss-placeholder-death-exit' }
@@ -889,7 +931,16 @@ export function CombatOverlay({
                   </div>
                 </div>
                  </Approach>
-                <div className="text-[9px] font-black text-white bg-black/60 px-1 rounded absolute -top-4">{enemy.name}</div>
+                <div className="combat-feet" aria-hidden="true">
+                  <div className="combat-ground-shadow" />
+                  {isTargeted && <div className="combat-target-ring" />}
+                </div>
+                {isTargeted && livingEnemies.length > 1 && (
+                  <div className="combat-target-marker" aria-hidden="true" />
+                )}
+                {enemyEvent.hitTrigger > 0 && !reducedMotion && (
+                  <div key={`impact-${enemyEvent.hitTrigger}`} className="combat-impact" aria-hidden="true" />
+                )}
                 {enemy.boss && bossId === 'cinder' && enemy.bossRageActive && (
                   <div role="status" className="mt-1 rounded-full border border-orange-300 bg-orange-950 px-2 py-0.5 text-[9px] font-black text-orange-100">
                     Furnace Rage active
@@ -905,7 +956,7 @@ export function CombatOverlay({
                 ))}
                 <EnemyHealthBar name={enemy.name}
                   hp={livingEnemies.some(living => living.id === enemy.id) ? enemy.hp : 0}
-                  maxHp={enemy.maxHp} reducedMotion={reducedMotion} />
+                  maxHp={enemy.maxHp} reducedMotion={reducedMotion} selected={isTargeted} />
                 {!isDying && (enemy.sleepTurns ?? 0) > 0 && (
                   <div role="status" className="mt-1 rounded-full border border-indigo-200 bg-indigo-950 px-2 py-0.5 text-[10px] font-bold text-white">
                     Asleep · {enemy.sleepTurns} {enemy.sleepTurns === 1 ? 'turn' : 'turns'} left
@@ -1040,7 +1091,7 @@ export function CombatOverlay({
         </div>
       )}
       {run.phase === 'combat' && selectedEnemy && (
-        <div className="combat-overlay__target relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white">
+        <div className={`combat-overlay__target relative z-40 px-3 pt-2 text-center text-[11px] font-bold text-white ${run.characterId === 'alan-a-dale' ? '' : 'combat-overlay__target--hint'}`}>
           Target: <span className="text-amber-300">{selectedEnemy.name}</span>
           {run.characterId === 'alan-a-dale' && (
             <span className="ml-1 text-indigo-100">

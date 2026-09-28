@@ -176,7 +176,7 @@ export default function Game() {
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-zinc-900 font-sans select-none">
       <div
-        className="dicebound-desktop-shell w-full max-w-[390px] h-[100dvh] relative overflow-hidden bg-[#2b4c2b]"
+        className="dicebound-desktop-shell w-full max-w-[390px] h-[100dvh] relative overflow-clip bg-[#2b4c2b]"
         aria-busy={authoritativeActionPending}
       >
         {authoritativeActionPending && (
@@ -195,7 +195,7 @@ export default function Game() {
         </div>
         <div
           aria-hidden="true"
-          className={`absolute inset-0 pointer-events-none transition-colors duration-700 ${inCombat ? 'bg-black/35' : 'bg-transparent'}`}
+          className={`absolute inset-0 pointer-events-none transition-colors duration-700 ${inCombat ? 'bg-black/55' : 'bg-transparent'}`}
           style={{ backgroundImage: 'linear-gradient(to bottom, rgba(15,40,26,0.15), transparent 25%, transparent 75%, rgba(15,40,26,0.25))' }}
         />
 

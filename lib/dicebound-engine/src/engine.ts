@@ -18,6 +18,8 @@ import { CHARACTERS, getCharacter } from "./characters";
 import type { CharacterId } from "./characters";
 import { BARD_DURATIONS, BARD_MOVES, type BardAttackKind, type BardMove } from "./bard-moves";
 import { JOHN_ATTACK_DURATIONS } from "./john-moves";
+import { actionSheetDurationMs } from "./combat-tempo";
+export { ACTION_SHEET_FRAME_MS, actionSheetDurationMs } from "./combat-tempo";
 import { UNC_ACTION_DURATIONS, UNC_MOVES } from "./unc-moves";
 import {
   LEVELS,
@@ -421,10 +423,14 @@ export interface GameStateV4 {
   entropy?: ReducerEntropy;
 }
 
-export const POTION_ANIMATION_DURATION_MS = 1800;
-export const FIRE_BOMB_ANIMATION_DURATION_MS = 2600;
-export const GUARD_TONIC_ANIMATION_DURATION_MS = 2600;
-export const HERO_SWORD_ANIMATION_DURATION_MS = 2600;
+// John's shared hero clips (drink 9 frames; bomb, guard and sword 13 frames).
+export const POTION_ANIMATION_DURATION_MS = actionSheetDurationMs(9);
+export const FIRE_BOMB_ANIMATION_DURATION_MS = actionSheetDurationMs(13);
+export const GUARD_TONIC_ANIMATION_DURATION_MS = actionSheetDurationMs(13);
+export const HERO_SWORD_ANIMATION_DURATION_MS = actionSheetDurationMs(13);
+export const HERO_HIT_ANIMATION_DURATION_MS = actionSheetDurationMs(9);
+/** Unc's and Alan-a-Dale's fire bombs are GIFs with their own fixed timing. */
+export const GIF_FIRE_BOMB_DURATION_MS = 4200;
 export const DEFAULT_ENEMY_RESPONSE_DELAY_MS = HERO_SWORD_ANIMATION_DURATION_MS;
 export const DICE_ROLL_ANIMATION_DURATION_MS = 800;
 export const BOSS_AWAKENING_DURATION_MS = 2200;
@@ -589,7 +595,7 @@ export function getEnemyResponseDelayMs(run: AttackTimingRun): number {
   }
   if (run.playerCombat?.pendingFireBomb) {
     const authoredDuration = run.characterId === "unc" || run.characterId === "alan-a-dale"
-      ? 4200
+      ? GIF_FIRE_BOMB_DURATION_MS
       : FIRE_BOMB_ANIMATION_DURATION_MS;
     return authoredDuration / combatPlaybackSpeed(run);
   }

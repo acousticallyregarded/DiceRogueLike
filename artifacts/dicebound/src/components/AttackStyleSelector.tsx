@@ -12,6 +12,13 @@ export function AttackStyleSelector({
   compact?: boolean;
   disabled?: boolean;
 }) {
+  const styles = getAttackStylesForCharacter(run.characterId);
+  // In battle, locked stances cannot be chosen, so the compact selector keeps
+  // them out of the way and summarises them instead of spending a grid row.
+  const visibleStyles = compact
+    ? styles.filter(style => isAttackStyleLearned(run, style.id))
+    : styles;
+  const hiddenLocked = styles.length - visibleStyles.length;
   return (
     <section
       aria-label="Attack style"
@@ -28,12 +35,23 @@ export function AttackStyleSelector({
             Current: {formatDamageType(run.selectedDamageType)} • choose freely
           </div>
         </div>
-        <span className="combat-attack-help text-[8px] font-bold text-slate-400 text-right max-w-[118px]">
-          Select a stance, then press Attack to commit the turn.
-        </span>
+        {compact && hiddenLocked > 0 ? (
+          <span className="combat-attack-locked shrink-0 rounded-full border border-slate-600 bg-slate-900 px-2 py-0.5 text-[9px] font-bold text-slate-400"
+            title="Learn more styles through level-up choices or the shop.">
+            +{hiddenLocked} locked
+          </span>
+        ) : (
+          <span className="combat-attack-help text-[8px] font-bold text-slate-400 text-right max-w-[118px]">
+            Select a stance, then press Attack to commit the turn.
+          </span>
+        )}
       </div>
-      <div className={`combat-attack-grid mt-2 grid grid-cols-3 ${run.characterId === 'unc' ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} gap-1.5 pb-0.5`} role="group">
-        {getAttackStylesForCharacter(run.characterId).map((style) => {
+      <div className={`combat-attack-grid mt-2 grid ${
+        compact
+          ? visibleStyles.length >= 4 ? 'grid-cols-4' : visibleStyles.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+          : `grid-cols-3 ${run.characterId === 'unc' ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`
+      } gap-1.5 pb-0.5`} role="group">
+        {visibleStyles.map((style) => {
           const selected = run.selectedDamageType === style.id;
           const locked = !isAttackStyleLearned(run, style.id);
           return (

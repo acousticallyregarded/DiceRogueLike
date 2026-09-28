@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { DamageType } from '../bestiary';
-import { UNC_ACTION_DURATIONS, UNC_MOVES, type UncDamageType } from '../unc-moves';
+import { UNC_ACTION_DURATIONS, UNC_ACTION_FRAMES, UNC_MOVES, type UncDamageType } from '../unc-moves';
 import { SpriteAnimator, type SpriteAnimatorProps, type SpriteName } from './SpriteAnimator';
 import { getUncSpeech } from './unc-speech';
 import './unc-speech.css';
@@ -40,7 +40,7 @@ export function UncSprite({ damageType, playbackSpeed = 1, ...props }: SpriteAni
     ? props.sprite.replace('custom-walk-', 'unc-walk-') as SpriteName
     : attacking ? action.sprite : support ? `unc-${support}` : 'unc-idle';
   const frames = walking ? 13 : attacking ? metadata.frames
-    : UNC_ACTION_DURATIONS[support ?? 'idle'] / 200;
+    : UNC_ACTION_FRAMES[support ?? 'idle'];
   const duration = walking ? 2600 / Math.max(1, playbackSpeed)
     : attacking ? props.durationMs ?? metadata.durationMs
     : UNC_ACTION_DURATIONS[support ?? 'idle'] / Math.max(1, playbackSpeed);
